@@ -25,11 +25,12 @@ export function Section({
   tone?: "light" | "paper" | "ink";
   /**
    * `tight` when the section directly follows something that already ends in
-   * generous space, so the two do not stack into a gap. A prop rather than a
-   * `pt-*` passed through className, because that would collide with `py-*`
-   * here and let Tailwind's emission order pick the winner.
+   * generous space, so the two do not stack into a gap. `loose` when the
+   * previous section ends flush against its own content and needs air. A prop
+   * rather than a `pt-*` passed through className, because that would collide
+   * with `py-*` here and let Tailwind's emission order pick the winner.
    */
-  padTop?: "normal" | "tight";
+  padTop?: "normal" | "tight" | "loose";
 }) {
   const tones = {
     light: "bg-white",
@@ -42,7 +43,11 @@ export function Section({
       id={id}
       className={cn(
         "scroll-mt-24 pb-20 sm:pb-28",
-        padTop === "tight" ? "pt-10 sm:pt-14" : "pt-20 sm:pt-28",
+        padTop === "tight"
+          ? "pt-10 sm:pt-14"
+          : padTop === "loose"
+            ? "pt-28 sm:pt-40"
+            : "pt-20 sm:pt-28",
         tones[tone],
         className,
       )}

@@ -1,13 +1,18 @@
 import { Container, Section } from "@/components/ui/primitives";
 import { PlaceholderShot } from "@/components/ui/PlaceholderShot";
 import { Reveal } from "@/components/ui/Reveal";
+import { SyllabusScene } from "@/components/landing/SyllabusScene";
+import { InboxScene } from "@/components/landing/InboxScene";
 import { cn } from "@/lib/cn";
 
 type Row = {
-  label: string;
+  /** Omit to let the headline stand on its own. */
+  label?: string;
   title: string;
   points: string[];
-  shot: { variant: "syllabus" | "inbox" | "calendar"; title: string };
+  /** Either a screenshot placeholder or a purpose-built animated scene. */
+  shot?: { variant: "syllabus" | "inbox" | "calendar"; title: string };
+  scene?: "syllabus" | "inbox";
   flip?: boolean;
 };
 
@@ -15,15 +20,14 @@ type Row = {
 // and the four points carry the detail. See docs/design/02-design-system.md.
 const ROWS: Row[] = [
   {
-    label: "Syllabus parsing",
-    title: "Every syllabus becomes dates",
+    title: "Fast and Curious",
     points: [
       "Assignment and project deadlines",
       "Midterm, final, and lab dates",
       "Weekly lectures and tutorials",
       "Weighting, so it knows what matters",
     ],
-    shot: { variant: "syllabus", title: "Syllabus, PSYC 258 fall term" },
+    scene: "syllabus",
   },
   {
     label: "Email and discussions",
@@ -34,7 +38,7 @@ const ROWS: Row[] = [
       "Drafts replies, sends once you approve",
       "Books office hours with your prof",
     ],
-    shot: { variant: "inbox", title: "Course mail, 6 new" },
+    scene: "inbox",
     flip: true,
   },
   {
@@ -52,7 +56,7 @@ const ROWS: Row[] = [
 
 export function Showcase() {
   return (
-    <Section>
+    <Section padTop="loose">
       <Container>
         <div className="flex flex-col gap-24 sm:gap-32">
           {ROWS.map((row, i) => (
@@ -61,10 +65,12 @@ export function Showcase() {
               className="grid items-center gap-10 lg:grid-cols-2 lg:gap-16"
             >
               <Reveal className={cn(row.flip && "lg:order-2")}>
-                <p className="text-[0.8rem] font-semibold uppercase tracking-[0.16em] text-brand-600">
-                  {row.label}
-                </p>
-                <h2 className="mt-3 text-[2.15rem] font-extrabold leading-[1.08] text-ink-900 sm:text-[2.7rem]">
+                {row.label ? (
+                  <p className="mb-3 text-[0.8rem] font-semibold uppercase tracking-[0.16em] text-brand-600">
+                    {row.label}
+                  </p>
+                ) : null}
+                <h2 className="text-[2.15rem] font-extrabold leading-[1.08] text-ink-900 sm:text-[2.7rem]">
                   {row.title}
                 </h2>
                 <ul className="mt-7 flex flex-col gap-3">
@@ -78,7 +84,13 @@ export function Showcase() {
               </Reveal>
 
               <Reveal delay={100} className={cn(row.flip && "lg:order-1")}>
-                <PlaceholderShot variant={row.shot.variant} title={row.shot.title} />
+                {row.scene === "syllabus" ? (
+                  <SyllabusScene />
+                ) : row.scene === "inbox" ? (
+                  <InboxScene />
+                ) : row.shot ? (
+                  <PlaceholderShot variant={row.shot.variant} title={row.shot.title} />
+                ) : null}
               </Reveal>
             </div>
           ))}
