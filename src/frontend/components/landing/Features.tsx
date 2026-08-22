@@ -86,7 +86,10 @@ export function Features() {
     <Section id="features">
       <Container>
         <Reveal>
-          <SectionHeading title="Everything it handles" lead="One job, start of term to final grades." />
+          <SectionHeading
+            title={<>We&rsquo;re in a class of our own</>}
+            lead="One job, start of term to final grades."
+          />
         </Reveal>
 
         <Reveal delay={80}>
