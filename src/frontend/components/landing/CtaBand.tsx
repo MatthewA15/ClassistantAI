@@ -1,4 +1,4 @@
-import { Button, Container, ArrowRight } from "@/components/ui/primitives";
+import { Button, Container } from "@/components/ui/primitives";
 import { LogoMark } from "@/components/brand/LogoMark";
 import { Reveal } from "@/components/ui/Reveal";
 import { cn } from "@/lib/cn";
@@ -29,17 +29,21 @@ import { cn } from "@/lib/cn";
 type Pair = {
   q: string;
   a: string;
-  /** Percent offsets. Kept clear of the middle so the headline stays dominant. */
+  /**
+   * Percent offsets. Kept clear of the middle so the headline stays dominant,
+   * and the top row starts below 13% so it clears the fixed header, which
+   * overlays the first ~88px of the viewport wherever you are on the page.
+   */
   left: string;
   top: string;
 };
 
 const PAIRS: Pair[] = [
-  { q: "Do I need to download anything?", a: "No. It lives in your Messages app.", left: "1%", top: "4%" },
+  { q: "Do I need to download anything?", a: "No. It lives in your Messages app.", left: "1%", top: "13%" },
   { q: "Why do you need my portal password?", a: "Grades sit behind it. It checks overnight while you sleep.", left: "0%", top: "27%" },
   { q: "Will it text me at 3am?", a: "Never. You set quiet hours.", left: "2%", top: "53%" },
   { q: "What does it cost?", a: "Nothing during early access.", left: "1%", top: "74%" },
-  { q: "My school is not on the list?", a: "Not yet. Search it and we will tell you the day it goes live.", left: "72%", top: "6%" },
+  { q: "My school is not on the list?", a: "Not yet. Search it and we will tell you the day it goes live.", left: "72%", top: "14%" },
   { q: "Will it do my assignments?", a: "No. It gets you to the desk on time.", left: "74%", top: "31%" },
   { q: "Can I turn off the calls?", a: "Reply STOP CALLS. Texts keep working.", left: "73%", top: "56%" },
   { q: "What happens when the term ends?", a: "It goes quiet. Reply DELETE to wipe everything.", left: "72%", top: "77%" },
@@ -65,22 +69,18 @@ export function CtaBand() {
       </div>
 
       <Container className="relative">
-        <Reveal className="mx-auto max-w-2xl text-center">
+        <Reveal className="mx-auto max-w-3xl text-center">
           <LogoMark size={56} tone="white" animated className="mx-auto" />
-          <h2 className="mt-7 text-[2.4rem] font-extrabold leading-[1.06] text-white sm:text-[3.2rem]">
-            The average student saves 84 hours a year
+          <h2 className="mt-7 text-[2.1rem] font-extrabold leading-[1.08] text-white sm:text-[2.85rem]">
+            Spend 4 minutes with us in exchange for 84 hours of your time back
             <span aria-hidden="true">*</span>
           </h2>
-          <p className="mx-auto mt-5 max-w-md text-[1.08rem] leading-[1.6] text-sky-200/85">
-            It only costs 4 minutes of your time.
-          </p>
           {/* One button, and a wide one. A secondary "see what it does" here
               pointed back up a page the reader has just finished, and split the
               attention of the only ask that matters. */}
           <div className="mt-9 flex justify-center">
-            <Button href="/#hero" variant="onInk" className="group px-14 py-4 text-[1.02rem]">
+            <Button href="/#hero" variant="onInk" className="px-14 py-4 text-[1.02rem]">
               Get set up
-              <ArrowRight />
             </Button>
           </div>
         </Reveal>

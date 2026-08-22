@@ -59,6 +59,13 @@
      never decoration. Like alert, school themes do not override it. */
   --color-ok: #16a34a;
 
+  /* Hero wash. A tint of the accent rather than a fixed blue, so a school
+     theme carries into the largest surface on the page: U of A's gold, Mount
+     Royal's Lincoln blue. Deliberately a shade deeper than the old sky-50, and
+     it also makes the hero's curved bottom edge read against the white below.
+     Kept light enough that ink-900 headings stay well clear of AA. */
+  --color-hero: color-mix(in oklab, var(--color-accent) 22%, white);
+
   /* The middle of the escalation ramp. ok -> warn -> alert is the only place
      the palette runs three non-blue hues, and it earns it: the whole point of
      that section is that the pressure visibly increases, and hue is the one

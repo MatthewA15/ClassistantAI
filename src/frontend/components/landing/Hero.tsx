@@ -14,7 +14,7 @@ export function Hero() {
     // supplies its own top breathing room.
     <section
       id="hero"
-      className="relative overflow-hidden rounded-b-[2rem] bg-sky-50 pb-16 pt-16 sm:rounded-b-[3rem] sm:pb-24 sm:pt-24"
+      className="relative overflow-hidden rounded-b-[2rem] bg-hero pb-16 pt-16 sm:rounded-b-[3rem] sm:pb-24 sm:pt-24"
     >
       <HeroBackdrop />
 
