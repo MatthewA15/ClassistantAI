@@ -1,17 +1,25 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, Plus_Jakarta_Sans } from "next/font/google";
+import { Bricolage_Grotesque, Hanken_Grotesk } from "next/font/google";
+import { SchoolThemeProvider } from "@/components/theme/SchoolTheme";
 import "./globals.css";
 
-const inter = Inter({
+/**
+ * Type pairing. Both faces are deliberately off the beaten path, since Inter
+ * and Plus Jakarta Sans are the default look of every AI-generated landing page.
+ * Rationale and the alternatives tested are in docs/design/02-design-system.md.
+ *
+ * The CSS variable names are font-agnostic on purpose: swapping a face means
+ * editing this file only, never globals.css.
+ */
+const displayFace = Bricolage_Grotesque({
   subsets: ["latin"],
-  variable: "--font-inter",
+  variable: "--font-display-face",
   display: "swap",
 });
 
-const jakarta = Plus_Jakarta_Sans({
+const bodyFace = Hanken_Grotesk({
   subsets: ["latin"],
-  weight: ["500", "600", "700", "800"],
-  variable: "--font-jakarta",
+  variable: "--font-body-face",
   display: "swap",
 });
 
@@ -39,15 +47,17 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en-CA" className={`${inter.variable} ${jakarta.variable}`}>
+    <html lang="en-CA" className={`${bodyFace.variable} ${displayFace.variable}`}>
       <body className="bg-white antialiased">
-        <a
-          href="#main"
-          className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-ink-900 focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white"
-        >
-          Skip to content
-        </a>
-        {children}
+        <SchoolThemeProvider>
+          <a
+            href="#main"
+            className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-ink-900 focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white"
+          >
+            Skip to content
+          </a>
+          {children}
+        </SchoolThemeProvider>
       </body>
     </html>
   );

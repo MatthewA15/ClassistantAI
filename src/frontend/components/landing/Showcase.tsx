@@ -6,47 +6,45 @@ import { cn } from "@/lib/cn";
 type Row = {
   label: string;
   title: string;
-  body: string;
   points: string[];
   shot: { variant: "syllabus" | "inbox" | "calendar"; title: string };
   flip?: boolean;
 };
 
+// No prose paragraphs here on purpose. The screenshot carries the explanation
+// and the four points carry the detail. See docs/design/02-design-system.md.
 const ROWS: Row[] = [
   {
     label: "Syllabus parsing",
-    title: "Every syllabus turns into dates you cannot miss",
-    body: "Classistant downloads the syllabus for each course, pulls out every graded item, and writes it into your calendar and its own database so nothing depends on you rereading a PDF in week nine.",
+    title: "Every syllabus becomes dates",
     points: [
-      "Assignment and project due dates",
-      "Midterm, final, and lab exam dates",
-      "Weekly lecture, tutorial, and lab blocks",
-      "Weighting, so it knows what actually matters",
+      "Assignment and project deadlines",
+      "Midterm, final, and lab dates",
+      "Weekly lectures and tutorials",
+      "Weighting, so it knows what matters",
     ],
     shot: { variant: "syllabus", title: "Syllabus, PSYC 258 fall term" },
   },
   {
     label: "Email and discussions",
-    title: "It reads the inbox you have stopped opening",
-    body: "Course announcements, discussion board replies, and that one email from your prof about a room change all get scanned. Anything that changes your schedule or your grade reaches you as a text.",
+    title: "It reads the inbox you stopped opening",
     points: [
-      "Flags schedule changes and cancelled classes",
+      "Flags cancelled classes and room changes",
       "Summarises long announcement threads",
-      "Drafts replies and sends them once you approve",
-      "Books office hours with your prof for you",
+      "Drafts replies, sends once you approve",
+      "Books office hours with your prof",
     ],
     shot: { variant: "inbox", title: "Course mail, 6 new" },
     flip: true,
   },
   {
     label: "One calendar",
-    title: "The whole term in one place, kept current",
-    body: "Classes, deadlines, exams, and the study blocks it schedules for you all live in your existing Google Calendar. If the portal changes a date, your calendar changes with it.",
+    title: "The whole term, kept current",
     points: [
-      "Writes to the Google Calendar you already use",
+      "Writes to the calendar you already use",
       "Re-checks the portal for changed dates",
-      "Blocks work time based on your real pace",
-      "Protects the hours you mark as off limits",
+      "Blocks work time around your real pace",
+      "Protects hours you mark off limits",
     ],
     shot: { variant: "calendar", title: "Google Calendar, November" },
   },
@@ -66,10 +64,9 @@ export function Showcase() {
                 <p className="text-[0.8rem] font-semibold uppercase tracking-[0.16em] text-brand-600">
                   {row.label}
                 </p>
-                <h2 className="mt-3 text-[1.85rem] font-extrabold leading-[1.15] text-ink-900 sm:text-[2.25rem]">
+                <h2 className="mt-3 text-[2.15rem] font-extrabold leading-[1.08] text-ink-900 sm:text-[2.7rem]">
                   {row.title}
                 </h2>
-                <p className="mt-4 text-[1.02rem] leading-[1.65] text-body">{row.body}</p>
                 <ul className="mt-7 flex flex-col gap-3">
                   {row.points.map((point) => (
                     <li key={point} className="flex items-start gap-3 text-[0.95rem] text-ink-800">

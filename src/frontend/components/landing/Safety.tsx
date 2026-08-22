@@ -6,18 +6,18 @@ import * as G from "@/components/landing/glyphs";
 const POINTS = [
   {
     glyph: <G.Lock />,
-    title: "Portal credentials are encrypted",
-    body: "Your student portal login is stored encrypted and used only to sign in to your own school portal on your behalf. It is never shown back to you, and never sent anywhere else.",
+    title: "Your portal password is encrypted",
+    body: "Used only to sign in to your school. Never shown back, never sent elsewhere.",
   },
   {
     glyph: <G.Shield />,
-    title: "Google access is scoped and revocable",
-    body: "You grant mail, calendar, and Drive access through Google's own consent screen, and you can revoke it from your Google account settings at any time without asking us.",
+    title: "Google access is revocable",
+    body: "Granted through Google's own consent screen. Take it back any time, without asking us.",
   },
   {
     glyph: <G.Switch />,
-    title: "You can stop it in one message",
-    body: "Reply STOP to end texts, STOP CALLS to keep texts but drop calls, or DELETE to wipe your account and everything we hold about your term.",
+    title: "One message stops it",
+    body: "STOP ends texts. STOP CALLS keeps texts. DELETE wipes everything.",
   },
 ];
 
@@ -28,8 +28,8 @@ export function Safety() {
         <Reveal>
           <SectionHeading
             label="What we can see"
-            title="It needs real access, so here is exactly what that means"
-            lead="Classistant cannot do this job without getting into your email and your school portal. That is a big ask, so we would rather be blunt about it than bury it in a policy page."
+            title="It needs real access. Here is exactly what that means."
+            lead="A big ask, so we would rather be blunt than bury it in a policy page."
           />
         </Reveal>
 

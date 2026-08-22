@@ -25,6 +25,23 @@
 
 export type SchoolStatus = "live" | "pending";
 
+/**
+ * A school's own brand colours, used to re-skin the whole site when a student
+ * picks their school in the hero.
+ *
+ * Same rule as the rest of this file: every value is taken from the school's
+ * published brand guidelines, with `source` recorded. Students know their own
+ * school's colours on sight, so a guessed hex is immediately visible as wrong.
+ * `accent` is only a second official colour where the school publishes one.
+ */
+export type SchoolBrand = {
+  primary: string;
+  /** Only set where the school publishes a real second colour. Otherwise the
+   *  theme derives a tint of `primary`, rather than inventing one. */
+  accent?: string;
+  source: string;
+};
+
 export type School = {
   id: string;
   name: string;
@@ -38,7 +55,27 @@ export type School = {
   source?: string;
   /** Caveats worth surfacing during onboarding. */
   note?: string;
+  /** Required on `live` schools, which are the ones offered as themes. */
+  brand?: SchoolBrand;
+  /**
+   * Path to the school's real logo, once we have written permission to use it.
+   * University logos are trademarks: they cannot be redrawn, approximated, or
+   * shipped without a licence from the institution. Until one exists, the UI
+   * falls back to a brand-coloured monogram, which claims nothing.
+   */
+  logo?: string;
 };
+
+/** "Memorial University of Newfoundland" -> "MUN". Used for the crest fallback. */
+export function schoolInitials(name: string): string {
+  const skip = new Set(["of", "the", "and"]);
+  return name
+    .split(/\s+/)
+    .filter((w) => !skip.has(w.toLowerCase()))
+    .map((w) => w[0]?.toUpperCase() ?? "")
+    .join("")
+    .slice(0, 3);
+}
 
 export const SCHOOLS: School[] = [
   {
@@ -49,6 +86,7 @@ export const SCHOOLS: School[] = [
     emailDomain: "torontomu.ca",
     status: "live",
     source: "https://www.torontomu.ca/google/",
+    brand: { primary: "#004C9B", source: "https://www.torontomu.ca/brand/brand-toolkit/colours/" },
   },
   {
     id: "yorku",
@@ -59,6 +97,7 @@ export const SCHOOLS: School[] = [
     status: "live",
     source: "https://google.info.yorku.ca/",
     note: "Undergraduate accounts only. Graduate mail at yorku.ca is on a different platform.",
+    brand: { primary: "#E31837", source: "https://www.yorku.ca/brand/using-the-brand/colours/" },
   },
   {
     id: "lakehead",
@@ -69,6 +108,12 @@ export const SCHOOLS: School[] = [
     status: "live",
     source:
       "https://www.lakeheadu.ca/faculty-and-staff/departments/services/helpdesk/email",
+    brand: {
+      primary: "#004271",
+      accent: "#FFC20E",
+      source:
+        "https://www.lakeheadu.ca/faculty-and-staff/departments/services/marketing-communications/marketing/brand-guidelines",
+    },
   },
   {
     id: "mun",
@@ -80,6 +125,11 @@ export const SCHOOLS: School[] = [
     source:
       "https://www.mun.ca/cio/it-services/communication-and-collaboration/google-workspace/",
     note: "Access requires registration within the last three semesters.",
+    brand: {
+      primary: "#862633",
+      source:
+        "https://www.mun.ca/marcomm/media/production/memorial/administrative/marcomm/files/BrandStandards_August_2017_FA.pdf",
+    },
   },
   {
     id: "ualberta",
@@ -91,6 +141,11 @@ export const SCHOOLS: School[] = [
     source:
       "https://www.ualberta.ca/en/information-services-and-technology/initiatives/google-workspace-changes/index.html",
     note: "Sign in with your CCID. Google access ends when your account moves to alumni status.",
+    brand: {
+      primary: "#007C41",
+      accent: "#FFDB05",
+      source: "https://www.ualberta.ca/toolkit/visual-identity/our-colours",
+    },
   },
   {
     id: "mtroyal",
@@ -101,6 +156,11 @@ export const SCHOOLS: School[] = [
     status: "live",
     source:
       "https://www.mtroyal.ca/CampusServices/CampusResources/InformationTechnology/EmailCalendaring/index.htm",
+    brand: {
+      primary: "#003352",
+      accent: "#007FB5",
+      source: "https://www.mtroyal.ca/AboutMountRoyal/Brand/index.htm",
+    },
   },
 
   // Awaiting confirmation. Searchable during onboarding, never shown as supported.

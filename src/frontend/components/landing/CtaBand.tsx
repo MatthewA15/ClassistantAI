@@ -31,12 +31,11 @@ export function CtaBand() {
       <Container className="relative">
         <Reveal className="mx-auto max-w-2xl text-center">
           <LogoMark size={56} tone="white" animated className="mx-auto" />
-          <h2 className="mt-7 text-[2.1rem] font-extrabold leading-[1.12] text-white sm:text-[2.7rem]">
+          <h2 className="mt-7 text-[2.4rem] font-extrabold leading-[1.06] text-white sm:text-[3.2rem]">
             Set it up before the syllabi pile up
           </h2>
-          <p className="mx-auto mt-5 max-w-xl text-[1.05rem] leading-[1.65] text-sky-200/85">
-            Four minutes now, and your whole term is on the calendar before the first
-            lecture. Free while we are in early access.
+          <p className="mx-auto mt-5 max-w-md text-[1.08rem] leading-[1.6] text-sky-200/85">
+            Four minutes now. Free in early access.
           </p>
           <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
             <Button href="/onboarding" variant="onInk" className="group">

@@ -1,11 +1,21 @@
-import { Button, Container, ArrowRight } from "@/components/ui/primitives";
-import { PhoneThread } from "@/components/ui/PhoneThread";
+import { Container } from "@/components/ui/primitives";
+import { HeroStart } from "@/components/landing/HeroStart";
+import { PhoneShowcase } from "@/components/ui/PhoneShowcase";
 import { Reveal } from "@/components/ui/Reveal";
-import { LIVE_SCHOOLS } from "@/data/schools";
 
 export function Hero() {
   return (
-    <section className="relative overflow-hidden pb-16 pt-10 sm:pb-24 sm:pt-16">
+    // id is read by the header, which keeps its own CTA hidden until the hero
+    // (and the much larger CTA inside it) has scrolled away.
+    // Tinted panel with curved bottom corners, so the hero reads as a distinct
+    // sheet the rest of the page slides out from under. The tint is what makes
+    // the curve legible; on white it would be invisible.
+    // The header is hidden over the hero and reserves no space, so the hero
+    // supplies its own top breathing room.
+    <section
+      id="hero"
+      className="relative overflow-hidden rounded-b-[2rem] bg-sky-50 pb-16 pt-16 sm:rounded-b-[3rem] sm:pb-24 sm:pt-24"
+    >
       <HeroBackdrop />
 
       <Container className="relative">
@@ -19,46 +29,34 @@ export function Hero() {
               </h1>
             </Reveal>
 
-            <Reveal delay={90}>
-              <p className="mt-6 max-w-xl text-[1.1rem] leading-[1.65] text-body">
-                Classistant signs in to your school account, turns every syllabus into a
-                calendar, watches for new grades, and texts you before something is due.
-                There is no new app to remember to open.
-              </p>
-            </Reveal>
-
             <Reveal delay={170}>
-              <div className="mt-9 flex flex-wrap items-center gap-3">
-                <Button href="/onboarding" className="group">
-                  Get set up
-                  <ArrowRight />
-                </Button>
-                <Button href="#how" variant="secondary">
-                  See how it works
-                </Button>
+              <div className="mt-9">
+                <HeroStart />
               </div>
             </Reveal>
 
             <Reveal delay={240}>
               <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3 text-[0.88rem] text-body-soft">
+                {/* What it does, not what it costs. With the subhead gone,
+                    this row is the only plain statement of the product. */}
                 <span className="flex items-center gap-2">
                   <CheckDot />
-                  Free during early access
+                  Full schedule in calendar
                 </span>
                 <span className="flex items-center gap-2">
                   <CheckDot />
-                  {LIVE_SCHOOLS.length} Canadian schools supported
+                  Text and call reminders
                 </span>
                 <span className="flex items-center gap-2">
                   <CheckDot />
-                  Turn it off with one text
+                  Auto emails classmates
                 </span>
               </div>
             </Reveal>
           </div>
 
           <Reveal delay={120} className="relative">
-            <PhoneThread />
+            <PhoneShowcase />
           </Reveal>
         </div>
       </Container>

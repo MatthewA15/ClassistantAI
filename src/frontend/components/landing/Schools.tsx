@@ -12,15 +12,11 @@ export function Schools() {
             <SectionHeading
               label="Where it works"
               title="Canadian schools running on Google"
-              lead="Classistant signs in with Google and reads your mail, calendar, and Drive through it. That only works if your student mailbox is a Google mailbox, so the list is deliberately short and we check each one against the school's own IT pages."
+              lead="Your student mailbox has to be a Google mailbox. So the list is short, and every school on it is checked against its own IT pages."
             />
-            <p className="mt-7 text-[0.95rem] leading-[1.65] text-body">
-              Not seeing yours? Start onboarding anyway. You can search every Canadian school
-              we track and get added to the list for the ones that are not live yet.
-            </p>
             <Link
               href="/onboarding"
-              className="mt-5 inline-flex items-center gap-2 text-[0.95rem] font-semibold text-brand-600 hover:text-brand-700"
+              className="mt-7 inline-flex items-center gap-2 text-[0.95rem] font-semibold text-brand-600 hover:text-brand-700"
             >
               Check your school
               <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">

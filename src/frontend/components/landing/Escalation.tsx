@@ -20,7 +20,7 @@ const RUNGS = [
   {
     when: "You ignored it",
     title: "Your phone rings",
-    quote: "Classistant calls you. Answer, and it walks you into starting. Say stop and it stops.",
+    quote: "Answer, and it walks you into starting. Say stop and it stops.",
   },
 ];
 
@@ -33,8 +33,8 @@ export function Escalation() {
           <SectionHeading
             tone="ink"
             label="It gets louder on purpose"
-            title="Most reminder apps give up when you swipe them away"
-            lead="Classistant does not. It starts gently, escalates on a schedule tied to how much work is actually left, and ends with a phone call if you keep ignoring it. You set the ceiling during onboarding."
+            title="Reminder apps give up when you swipe them away"
+            lead="This one does not. You set the ceiling."
           />
         </Reveal>
 
@@ -71,8 +71,7 @@ export function Escalation() {
 
         <Reveal delay={200}>
           <p className="mt-10 text-[0.9rem] text-sky-200/70">
-            Quiet hours are respected. Calls are opt in, and you can drop back to texts only by
-            replying STOP CALLS at any point in the term.
+            Quiet hours respected. Calls are opt in. Reply STOP CALLS any time.
           </p>
         </Reveal>
       </Container>

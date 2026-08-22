@@ -65,9 +65,11 @@ export function SectionHeading({
           {label}
         </p>
       ) : null}
+      {/* Headings carry the argument, so they run large and leads stay short.
+          See docs/design/02-design-system.md on the copy diet. */}
       <h2
         className={cn(
-          "text-[2rem] font-extrabold leading-[1.12] sm:text-[2.6rem]",
+          "text-[2.3rem] font-extrabold leading-[1.06] sm:text-[3.1rem]",
           tone === "ink" && "text-white",
         )}
       >
@@ -76,7 +78,7 @@ export function SectionHeading({
       {lead ? (
         <p
           className={cn(
-            "mt-5 text-[1.06rem] leading-[1.65]",
+            "mt-5 max-w-lg text-[1.08rem] leading-[1.6]",
             tone === "ink" ? "text-sky-200/85" : "text-body",
           )}
         >

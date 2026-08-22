@@ -3,30 +3,10 @@ import { PlaceholderShot } from "@/components/ui/PlaceholderShot";
 import { Reveal } from "@/components/ui/Reveal";
 
 const STEPS = [
-  {
-    n: "01",
-    title: "Sign in with your school email",
-    body: "One Google sign in, then your student portal login so the agent can reach course pages your email cannot.",
-    glyph: <SignInGlyph />,
-  },
-  {
-    n: "02",
-    title: "It reads your semester",
-    body: "Classes, schedule, grade history, course content, and every syllabus it can download from the portal.",
-    glyph: <ScanGlyph />,
-  },
-  {
-    n: "03",
-    title: "Your calendar fills itself",
-    body: "Due dates, exam dates, labs, and lectures land in Google Calendar and in your task list, ranked by what matters.",
-    glyph: <CalendarFillGlyph />,
-  },
-  {
-    n: "04",
-    title: "Then it stays on you",
-    body: "Texts paced to how fast you actually work. Ignore the final warning and your phone rings.",
-    glyph: <NudgeGlyph />,
-  },
+  { n: "01", title: "Sign in", body: "Google, then your portal.", glyph: <SignInGlyph /> },
+  { n: "02", title: "It reads everything", body: "Courses, grades, syllabi.", glyph: <ScanGlyph /> },
+  { n: "03", title: "Calendar fills itself", body: "Deadlines, exams, labs.", glyph: <CalendarFillGlyph /> },
+  { n: "04", title: "It stays on you", body: "Texts. Then a phone call.", glyph: <NudgeGlyph /> },
 ];
 
 export function HowItWorks() {
@@ -35,9 +15,8 @@ export function HowItWorks() {
       <Container>
         <Reveal>
           <SectionHeading
-            label="Setup takes about four minutes"
-            title="You do the first step. It does the rest of the semester."
-            lead="Most of what a school assistant needs is already sitting in your email, your portal, and your syllabi. Classistant goes and gets it instead of asking you to type it in."
+            label="Four minutes, once"
+            title="You do step one. It does the semester."
           />
         </Reveal>
 
@@ -55,10 +34,10 @@ export function HowItWorks() {
                       {step.n}
                     </span>
                   </div>
-                  <h3 className="mt-5 text-[1.06rem] font-bold leading-snug text-ink-900">
+                  <h3 className="mt-5 text-[1.15rem] font-bold leading-snug text-ink-900">
                     {step.title}
                   </h3>
-                  <p className="mt-2.5 text-[0.9rem] leading-[1.6] text-body">{step.body}</p>
+                  <p className="mt-1.5 text-[0.92rem] leading-[1.5] text-body">{step.body}</p>
                 </div>
               </Reveal>
             ))}
@@ -70,7 +49,7 @@ export function HowItWorks() {
             <PlaceholderShot
               variant="dashboard"
               title="classistant.ca/dashboard"
-              caption="The web dashboard is where you check its work. Day to day, you never have to open it."
+              caption="Check its work here. You almost never need to."
             />
           </div>
         </Reveal>

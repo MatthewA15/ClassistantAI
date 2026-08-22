@@ -36,8 +36,8 @@
   --color-body: #3f5a76;
   --color-body-soft: #6a83a0;
 
-  --font-display: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
-  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-display-face), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-body-face), ui-sans-serif, system-ui, sans-serif;
 
   --radius-card: 1.25rem;
   --radius-shell: 1.75rem;
@@ -45,6 +45,15 @@
   --shadow-soft: 0 1px 2px rgb(6 32 58 / 0.05), 0 12px 28px -12px rgb(6 32 58 / 0.14);
   --shadow-lift: 0 2px 4px rgb(6 32 58 / 0.06), 0 28px 60px -24px rgb(6 32 58 / 0.28);
   --shadow-inset-line: inset 0 0 0 1px rgb(217 232 247 / 1);
+
+  /* Second brand colour when a school theme is active. Defaults to our own
+     light blue so components can reference it before a school is picked. */
+  --color-accent: #8ecaff;
+
+  /* The one non-blue in the system. Functional only: it marks "you missed a
+     required step", never decoration. Not overridden by school themes, since
+     an error must not repaint into a school's brand colour. */
+  --color-alert: #e5484d;
 
   --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
 
@@ -75,6 +84,52 @@
   75% {
     border-radius: 59% 41% 53% 47% / 47% 53% 49% 51%;
     transform: translate3d(1%, 2%, 0) scale(1.03);
+  }
+}
+
+/* Handset cross-swap in the hero. Slight lift and rotation so the platform
+   change reads as one device replacing another, not a texture cross-fade. */
+@keyframes phone-swap {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.965) rotate(-1.2deg);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1) rotate(0deg);
+  }
+}
+
+/* The three-dot typing indicator, matching the ease of the real thing. */
+@keyframes typing-dot {
+  0%,
+  60%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-2.5px);
+  }
+}
+
+/* Each school button hops once, in sequence, while the page explains that the
+   list is the whole list. Overshoot on the way down so it reads as weight
+   landing rather than a linear bounce. */
+@keyframes button-jump {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  30% {
+    transform: translateY(-11px) scale(1.06);
+  }
+  58% {
+    transform: translateY(0) scale(0.97);
+  }
+  78% {
+    transform: translateY(-3px) scale(1.01);
   }
 }
 
@@ -221,6 +276,21 @@
   .draw-line[data-shown="true"] {
     animation: draw 1.5s var(--ease-out-soft) forwards;
     animation-delay: var(--draw-delay, 0ms);
+  }
+
+  /* Applied to <html> for ~600ms while a school theme swaps in, so the whole
+     page cross-fades instead of snapping. Scoped to the switch on purpose: a
+     permanent global colour transition would also lag every hover state. */
+  .theme-shift *,
+  .theme-shift *::before,
+  .theme-shift *::after {
+    transition:
+      background-color 0.5s ease,
+      border-color 0.5s ease,
+      color 0.5s ease,
+      fill 0.5s ease,
+      stroke 0.5s ease,
+      box-shadow 0.5s ease !important;
   }
 
   .grain-grid {

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { GlowSlot, pillSurface } from "@/components/site/Pill";
 import { cn } from "@/lib/cn";
 
 /**
@@ -27,7 +28,7 @@ const SECTIONS = [
 /** Distance below the viewport top at which a section counts as "current". */
 const SPY_OFFSET = 150;
 
-export function SectionNav() {
+export function SectionNav({ scrolled = false }: { scrolled?: boolean }) {
   const pathname = usePathname();
   const isLanding = pathname === "/";
 
@@ -109,8 +110,30 @@ export function SectionNav() {
     setOpen(false);
   };
 
+  // Hidden while you are still in the hero. Naming the section you are in is
+  // only useful once you are in one, and an "Overview" chip next to the logo on
+  // first paint is a label for something the reader can already see.
+  // Kept mounted (inert, faded) rather than unmounted so it can animate in and
+  // so the scrollspy keeps running.
+  const visible = active > 0;
+
+  useEffect(() => {
+    if (!visible) setOpen(false);
+  }, [visible]);
+
   return (
-    <div ref={rootRef} className="relative hidden md:block">
+    <div
+      ref={rootRef}
+      inert={!visible}
+      className={cn(
+        "relative hidden md:block",
+        "transition-all duration-400 ease-[cubic-bezier(0.22,1,0.36,1)]",
+        visible
+          ? "translate-x-0 scale-100 opacity-100"
+          : "pointer-events-none -translate-x-2 scale-95 opacity-0",
+      )}
+    >
+      <GlowSlot scrolled={scrolled}>
       <button
         ref={buttonRef}
         type="button"
@@ -128,8 +151,9 @@ export function SectionNav() {
         aria-haspopup="menu"
         aria-label={`Jump to a section, currently ${SECTIONS[active].label}`}
         className={cn(
-          "flex items-center gap-2 rounded-full py-2 pl-4 pr-3 text-[0.9rem] font-semibold transition-colors",
-          open ? "bg-ink-900/9 text-ink-900" : "bg-ink-900/5 text-ink-800 hover:bg-ink-900/9",
+          pillSurface(scrolled),
+          "gap-2 pl-4 pr-3 text-[0.88rem] font-semibold text-ink-800",
+          open && "text-ink-900",
         )}
       >
         {/* Fixed width, so the header does not twitch as the label changes
@@ -187,6 +211,7 @@ export function SectionNav() {
           })}
         </div>
       ) : null}
+      </GlowSlot>
     </div>
   );
 }

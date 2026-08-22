@@ -44,8 +44,8 @@ export function Faq() {
           <Reveal>
             <SectionHeading
               label="Questions"
-              title="The things students ask first"
-              lead="If yours is not here, email hello@classistant.ca and a person will answer."
+              title="What students ask first"
+              lead="Not here? Email hello@classistant.ca and a person answers."
             />
           </Reveal>
 
