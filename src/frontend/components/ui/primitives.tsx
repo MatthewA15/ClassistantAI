@@ -29,7 +29,8 @@ export function Section({
     ink: "bg-ink-900 text-sky-200",
   };
   return (
-    <section id={id} className={cn("py-20 sm:py-28", tones[tone], className)}>
+    // scroll-mt keeps a jumped-to heading clear of the floating header.
+    <section id={id} className={cn("scroll-mt-24 py-20 sm:py-28", tones[tone], className)}>
       {children}
     </section>
   );

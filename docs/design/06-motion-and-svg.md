@@ -46,6 +46,35 @@ The wrapper is `pointer-events-none` with `pointer-events-auto` on the pill, so
 the transparent gutter around the capsule never swallows clicks meant for the
 page underneath.
 
+### The section switcher
+
+The four nav links became a single pill next to the logo
+([`SectionNav`](../../src/frontend/components/site/SectionNav.tsx)). It names the
+section you are currently in and opens a dropdown of the rest.
+
+Two reasons: a floating capsule has far less horizontal room than a full-width
+bar, and a label that tracks scroll position tells you something a flat row of
+links never did, namely where you are.
+
+- **Scrollspy** walks the sections on scroll (rAF-throttled) and keeps the last
+  one whose top has passed 150px. That threshold sits just under the header, so
+  a section becomes current as its heading reaches the pill, not when the
+  section merely enters the viewport.
+- **The first entry has no `id`.** It stands for the top of the page and is the
+  resting state before the first real section, which is why the label reads
+  "Overview" rather than defaulting to "How it works" while you are still in
+  the hero.
+- **The label has a fixed `min-width`.** Without it the pill resizes as you
+  scroll ("FAQ" versus "How it works") and the header twitches.
+- **The panel is fully opaque.** It was `bg-white/95` first, and even 5%
+  transparency ghosted the 3rem hero headline through behind the menu items.
+  On a menu that overlays display type, opaque is the only safe choice.
+- On routes other than `/` the sections do not exist, so the spy is skipped and
+  the links point back at `/#id`.
+
+Keyboard: Escape closes and returns focus to the button, Arrow Down opens and
+focuses the first item, and an outside pointer press closes it.
+
 ### A trap this exposed
 
 Detaching the header removed the thing that was hiding a pre-existing bug. The

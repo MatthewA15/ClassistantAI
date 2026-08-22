@@ -3,14 +3,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Logo } from "@/components/brand/LogoMark";
+import { NAV_SECTIONS, SectionNav } from "@/components/site/SectionNav";
 import { cn } from "@/lib/cn";
-
-const NAV = [
-  { href: "/#how", label: "How it works" },
-  { href: "/#features", label: "What it does" },
-  { href: "/#schools", label: "Schools" },
-  { href: "/#faq", label: "FAQ" },
-];
 
 /**
  * Floating pill header.
@@ -59,21 +53,13 @@ export function Header() {
               : "bg-white/65 shadow-[0_8px_32px_-14px_rgb(6_32_58_/_0.3)] ring-1 ring-white/55",
           )}
         >
-          <Link href="/" aria-label="Classistant home" className="group shrink-0">
-            <Logo size={32} className="transition-transform duration-300 group-hover:scale-[1.03]" />
-          </Link>
-
-          <nav className="hidden items-center gap-0.5 md:flex">
-            {NAV.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="rounded-full px-3.5 py-2 text-[0.9rem] font-medium text-body transition-colors hover:bg-ink-900/6 hover:text-ink-900"
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
+          {/* Logo and section switcher travel together on the left. */}
+          <div className="flex min-w-0 items-center gap-3">
+            <Link href="/" aria-label="Classistant home" className="group shrink-0">
+              <Logo size={32} className="transition-transform duration-300 group-hover:scale-[1.03]" />
+            </Link>
+            <SectionNav />
+          </div>
 
           <div className="hidden shrink-0 items-center gap-1.5 md:flex">
             <Link
@@ -111,10 +97,10 @@ export function Header() {
         {open ? (
           <div className="pointer-events-auto relative mt-2 rounded-[1.75rem] bg-white/95 p-2 shadow-lift ring-1 ring-white/70 backdrop-blur-xl md:hidden">
             <nav className="flex flex-col">
-              {NAV.map((item) => (
+              {NAV_SECTIONS.filter((item) => item.id).map((item) => (
                 <Link
-                  key={item.href}
-                  href={item.href}
+                  key={item.label}
+                  href={`/#${item.id}`}
                   onClick={() => setOpen(false)}
                   className="rounded-full px-4 py-3 text-[1rem] font-medium text-ink-800 hover:bg-ink-900/6"
                 >
