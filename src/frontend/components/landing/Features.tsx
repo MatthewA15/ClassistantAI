@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { LogoMark } from "@/components/brand/LogoMark";
 import { Container, Section, SectionHeading } from "@/components/ui/primitives";
 import { Reveal } from "@/components/ui/Reveal";
-import * as I from "@/components/landing/featureGlyphs";
+import * as A from "@/components/landing/featureArt";
 import { cn } from "@/lib/cn";
 
 /**
@@ -11,10 +11,11 @@ import { cn } from "@/lib/cn";
  *  - **Light.** Soft grey tiles on white. The tiles recede and the words carry.
  *  - **Names, not descriptions.** Every tile is an icon and a feature name. If
  *    a feature needs a sentence, it is not recap material.
- *  - **Every tile carries a mark.** Five hold a real visual (the brand plate, a
- *    phone, a month grid, a score ring, the notification stack); the other
- *    twenty carry a line icon. Tiles with nothing but text read as filler next
- *    to tiles with art, which is exactly what the first pass looked like.
+ *  - **Every tile carries its own small scene.** Not an icon: a scrap of the
+ *    actual product. A room number changing, a 35% weighting, a 3:12am
+ *    timestamp, a red bubble with the final warning in it. An outline glyph
+ *    beside a feature name repeats the name and adds nothing, and twenty of
+ *    them read as filler, which is what the icon pass looked like.
  *  - **Tight.** 8px gutters, so the wall reads as one object.
  *  - **A little colour.** Three names put one word in colour, and a few icons
  *    take a functional hue where the meaning calls for it.
@@ -57,30 +58,17 @@ function Tile({
 /** Icon over a name. The bulk of the wall. */
 function Name({
   children,
-  icon,
+  art,
   col = 1,
   size = "sm",
-  tone = "brand",
 }: Span & {
   children: ReactNode;
-  icon: ReactNode;
+  art: ReactNode;
   size?: "sm" | "md";
-  tone?: "brand" | "ink" | "alert";
 }) {
   return (
     <Tile col={col}>
-      <span
-        className={cn(
-          "mb-1.5",
-          tone === "alert"
-            ? "text-[var(--color-alert)]"
-            : tone === "ink"
-              ? "text-ink-800"
-              : "text-brand-600",
-        )}
-      >
-        {icon}
-      </span>
+      <span className="mb-2 flex min-h-[2.4rem] items-center justify-center">{art}</span>
       <p
         className={cn(
           "font-display font-bold leading-[1.15] text-ink-900",
@@ -102,7 +90,7 @@ export function Features() {
         </Reveal>
 
         <Reveal delay={80}>
-          <div className="mt-12 grid auto-rows-[6.2rem] grid-cols-2 gap-2 sm:auto-rows-[6.6rem] sm:grid-cols-4 lg:grid-cols-6">
+          <div className="mt-12 grid auto-rows-[7.4rem] grid-cols-2 gap-2 sm:auto-rows-[7.8rem] sm:grid-cols-4 lg:grid-cols-6">
             {/* Anchored dead centre on lg: rows 3-4, columns 3-4 of a 6x7 grid. */}
             <Tile
               col={2}
@@ -140,53 +128,53 @@ export function Features() {
               </p>
             </Tile>
 
-            <Name col={2} size="md" icon={<I.IconSyllabus />}>
+            <Name col={2} size="md" art={<A.ArtSyllabus />}>
               Syllabus <span className="text-brand-600">parsing</span>
             </Name>
-            <Name icon={<I.IconExam />}>Exam dates</Name>
-            <Name icon={<I.IconLab />}>Lab times</Name>
-            <Name icon={<I.IconRoom />}>Room changes</Name>
+            <Name art={<A.ArtExam />}>Exam dates</Name>
+            <Name art={<A.ArtLab />}>Lab times</Name>
+            <Name art={<A.ArtRoom />}>Room changes</Name>
 
-            <Name col={2} size="md" tone="alert" icon={<I.IconWarning />}>
+            <Name col={2} size="md" art={<A.ArtFinalWarning />}>
               <span className="text-[var(--color-alert)]">Final</span> warnings
             </Name>
-            <Name icon={<I.IconHistory />}>Grade history</Name>
-            <Name icon={<I.IconDraft />}>Email drafts</Name>
+            <Name art={<A.ArtGradeHistory />}>Grade history</Name>
+            <Name art={<A.ArtDraft />}>Email drafts</Name>
 
-            <Name icon={<I.IconPdf />}>Reads PDFs</Name>
-            <Name tone="ink" icon={<I.IconMoon />}>
+            <Name art={<A.ArtPdf />}>Reads PDFs</Name>
+            <Name art={<A.ArtQuietHours />}>
               Quiet hours
             </Name>
-            <Name icon={<I.IconDigest />}>Weekly digest</Name>
-            <Name icon={<I.IconFolder />}>Course files</Name>
+            <Name art={<A.ArtDigest />}>Weekly digest</Name>
+            <Name art={<A.ArtFiles />}>Course files</Name>
 
-            <Name col={2} size="md" icon={<I.IconOvernight />}>
+            <Name col={2} size="md" art={<A.ArtOvernight />}>
               Works while you <span className="text-brand-600">sleep</span>
             </Name>
-            <Name icon={<I.IconBlock />}>Study blocks</Name>
-            <Name icon={<I.IconGlobe />}>Timezone aware</Name>
+            <Name art={<A.ArtStudyBlock />}>Study blocks</Name>
+            <Name art={<A.ArtTimezone />}>Timezone aware</Name>
 
-            <Name col={2} size="md" icon={<I.IconOfficeHours />}>
+            <Name col={2} size="md" art={<A.ArtOfficeHours />}>
               Books office hours
             </Name>
-            <Name icon={<I.IconGroup />}>Group chasing</Name>
-            <Name tone="alert" icon={<I.IconCancelled />}>
+            <Name art={<A.ArtGroup />}>Group chasing</Name>
+            <Name art={<A.ArtCancelled />}>
               Cancelled classes
             </Name>
 
-            <Name col={2} size="md" icon={<I.IconRank />}>
+            <Name col={2} size="md" art={<A.ArtRank />}>
               Ranks what to do next
             </Name>
-            <Name icon={<I.IconPlatforms />}>iOS and Android</Name>
-            <Name tone="ink" icon={<I.IconStop />}>
+            <Name art={<A.ArtPlatforms />}>iOS and Android</Name>
+            <Name art={<A.ArtStop />}>
               One text to stop
             </Name>
-            <Name icon={<I.IconWeight />}>Knows the weighting</Name>
-            <Name icon={<I.IconRefresh />}>Re-checks dates</Name>
-            <Name icon={<I.IconThreads />}>Summarises threads</Name>
-            <Name icon={<I.IconAnnounce />}>Announcements</Name>
-            <Name icon={<I.IconTimer />}>Deadline countdown</Name>
-            <Name tone="ink" icon={<I.IconShield />}>
+            <Name art={<A.ArtWeighting />}>Knows the weighting</Name>
+            <Name art={<A.ArtRecheck />}>Re-checks dates</Name>
+            <Name art={<A.ArtThreads />}>Summarises threads</Name>
+            <Name art={<A.ArtAnnounce />}>Announcements</Name>
+            <Name art={<A.ArtCountdown />}>Deadline countdown</Name>
+            <Name art={<A.ArtProtect />}>
               Protects your time
             </Name>
           </div>

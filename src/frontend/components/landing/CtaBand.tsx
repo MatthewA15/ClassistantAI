@@ -47,7 +47,10 @@ const PAIRS: Pair[] = [
 
 export function CtaBand() {
   return (
-    <section className="relative flex flex-col justify-center overflow-hidden bg-ink-900 py-24 xl:min-h-[52rem]">
+    <section
+      id="final-cta"
+      className="relative flex flex-col justify-center overflow-hidden bg-ink-900 py-24 xl:min-h-[52rem]"
+    >
       <Backdrop />
 
       {/* Below xl there is not enough width to flank the headline without
@@ -71,17 +74,13 @@ export function CtaBand() {
           <p className="mx-auto mt-5 max-w-md text-[1.08rem] leading-[1.6] text-sky-200/85">
             It only costs 4 minutes of your time.
           </p>
-          <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
-            <Button href="/#hero" variant="onInk" className="group">
+          {/* One button, and a wide one. A secondary "see what it does" here
+              pointed back up a page the reader has just finished, and split the
+              attention of the only ask that matters. */}
+          <div className="mt-9 flex justify-center">
+            <Button href="/#hero" variant="onInk" className="group px-14 py-4 text-[1.02rem]">
               Get set up
               <ArrowRight />
-            </Button>
-            <Button
-              href="/#features"
-              variant="ghost"
-              className="text-sky-200 hover:bg-ink-800 hover:text-white"
-            >
-              See what it does
             </Button>
           </div>
         </Reveal>

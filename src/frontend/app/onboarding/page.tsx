@@ -30,8 +30,10 @@ export default function OnboardingPage() {
 
         <p className="mt-12 text-center text-[0.82rem] text-body-soft">
           Trouble getting in? Email{" "}
-          <a href="mailto:hello@classistant.ca" className="font-semibold text-brand-600 hover:underline">
-            hello@classistant.ca
+          {/* A real mailbox until classistant.ca is bought, so "trouble getting
+              in" does not bounce off an address nobody owns yet. */}
+          <a href="mailto:chim@wopara.com" className="font-semibold text-brand-600 hover:underline">
+            chim@wopara.com
           </a>{" "}
           or read the{" "}
           <Link href="/privacy" className="font-semibold text-brand-600 hover:underline">

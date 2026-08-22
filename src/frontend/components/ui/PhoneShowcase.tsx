@@ -243,7 +243,9 @@ function CallScreen({
 
   return (
     <div
-      className="absolute inset-0 z-30 flex flex-col items-center justify-between px-4 pb-5 pt-12 text-white"
+      // -0.5px so the overlay still covers the rounded edge when the browser
+      // rounds its box down a sub-pixel.
+      className="absolute -inset-[0.5px] z-30 flex flex-col items-center justify-between px-4 pb-5 pt-12 text-white"
       style={{
         animation: "bubble-in .32s var(--ease-out-soft) both",
         background: dark
@@ -378,7 +380,13 @@ function IosPhone({ messages, typing, phase, callSecs, clock, dark }: ScreenProp
   return (
     <div className="rounded-[2.65rem] bg-ink-950 p-[0.7rem] shadow-[0_40px_80px_-30px_rgb(6_32_58_/_0.55)] ring-1 ring-ink-800">
       <div
-        className={cn("relative overflow-hidden rounded-[2.05rem]", dark ? "bg-black" : "bg-white")}
+        // While a call is up the screen itself goes dark, not just the overlay.
+        // Leaving it white let a hairline of it show along the overlay's edge,
+        // which read as light bleeding down the right side of the handset.
+        className={cn(
+          "relative overflow-hidden rounded-[2.05rem]",
+          inCall ? "bg-ink-950" : dark ? "bg-black" : "bg-white",
+        )}
         style={{ fontFamily: IOS_FONT }}
       >
         <div className="absolute left-1/2 top-[0.4rem] z-40 h-[1.05rem] w-[4.3rem] -translate-x-1/2 rounded-full bg-black" />
@@ -591,7 +599,10 @@ function AndroidPhone({ messages, typing, phase, callSecs, clock, dark }: Screen
   return (
     <div className="rounded-[2.1rem] bg-ink-950 p-[0.55rem] shadow-[0_40px_80px_-30px_rgb(6_32_58_/_0.55)] ring-1 ring-ink-800">
       <div
-        className={cn("relative overflow-hidden rounded-[1.75rem]", dark ? "bg-[#131314]" : "bg-white")}
+        className={cn(
+          "relative overflow-hidden rounded-[1.75rem]",
+          inCall ? "bg-ink-950" : dark ? "bg-[#131314]" : "bg-white",
+        )}
         style={{ fontFamily: ANDROID_FONT }}
       >
         <div className="absolute left-1/2 top-[0.45rem] z-40 h-[0.48rem] w-[0.48rem] -translate-x-1/2 rounded-full bg-black" />

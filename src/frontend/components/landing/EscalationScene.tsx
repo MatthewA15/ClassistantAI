@@ -13,7 +13,8 @@ import { cn } from "@/lib/cn";
  *
  * Days tally off toward a deadline on the 30th. Every fifth day closes a tally
  * group and cuts to the phone, where the same reminder arrives a shade louder:
- * green, then amber, then red, and finally the handset rings.
+ * green, then amber, then red, and finally the handset rings at day 20, with
+ * exactly two tally groups left standing between the last mark and the X.
  *
  * This absorbed a separate escalation section that described the same ladder in
  * four cards of prose. Watching the colour change costs no reading, and the
@@ -24,10 +25,18 @@ import { cn } from "@/lib/cn";
  * purpose. Hue is the only signal a reader decodes without being taught it.
  */
 
-const CYCLE = 16_000;
+const CYCLE = 18_000;
 const TICK = 80;
 
-/** Beat boundaries in ms. Calendar stretches feed each phone cut. */
+/**
+ * Beat boundaries in ms. Each calendar stretch closes a tally group and feeds
+ * the next phone cut.
+ *
+ * Four stretches, not three. The call has to land with exactly TWO tally groups
+ * still standing between the last mark and the X, so it arrives at day 20 of 30
+ * with ten days left. An earlier cut rang after three groups, which put the call
+ * fifteen days out and made the agent look impatient rather than out of runway.
+ */
 const B = {
   tally1: 2000, // days 1..5
   green: 3600,
@@ -35,7 +44,8 @@ const B = {
   amber: 7200,
   tally3: 9200, // days 11..15
   red: 10_800,
-  ringing: 13_000,
+  tally4: 12_800, // days 16..20, leaving two groups before the deadline
+  ringing: 15_000,
   answered: CYCLE,
 } as const;
 
@@ -50,22 +60,36 @@ function viewAt(t: number): View {
   if (t < B.amber) return "amber";
   if (t < B.tally3) return "tally";
   if (t < B.red) return "red";
+  if (t < B.tally4) return "tally";
   if (t < B.ringing) return "ringing";
   return "answered";
 }
 
-/** Days struck off so far, derived from which stretch we are in. */
+/**
+ * The four calendar stretches, as [from, to] in ms. `viewAt` and `daysAt` both
+ * read this, so a stretch cannot be added to one and forgotten in the other.
+ * It was: viewAt grew a fourth stretch while daysAt stayed capped at 15, so the
+ * last run of days showed the calendar with no new marks appearing on it.
+ */
+const STRETCHES: ReadonlyArray<readonly [number, number]> = [
+  [0, B.tally1],
+  [B.green, B.tally2],
+  [B.amber, B.tally3],
+  [B.red, B.tally4],
+];
+
+/** Days struck off so far. Five per completed stretch, prorated inside one. */
 function daysAt(t: number): number {
-  if (t < B.tally1) return Math.floor((t / B.tally1) * 5);
-  if (t < B.tally2)
-    return t < B.green
-      ? 5
-      : 5 + Math.floor(((t - B.green) / (B.tally2 - B.green)) * 5);
-  if (t < B.tally3)
-    return t < B.amber
-      ? 10
-      : 10 + Math.floor(((t - B.amber) / (B.tally3 - B.amber)) * 5);
-  return 15;
+  let days = 0;
+  for (const [from, to] of STRETCHES) {
+    if (t >= to) {
+      days += 5;
+      continue;
+    }
+    if (t >= from) return days + Math.floor(((t - from) / (to - from)) * 5);
+    return days;
+  }
+  return days;
 }
 
 const NOTES = {
@@ -87,7 +111,7 @@ const NOTES = {
 };
 
 export function EscalationScene() {
-  const t = useSceneClock(CYCLE, 14_500, TICK);
+  const t = useSceneClock(CYCLE, 16_500, TICK);
   const view = viewAt(t);
   const days = daysAt(t);
 

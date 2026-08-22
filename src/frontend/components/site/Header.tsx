@@ -25,12 +25,18 @@ export function Header({ overHero = false }: { overHero?: boolean }) {
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [pastHero, setPastHero] = useState(false);
+  // True once the closing CTA is properly on screen. The header hides its own
+  // button then: two "Get set up" buttons visible at once is the same ask twice.
+  const [atFinalCta, setAtFinalCta] = useState(false);
 
   useEffect(() => {
     const onScroll = () => {
       setScrolled(window.scrollY > 8);
       const hero = document.getElementById("hero");
       setPastHero(hero ? hero.getBoundingClientRect().bottom <= 96 : true);
+
+      const cta = document.getElementById("final-cta");
+      setAtFinalCta(cta ? cta.getBoundingClientRect().top < window.innerHeight * 0.72 : false);
     };
 
     onScroll();
@@ -92,10 +98,17 @@ export function Header({ overHero = false }: { overHero?: boolean }) {
           {/* Setup starts by picking a school, and that picker lives in the
               hero, so this goes back there rather than jumping into a flow that
               would immediately ask the same question. */}
-          <GlowSlot scrolled={scrolled} className="hidden md:block">
+          <GlowSlot
+            scrolled={scrolled}
+            className={cn(
+              "hidden transition-all duration-400 ease-[cubic-bezier(0.22,1,0.36,1)] md:block",
+              atFinalCta ? "pointer-events-none scale-95 opacity-0" : "scale-100 opacity-100",
+            )}
+          >
             <Link
               href="/"
               onClick={backToHero}
+              {...(atFinalCta ? { tabIndex: -1, "aria-hidden": true } : {})}
               className={cn(pillSurface(scrolled, "ink"), "px-5 text-[0.88rem] font-semibold")}
             >
               Get set up
