@@ -36,22 +36,28 @@ export function Hero() {
             </Reveal>
 
             <Reveal delay={240}>
-              <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3 text-[0.88rem] text-body-soft">
-                {/* What it does, not what it costs. With the subhead gone,
-                    this row is the only plain statement of the product. */}
-                <span className="flex items-center gap-2">
-                  <CheckDot />
-                  Full schedule in calendar
-                </span>
-                <span className="flex items-center gap-2">
-                  <CheckDot />
-                  Text and call reminders
-                </span>
-                <span className="flex items-center gap-2">
-                  <CheckDot />
-                  Auto emails classmates
-                </span>
-              </div>
+              {/*
+                Two halves of one promise. The first three are what it does; the
+                last three are what that access means, which used to be a whole
+                "What we can see" section further down the page. Answering it
+                here, in the same breath as the pitch, is more honest than
+                putting the pitch up top and the access terms a scroll away.
+              */}
+              <ul className="mt-8 grid gap-x-6 gap-y-2.5 text-[0.88rem] text-body-soft sm:grid-cols-2">
+                {[
+                  "Full schedule in calendar",
+                  "Text and call reminders",
+                  "Auto emails classmates",
+                  "Your portal password stays encrypted",
+                  "Revoke its Google access any time",
+                  "One text turns it all off",
+                ].map((claim) => (
+                  <li key={claim} className="flex items-center gap-2">
+                    <CheckDot />
+                    {claim}
+                  </li>
+                ))}
+              </ul>
             </Reveal>
           </div>
 

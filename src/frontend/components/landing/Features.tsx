@@ -4,22 +4,29 @@ import { Reveal } from "@/components/ui/Reveal";
 import { cn } from "@/lib/cn";
 
 /**
- * The feature wall, built as a pile of home-screen widgets rather than a grid
- * of identical icon cards.
+ * The feature recap, built like the end of a keynote rather than a feature grid.
  *
- * A uniform 3-column icon-and-paragraph grid is the single most recognisable
- * generated-landing-page layout there is, and it also flattens everything: the
- * grade alert and "books office hours" get identical visual weight. Widgets in
- * four sizes let the interesting features be big, and each one shows a scrap of
- * the actual thing (a mark, a calendar strip, a draft) instead of a glyph.
+ * The brief was "full". Three things do that here, and all three are the
+ * opposite of what a tidy marketing grid does:
  *
- * Art layers are drawn, not photographic. To drop in a real image later, replace
- * the `art` node with a positioned <Image fill> and keep the overlay gradient so
- * foreground text stays legible.
+ *  - **Dark.** It opens the dark run that carries the page home: this wall,
+ *    the escalation ladder, then the closing CTA. Tiles glow off it, and the
+ *    section reads as a finale rather than another band of cards.
+ *  - **Dense.** Small gaps and a short row height, so tiles nearly touch. The
+ *    abundance IS the message: there is more here than you can read at once.
+ *  - **Uneven.** Four tile sizes, so the grade alert and "quiet hours" are
+ *    visibly not the same size of idea. A uniform grid flattens everything to
+ *    equal importance, which is exactly the feeling to avoid.
+ *
+ * It closes on a wrap of plain chips, which is the "and also" slide.
+ *
+ * Tile count is deliberate: sizes sum to 28 grid cells, which is exactly seven
+ * full rows of four. Land on a non-multiple and `grid-auto-flow: dense` leaves
+ * a visible hole in the last row. Add or remove tiles in matching pairs.
  */
 
 type Size = "sm" | "wide" | "tall" | "big";
-type Tone = "light" | "tint" | "brand" | "ink";
+type Tone = "panel" | "brand" | "glass" | "light";
 
 const SPAN: Record<Size, string> = {
   sm: "col-span-1 row-span-1",
@@ -29,20 +36,19 @@ const SPAN: Record<Size, string> = {
 };
 
 const TONE: Record<Tone, string> = {
-  light: "bg-white ring-1 ring-line text-ink-900",
-  tint: "bg-sky-100 ring-1 ring-sky-200 text-ink-900",
-  brand: "bg-brand-600 text-white",
-  ink: "bg-ink-900 text-white",
+  panel: "bg-ink-800 ring-1 ring-ink-700",
+  brand: "bg-brand-600",
+  glass: "bg-white/8 ring-1 ring-white/12 backdrop-blur",
+  light: "bg-white",
 };
 
-function Widget({
+function Tile({
   size,
-  tone = "light",
+  tone = "panel",
   title,
   body,
   art,
   children,
-  className,
 }: {
   size: Size;
   tone?: Tone;
@@ -50,29 +56,26 @@ function Widget({
   body?: string;
   art?: ReactNode;
   children?: ReactNode;
-  className?: string;
 }) {
+  const dark = tone !== "light";
   return (
     <article
       className={cn(
-        // iOS widget corner. Large radius is most of what sells the metaphor.
-        "group relative flex flex-col overflow-hidden rounded-[1.6rem] p-5 shadow-soft transition-transform duration-400 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-1 sm:rounded-[1.8rem]",
+        "group relative flex flex-col overflow-hidden rounded-[1.35rem] p-4 transition-transform duration-400 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-1 sm:rounded-[1.6rem] sm:p-5",
         SPAN[size],
         TONE[tone],
-        className,
       )}
     >
       {art ? <div aria-hidden="true" className="pointer-events-none absolute inset-0">{art}</div> : null}
 
       <div className="relative flex h-full flex-col">
-        {/* Colour must be set on the heading itself. The base stylesheet gives
-            every h3 an explicit ink colour, so `text-white` on the card cannot
-            be inherited through it, and dark headings vanish on dark tones. */}
+        {/* Colour set on the heading itself: the base stylesheet gives every h3
+            an ink colour, so text-white on the tile cannot be inherited. */}
         <h3
           className={cn(
-            "font-display font-bold leading-[1.15]",
-            size === "big" ? "text-[1.4rem] sm:text-[1.65rem]" : "text-[1.02rem]",
-            tone === "ink" || tone === "brand" ? "text-white" : "text-ink-900",
+            "font-display font-bold leading-[1.14]",
+            size === "big" ? "text-[1.3rem] sm:text-[1.55rem]" : "text-[0.98rem]",
+            dark ? "text-white" : "text-ink-900",
           )}
         >
           {title}
@@ -80,8 +83,8 @@ function Widget({
         {body ? (
           <p
             className={cn(
-              "mt-1.5 text-[0.85rem] leading-[1.45]",
-              tone === "ink" || tone === "brand" ? "text-white/70" : "text-body",
+              "mt-1.5 text-[0.82rem] leading-[1.45]",
+              dark ? "text-sky-200/75" : "text-body",
             )}
           >
             {body}
@@ -93,12 +96,28 @@ function Widget({
   );
 }
 
+/** The "and also" slide. Short enough to scan, long enough to feel bottomless. */
+const CHIPS = [
+  "Knows what each item is worth",
+  "Re-checks for changed dates",
+  "Protects your off-limits hours",
+  "Summarises long threads",
+  "Flags cancelled classes",
+  "Room changes",
+  "Weekly digest",
+  "Timezone aware",
+  "Works on iOS and Android",
+  "Turn it off with one text",
+];
+
 export function Features() {
   return (
-    <Section id="features" tone="paper">
-      <Container>
+    <Section id="features" tone="ink" className="relative overflow-hidden">
+      <Backdrop />
+      <Container className="relative">
         <Reveal>
           <SectionHeading
+            tone="ink"
             label="The full list"
             title="Everything it handles"
             lead="One job, start of term to final grades."
@@ -106,64 +125,77 @@ export function Features() {
         </Reveal>
 
         <Reveal delay={80}>
-          <div className="mt-14 grid auto-rows-[9rem] grid-cols-2 gap-3 [grid-auto-flow:dense] sm:gap-4 lg:grid-cols-4">
-            <Widget
-              size="big"
-              tone="ink"
-              title="It tells you your grade before you think to check"
-              art={<GlowArt />}
-            >
+          <div className="mt-12 grid auto-rows-[8.5rem] grid-cols-2 gap-2.5 [grid-auto-flow:dense] sm:gap-3 lg:grid-cols-4">
+            <Tile size="big" tone="brand" title="It tells you your grade before you think to check" art={<Glow />}>
               <div className="flex items-end gap-4">
                 <ScoreRing value={78} />
-                <p className="mb-1 max-w-[13rem] rounded-2xl rounded-bl-md bg-white/12 px-3 py-2 text-[0.78rem] leading-[1.4] text-white/90">
+                <p className="mb-1 max-w-[13rem] rounded-2xl rounded-bl-md bg-white/15 px-3 py-2 text-[0.76rem] leading-[1.4] text-white">
                   Prof. Adeyemi just posted the midterm. You got 78.
                 </p>
               </div>
-            </Widget>
+            </Tile>
 
-            <Widget size="wide" title="Reads every syllabus" body="The term is planned before week one.">
-              <SyllabusArt />
-            </Widget>
+            <Tile size="wide" title="Reads every syllabus" body="The term is planned before week one.">
+              <DateChips />
+            </Tile>
 
-            <Widget size="sm" tone="tint" title="Pulls your profile" body="Courses, times, rooms, marks." />
+            <Tile size="sm" tone="glass" title="Pulls your profile" body="Courses, times, rooms, marks." />
+            <Tile size="sm" title="Grabs course content" body="Slides, readings, files." />
 
-            <Widget size="sm" title="Grabs course content" body="Slides, readings, posted files." />
+            <Tile size="wide" tone="light" title="Due dates land on your calendar" body="With the weighting attached.">
+              <CalendarStrip />
+            </Tile>
 
-            <Widget size="wide" title="Due dates land on your calendar" body="With the weighting attached.">
-              <CalendarArt />
-            </Widget>
+            <Tile size="sm" title="Exams and schedules" body="Corrected when the school moves them." />
 
-            <Widget size="sm" title="Exams and schedules" body="Corrected when the school moves them." />
+            <Tile size="tall" tone="glass" title="Paced to you" body="It learns how long you actually take.">
+              <PaceBars />
+            </Tile>
 
-            <Widget size="tall" tone="brand" title="Paced to you" body="It learns how long you actually take." art={<GlowArt soft />}>
-              <PaceArt />
-            </Widget>
-
-            <Widget
+            <Tile
               size="big"
+              tone="light"
               title="Ignore the last warning and your phone rings"
               body="A real call, from a voice that will not let you scroll past it."
-              art={<RingArt />}
+              art={<Rings />}
             >
-              <span className="inline-flex items-center gap-2 rounded-full bg-ink-900 px-3.5 py-1.5 text-[0.78rem] font-semibold text-white">
+              <span className="inline-flex items-center gap-2 rounded-full bg-ink-900 px-3.5 py-1.5 text-[0.76rem] font-semibold text-white">
                 <span className="h-1.5 w-1.5 rounded-full bg-accent motion-safe:animate-blink" />
                 Calling now
               </span>
-            </Widget>
+            </Tile>
 
-            <Widget size="wide" tone="tint" title="Writes emails for you" body="You approve, it sends.">
-              <DraftArt />
-            </Widget>
+            <Tile size="wide" title="Writes emails for you" body="You approve, it sends.">
+              <Draft />
+            </Tile>
 
-            <Widget size="wide" title="Books office hours" body="Emails your prof, then adds the meeting.">
-              <SlotArt />
-            </Widget>
+            <Tile size="wide" tone="glass" title="Books office hours" body="Emails your prof, adds the meeting.">
+              <Slots />
+            </Tile>
 
-            <Widget size="sm" title="Watches your email" body="Only what changes your week reaches you." />
+            <Tile size="sm" title="Watches your email" body="Only what changes your week." />
 
-            <Widget size="wide" title="Ranks what is next" body="By weight and runway, not just by date.">
-              <RankArt />
-            </Widget>
+            <Tile size="wide" title="Ranks what is next" body="By weight and runway, not just date.">
+              <RankBars />
+            </Tile>
+
+            <Tile size="sm" tone="glass" title="Quiet hours" body="Nothing lands while you sleep." />
+            <Tile size="sm" title="One number" body="No new app to open." />
+            <Tile size="sm" title="Reads PDFs" body="Slides and scanned handouts too." />
+            <Tile size="sm" tone="glass" title="Chases group projects" body="So you are not the one nagging." />
+          </div>
+        </Reveal>
+
+        <Reveal delay={140}>
+          <div className="mt-8 flex flex-wrap gap-2">
+            {CHIPS.map((chip) => (
+              <span
+                key={chip}
+                className="rounded-full bg-white/8 px-3.5 py-1.5 text-[0.82rem] font-medium text-sky-200/85 ring-1 ring-white/10"
+              >
+                {chip}
+              </span>
+            ))}
           </div>
         </Reveal>
       </Container>
@@ -173,29 +205,25 @@ export function Features() {
 
 /* --------------------------------------------------------------------- art */
 
-function GlowArt({ soft = false }: { soft?: boolean }) {
+function Backdrop() {
+  return (
+    <div aria-hidden="true" className="pointer-events-none absolute inset-0">
+      <div className="absolute -left-32 top-0 h-[34rem] w-[34rem] rounded-full bg-brand-600/22 blur-[130px]" />
+      <div className="absolute -right-24 bottom-0 h-[30rem] w-[30rem] rounded-full bg-sky-500/12 blur-[130px]" />
+    </div>
+  );
+}
+
+function Glow() {
   return (
     <>
-      <div
-        className={cn(
-          "absolute -right-10 -top-12 h-48 w-48 rounded-full blur-[46px]",
-          soft ? "bg-white/25" : "bg-brand-500/40",
-        )}
-      />
-      <div className="absolute -bottom-16 -left-10 h-44 w-44 rounded-full bg-accent/20 blur-[52px]" />
-      <svg className="absolute inset-0 h-full w-full opacity-[0.14]" aria-hidden="true">
-        <defs>
-          <pattern id="w-dots" width="14" height="14" patternUnits="userSpaceOnUse">
-            <circle cx="1.6" cy="1.6" r="1.1" fill="currentColor" />
-          </pattern>
-        </defs>
-        <rect width="100%" height="100%" fill="url(#w-dots)" />
-      </svg>
+      <div className="absolute -right-10 -top-12 h-48 w-48 rounded-full bg-white/20 blur-[46px]" />
+      <div className="absolute -bottom-16 -left-10 h-44 w-44 rounded-full bg-accent/25 blur-[52px]" />
     </>
   );
 }
 
-function RingArt() {
+function Rings() {
   return (
     <>
       <div className="absolute -right-8 top-1/2 h-40 w-40 -translate-y-1/2 rounded-full bg-sky-200/60 blur-[40px]" />
@@ -231,9 +259,9 @@ function ScoreRing({ value }: { value: number }) {
   const r = 26;
   const c = 2 * Math.PI * r;
   return (
-    <span className="relative grid h-[4.6rem] w-[4.6rem] shrink-0 place-items-center">
+    <span className="relative grid h-[4.4rem] w-[4.4rem] shrink-0 place-items-center">
       <svg className="absolute inset-0 -rotate-90" viewBox="0 0 64 64" aria-hidden="true">
-        <circle cx="32" cy="32" r={r} stroke="currentColor" strokeOpacity="0.18" strokeWidth="6" fill="none" />
+        <circle cx="32" cy="32" r={r} stroke="#fff" strokeOpacity="0.25" strokeWidth="6" fill="none" />
         <circle
           cx="32"
           cy="32"
@@ -242,33 +270,30 @@ function ScoreRing({ value }: { value: number }) {
           strokeWidth="6"
           strokeLinecap="round"
           fill="none"
-          className="draw-line"
-          data-shown="true"
-          style={{ ["--dash" as string]: `${c}`, strokeDashoffset: c * (1 - value / 100) }}
           strokeDasharray={`${c * (value / 100)} ${c}`}
         />
       </svg>
-      <span className="font-display text-[1.35rem] font-extrabold">{value}</span>
+      <span className="font-display text-[1.3rem] font-extrabold text-white">{value}</span>
     </span>
   );
 }
 
-function SyllabusArt() {
+function DateChips() {
   return (
-    <div className="flex items-center gap-3">
-      <span className="flex w-[4.5rem] shrink-0 flex-col gap-1 rounded-lg bg-sky-50 p-2 ring-1 ring-line-soft">
+    <div className="flex items-center gap-2.5">
+      <span className="flex w-[4rem] shrink-0 flex-col gap-1 rounded-lg bg-white/10 p-2">
         {[90, 70, 82, 55].map((w, i) => (
-          <span key={i} className="block h-1 rounded-full bg-sky-300" style={{ width: `${w}%` }} />
+          <span key={i} className="block h-1 rounded-full bg-white/35" style={{ width: `${w}%` }} />
         ))}
       </span>
-      <svg width="18" height="12" viewBox="0 0 18 12" fill="none" aria-hidden="true" className="shrink-0">
+      <svg width="16" height="12" viewBox="0 0 18 12" fill="none" aria-hidden="true" className="shrink-0">
         <path d="M0 6h15m0 0-4-4m4 4-4 4" stroke="var(--color-sky-400)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
       <span className="flex gap-1.5">
         {["12", "19", "26"].map((d, i) => (
           <span
             key={d}
-            className="grid h-8 w-8 place-items-center rounded-lg bg-brand-600 text-[0.7rem] font-bold text-white"
+            className="grid h-8 w-8 place-items-center rounded-lg bg-brand-500 text-[0.7rem] font-bold text-white"
             style={{ animation: "bubble-in .5s var(--ease-out-soft) both", animationDelay: `${i * 120}ms` }}
           >
             {d}
@@ -279,7 +304,7 @@ function SyllabusArt() {
   );
 }
 
-function CalendarArt() {
+function CalendarStrip() {
   const marks = [2, 5, 6, 11, 15, 18, 19, 24];
   return (
     <div className="grid grid-cols-7 gap-1">
@@ -287,9 +312,8 @@ function CalendarArt() {
         <span
           key={i}
           className={cn(
-            "h-3.5 rounded-[0.3rem]",
-            marks.includes(i) ? "bg-brand-600" : "bg-line-soft",
-            marks.includes(i) && i % 3 === 0 && "bg-accent",
+            "h-3 rounded-[0.28rem]",
+            marks.includes(i) ? (i % 3 === 0 ? "bg-accent" : "bg-brand-600") : "bg-line-soft",
           )}
           style={
             marks.includes(i)
@@ -302,15 +326,15 @@ function CalendarArt() {
   );
 }
 
-function PaceArt() {
+function PaceBars() {
   return (
     <div className="flex items-end gap-1.5">
       {[34, 52, 44, 70, 88, 62].map((h, i) => (
         <span
           key={i}
-          className="w-full rounded-t-md bg-white/35"
+          className="w-full rounded-t-md bg-sky-400/60"
           style={{
-            height: `${h * 0.55}px`,
+            height: `${h * 0.5}px`,
             animation: "bubble-in .55s var(--ease-out-soft) both",
             animationDelay: `${i * 90}ms`,
           }}
@@ -320,22 +344,22 @@ function PaceArt() {
   );
 }
 
-function DraftArt() {
+function Draft() {
   return (
     <div className="flex items-center gap-3">
-      <span className="flex flex-1 flex-col gap-1.5 rounded-lg bg-white p-2.5 ring-1 ring-line">
+      <span className="flex flex-1 flex-col gap-1.5 rounded-lg bg-white/10 p-2.5">
         {[88, 96, 62].map((w, i) => (
-          <span key={i} className="block h-1.5 rounded-full bg-line" style={{ width: `${w}%` }} />
+          <span key={i} className="block h-1.5 rounded-full bg-white/30" style={{ width: `${w}%` }} />
         ))}
       </span>
-      <span className="shrink-0 rounded-full bg-brand-600 px-3 py-1.5 text-[0.72rem] font-semibold text-white">
+      <span className="shrink-0 rounded-full bg-brand-500 px-3 py-1.5 text-[0.72rem] font-semibold text-white">
         Approve
       </span>
     </div>
   );
 }
 
-function SlotArt() {
+function Slots() {
   return (
     <div className="flex gap-1.5">
       {["Tue 2:00", "Tue 3:30", "Thu 11:00"].map((slot, i) => (
@@ -343,7 +367,7 @@ function SlotArt() {
           key={slot}
           className={cn(
             "rounded-lg px-2.5 py-1.5 text-[0.7rem] font-semibold",
-            i === 1 ? "bg-brand-600 text-white" : "bg-sky-100 text-ink-800",
+            i === 1 ? "bg-brand-500 text-white" : "bg-white/10 text-sky-200",
           )}
         >
           {slot}
@@ -353,7 +377,7 @@ function SlotArt() {
   );
 }
 
-function RankArt() {
+function RankBars() {
   return (
     <div className="flex flex-col gap-1.5">
       {[
@@ -362,13 +386,13 @@ function RankArt() {
         { w: "38%", label: "5%" },
       ].map((row, i) => (
         <span key={i} className="flex items-center gap-2">
-          <span className="h-2 flex-1 overflow-hidden rounded-full bg-line-soft">
+          <span className="h-2 flex-1 overflow-hidden rounded-full bg-white/12">
             <span
-              className="block h-full rounded-full bg-brand-600"
+              className="block h-full rounded-full bg-sky-400"
               style={{ width: row.w, animation: "bubble-in .6s var(--ease-out-soft) both", animationDelay: `${i * 110}ms` }}
             />
           </span>
-          <span className="w-8 shrink-0 text-right text-[0.68rem] font-semibold text-body-soft">{row.label}</span>
+          <span className="w-8 shrink-0 text-right text-[0.68rem] font-semibold text-sky-200/70">{row.label}</span>
         </span>
       ))}
     </div>

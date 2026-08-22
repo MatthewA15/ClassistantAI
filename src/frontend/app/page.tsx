@@ -5,8 +5,6 @@ import { HowItWorks } from "@/components/landing/HowItWorks";
 import { Showcase } from "@/components/landing/Showcase";
 import { Features } from "@/components/landing/Features";
 import { Escalation } from "@/components/landing/Escalation";
-import { Schools } from "@/components/landing/Schools";
-import { Safety } from "@/components/landing/Safety";
 import { Faq } from "@/components/landing/Faq";
 import { CtaBand } from "@/components/landing/CtaBand";
 
@@ -21,8 +19,6 @@ export default function HomePage() {
         <Showcase />
         <Features />
         <Escalation />
-        <Schools />
-        <Safety />
         <Faq />
         <CtaBand />
       </main>

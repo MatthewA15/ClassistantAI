@@ -13,7 +13,7 @@ export function HowItWorks() {
   return (
     // tight: the hero already ends in generous space, so normal top padding
     // stacked into a visible gap.
-    <Section id="how" tone="paper" padTop="tight">
+    <Section id="how" tone="paper" padTop="tight" padBottom="tight">
       <Container>
         <Reveal>
           <SectionHeading title="You do step one. It does the semester." />

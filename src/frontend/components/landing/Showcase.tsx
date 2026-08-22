@@ -30,7 +30,6 @@ const ROWS: Row[] = [
     scene: "syllabus",
   },
   {
-    label: "Email and discussions",
     title: "It reads the inbox you stopped opening",
     points: [
       "Flags cancelled classes and room changes",
@@ -42,7 +41,6 @@ const ROWS: Row[] = [
     flip: true,
   },
   {
-    label: "One calendar",
     title: "The whole term, kept current",
     points: [
       "Writes to the calendar you already use",
@@ -56,7 +54,7 @@ const ROWS: Row[] = [
 
 export function Showcase() {
   return (
-    <Section padTop="loose">
+    <Section padTop="tight">
       <Container>
         <div className="flex flex-col gap-24 sm:gap-32">
           {ROWS.map((row, i) => (

@@ -18,6 +18,7 @@ export function Section({
   className,
   tone = "light",
   padTop = "normal",
+  padBottom = "normal",
 }: {
   id?: string;
   children: ReactNode;
@@ -31,6 +32,13 @@ export function Section({
    * with `py-*` here and let Tailwind's emission order pick the winner.
    */
   padTop?: "normal" | "tight" | "loose";
+  /**
+   * `tight` pairs with the next section's `padTop="tight"`. Together they add
+   * up to the same 96/128px the Showcase rows use between each other, so the
+   * step cards sit the same distance from the first row as the rows sit from
+   * one another.
+   */
+  padBottom?: "normal" | "tight";
 }) {
   const tones = {
     light: "bg-white",
@@ -42,12 +50,13 @@ export function Section({
     <section
       id={id}
       className={cn(
-        "scroll-mt-24 pb-20 sm:pb-28",
+        "scroll-mt-24",
         padTop === "tight"
-          ? "pt-10 sm:pt-14"
+          ? "pt-12 sm:pt-16"
           : padTop === "loose"
             ? "pt-28 sm:pt-40"
             : "pt-20 sm:pt-28",
+        padBottom === "tight" ? "pb-12 sm:pb-16" : "pb-20 sm:pb-28",
         tones[tone],
         className,
       )}
