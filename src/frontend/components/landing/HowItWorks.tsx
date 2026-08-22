@@ -16,7 +16,19 @@ export function HowItWorks() {
     <Section id="how" tone="paper" padTop="tight" padBottom="tight">
       <Container>
         <Reveal>
-          <SectionHeading title="You do step one. It does the semester." />
+          {/* Two lines, one sentence each: the split is the point, so the
+              second sentence gets its own line rather than wherever the
+              measure happens to break. `wide` keeps line two from wrapping
+              again into a third. */}
+          <SectionHeading
+            width="wide"
+            title={
+              <>
+                You do step one.{" "}
+                <span className="block">Your Classistant does the semester.</span>
+              </>
+            }
+          />
         </Reveal>
 
         <div className="relative mt-12">

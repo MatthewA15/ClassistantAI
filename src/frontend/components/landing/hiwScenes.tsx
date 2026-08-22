@@ -182,7 +182,10 @@ export function SceneReads() {
 /** Dates get taken: some struck out and red, some ticked and green. */
 export function SceneCalendar() {
   const cols = 5;
-  const cell = { w: 20, h: 17, gapX: 5, gapY: 5, x0: 24, y0: 40 };
+  // Three rows have to land between the title bar (y 32) and the frame bottom
+  // (y 98). At h 17 the last row cleared the frame and hung outside it, which
+  // read as the calendar being cropped. 14 leaves 7 of air top and bottom.
+  const cell = { w: 20, h: 14, gapX: 5, gapY: 5, x0: 25, y0: 39 };
 
   // index -> outcome. Everything else stays an empty day.
   const marks: Record<number, "x" | "check"> = {
@@ -236,14 +239,14 @@ export function SceneCalendar() {
                 />
                 {mark === "x" ? (
                   <path
-                    d={`M${cx + 6} ${cy + 5.5}l8 6M${cx + 14} ${cy + 5.5}l-8 6`}
+                    d={`M${cx + 6} ${cy + 4}l8 6M${cx + 14} ${cy + 4}l-8 6`}
                     stroke="#fff"
                     strokeWidth="3"
                     strokeLinecap="round"
                   />
                 ) : (
                   <path
-                    d={`M${cx + 5.5} ${cy + 8.5}l3.5 3.5 5.5-6.5`}
+                    d={`M${cx + 5.5} ${cy + 6.5}l3.5 3.5 5.5-6.5`}
                     stroke="#fff"
                     strokeWidth="3"
                     strokeLinecap="round"

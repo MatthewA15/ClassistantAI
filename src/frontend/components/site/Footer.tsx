@@ -63,7 +63,20 @@ export function Footer() {
         </div>
 
         <div className="flex flex-col gap-3 border-t border-line py-7 text-[0.82rem] text-body-soft sm:flex-row sm:items-center sm:justify-between">
-          <p>&copy; {new Date().getFullYear()} Classistant. All rights reserved.</p>
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span>&copy; {new Date().getFullYear()} Classistant. All rights reserved.</span>
+            <span aria-hidden="true" className="hidden text-line sm:inline">
+              &middot;
+            </span>
+            <a
+              href="https://wopara.com"
+              target="_blank"
+              rel="noreferrer"
+              className="font-semibold text-body transition-colors hover:text-brand-600"
+            >
+              Designed by Wopara
+            </a>
+          </p>
           <p>
             Classistant is not affiliated with, endorsed by, or operated by any university,
             college, or Google LLC.

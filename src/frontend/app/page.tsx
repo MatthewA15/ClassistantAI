@@ -4,7 +4,6 @@ import { Hero } from "@/components/landing/Hero";
 import { HowItWorks } from "@/components/landing/HowItWorks";
 import { Showcase } from "@/components/landing/Showcase";
 import { Features } from "@/components/landing/Features";
-import { Escalation } from "@/components/landing/Escalation";
 import { CtaBand } from "@/components/landing/CtaBand";
 
 export default function HomePage() {
@@ -17,7 +16,6 @@ export default function HomePage() {
         <HowItWorks />
         <Showcase />
         <Features />
-        <Escalation />
         <CtaBand />
       </main>
       <Footer />

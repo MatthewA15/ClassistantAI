@@ -59,6 +59,12 @@
      never decoration. Like alert, school themes do not override it. */
   --color-ok: #16a34a;
 
+  /* The middle of the escalation ramp. ok -> warn -> alert is the only place
+     the palette runs three non-blue hues, and it earns it: the whole point of
+     that section is that the pressure visibly increases, and hue is the one
+     signal a reader decodes without being taught it. Functional only. */
+  --color-warn: #f0a020;
+
   --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
 
   --animate-glow-morph: glow-morph 18s ease-in-out infinite;

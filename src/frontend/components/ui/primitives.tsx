@@ -33,12 +33,11 @@ export function Section({
    */
   padTop?: "normal" | "tight" | "loose";
   /**
-   * `tight` pairs with the next section's `padTop="tight"`. Together they add
-   * up to the same 96/128px the Showcase rows use between each other, so the
-   * step cards sit the same distance from the first row as the rows sit from
-   * one another.
+   * `tight` pairs with the next section's `padTop="tight"`. `loose` when the
+   * section ends on a large visual and the next one opens on a colour change,
+   * where normal padding reads as the two crashing together.
    */
-  padBottom?: "normal" | "tight";
+  padBottom?: "normal" | "tight" | "loose";
 }) {
   const tones = {
     light: "bg-white",
@@ -56,7 +55,11 @@ export function Section({
           : padTop === "loose"
             ? "pt-28 sm:pt-40"
             : "pt-20 sm:pt-28",
-        padBottom === "tight" ? "pb-12 sm:pb-16" : "pb-20 sm:pb-28",
+        padBottom === "tight"
+          ? "pb-12 sm:pb-16"
+          : padBottom === "loose"
+            ? "pb-28 sm:pb-40"
+            : "pb-20 sm:pb-28",
         tones[tone],
         className,
       )}
@@ -76,15 +79,27 @@ export function SectionHeading({
   lead,
   align = "left",
   tone = "light",
+  width = "narrow",
 }: {
   label?: string;
   title: ReactNode;
   lead?: ReactNode;
   align?: "left" | "center";
   tone?: "light" | "ink";
+  /**
+   * A parameter rather than a `max-w-*` passed through className, because two
+   * competing max-widths in one class list are resolved by Tailwind's emission
+   * order, not by the order they were written.
+   */
+  width?: "narrow" | "wide";
 }) {
   return (
-    <div className={cn("max-w-2xl", align === "center" && "mx-auto text-center")}>
+    <div
+      className={cn(
+        width === "wide" ? "max-w-4xl" : "max-w-2xl",
+        align === "center" && "mx-auto text-center",
+      )}
+    >
       {label ? (
         <p
           className={cn(

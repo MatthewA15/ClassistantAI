@@ -1,18 +1,20 @@
+import type { ReactNode } from "react";
 import { Container, Section } from "@/components/ui/primitives";
-import { PlaceholderShot } from "@/components/ui/PlaceholderShot";
 import { Reveal } from "@/components/ui/Reveal";
 import { SyllabusScene } from "@/components/landing/SyllabusScene";
 import { InboxScene } from "@/components/landing/InboxScene";
+import { EscalationScene } from "@/components/landing/EscalationScene";
 import { cn } from "@/lib/cn";
 
 type Row = {
+  /** List key, since a title can now carry markup and is not a usable one. */
+  key: string;
   /** Omit to let the headline stand on its own. */
   label?: string;
-  title: string;
+  title: ReactNode;
   points: string[];
-  /** Either a screenshot placeholder or a purpose-built animated scene. */
-  shot?: { variant: "syllabus" | "inbox" | "calendar"; title: string };
-  scene?: "syllabus" | "inbox";
+  /** Every row is a purpose-built animated scene now. */
+  scene: "syllabus" | "inbox" | "escalation";
   flip?: boolean;
 };
 
@@ -20,6 +22,7 @@ type Row = {
 // and the four points carry the detail. See docs/design/02-design-system.md.
 const ROWS: Row[] = [
   {
+    key: "syllabus",
     title: "Fast and Curious",
     points: [
       "Assignment and project deadlines",
@@ -30,7 +33,12 @@ const ROWS: Row[] = [
     scene: "syllabus",
   },
   {
-    title: "It reads the inbox you stopped opening",
+    key: "inbox",
+    title: (
+      <>
+        Ignore your <UnreadMail count="6967" /> inbox
+      </>
+    ),
     points: [
       "Flags cancelled classes and room changes",
       "Summarises long announcement threads",
@@ -41,25 +49,31 @@ const ROWS: Row[] = [
     flip: true,
   },
   {
-    title: "The whole term, kept current",
+    key: "escalation",
+    title: "It gets louder on purpose",
     points: [
-      "Writes to the calendar you already use",
-      "Re-checks the portal for changed dates",
-      "Blocks work time around your real pace",
-      "Protects hours you mark off limits",
+      "A quiet nudge while there is still time",
+      "A real reminder once you have not started",
+      "A final warning at the last useful moment",
+      "Then your phone actually rings",
     ],
-    shot: { variant: "calendar", title: "Google Calendar, November" },
+    scene: "escalation",
   },
 ];
 
 export function Showcase() {
   return (
-    <Section padTop="tight">
+    // The step cards above end on a hard card edge and the section colour
+    // changes mid-gap, so a gap that measures the same as the one between rows
+    // still reads as tighter. It gets normal top padding to compensate. loose
+    // at the bottom for the same reason: the next section opens dark, and
+    // normal padding let the last scene crash straight into it.
+    <Section padTop="normal" padBottom="loose">
       <Container>
         <div className="flex flex-col gap-24 sm:gap-32">
           {ROWS.map((row, i) => (
             <div
-              key={row.title}
+              key={row.key}
               className="grid items-center gap-10 lg:grid-cols-2 lg:gap-16"
             >
               <Reveal className={cn(row.flip && "lg:order-2")}>
@@ -86,15 +100,60 @@ export function Showcase() {
                   <SyllabusScene />
                 ) : row.scene === "inbox" ? (
                   <InboxScene />
-                ) : row.shot ? (
-                  <PlaceholderShot variant={row.shot.variant} title={row.shot.title} />
-                ) : null}
+                ) : (
+                  <EscalationScene />
+                )}
               </Reveal>
             </div>
           ))}
         </div>
       </Container>
     </Section>
+  );
+}
+
+/**
+ * A mailbox sitting in the headline with its unread count on it.
+ *
+ * Sized in `em` throughout so it tracks the headline across the breakpoint
+ * instead of needing a second set of numbers. Red is the one non-blue in the
+ * palette and is functional only, which a real unread badge is: it is the
+ * number the reader is being asked to recognise, not decoration.
+ */
+function UnreadMail({ count }: { count: string }) {
+  return (
+    // The right margin is clearance for the badge, which overhangs the icon.
+    <span className="relative mr-[0.45em] inline-block whitespace-nowrap align-[-0.12em]">
+      <svg
+        viewBox="0 0 32 24"
+        fill="none"
+        aria-hidden="true"
+        className="block h-[0.82em] w-[1.09em]"
+      >
+        <rect
+          x="1.4"
+          y="1.4"
+          width="29.2"
+          height="21.2"
+          rx="4"
+          fill="var(--color-sky-100)"
+          stroke="var(--color-ink-900)"
+          strokeWidth="2.4"
+        />
+        <path
+          d="M3.6 4.6 16 13.6 28.4 4.6"
+          stroke="var(--color-ink-900)"
+          strokeWidth="2.4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+      <span
+        className="absolute -right-[0.5em] -top-[0.34em] rounded-full bg-alert px-[0.34em] py-[0.06em] font-sans text-[0.31em] font-bold leading-[1.45] tabular-nums text-white ring-[0.14em] ring-white"
+      >
+        {count}
+      </span>
+    </span>
   );
 }
 
