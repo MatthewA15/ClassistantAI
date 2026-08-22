@@ -196,16 +196,15 @@ export function SectionNav({ scrolled = false }: { scrolled?: boolean }) {
                 href={section.id ? `/#${section.id}` : "/"}
                 onClick={section.id ? () => setOpen(false) : goToTop}
                 className={cn(
-                  "flex items-center justify-between gap-3 rounded-full px-4 py-2.5 text-[0.9rem] transition-colors",
+                  "flex items-center rounded-full px-4 py-2.5 text-[0.9rem] transition-colors",
                   isActive
                     ? "bg-sky-100 font-semibold text-ink-900"
                     : "font-medium text-body hover:bg-ink-900/5 hover:text-ink-900",
                 )}
               >
+                {/* The current item is already carried by its fill and weight;
+                    a dot on top of that was one signal too many. */}
                 {section.label}
-                {isActive ? (
-                  <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand-600" />
-                ) : null}
               </Link>
             );
           })}

@@ -24,7 +24,13 @@ export function GlowSlot({
   className?: string;
 }) {
   return (
-    <div className={cn("relative", className)}>
+    // pointer-events-auto lives here, not only on the capsule surface. The
+    // header wrapper is pointer-events-none, and anything slotted in that is
+    // NOT the capsule itself (a dropdown panel, a tooltip) would otherwise
+    // render fine and silently swallow nothing, letting every click fall
+    // through to the page behind it. The root box is exactly the capsule's
+    // size, so this adds no clickable area to the gutter.
+    <div className={cn("pointer-events-auto relative", className)}>
       <div
         aria-hidden="true"
         // Dialled well back from the first version. At full strength the light
