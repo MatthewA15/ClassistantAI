@@ -17,11 +17,19 @@ export function Section({
   children,
   className,
   tone = "light",
+  padTop = "normal",
 }: {
   id?: string;
   children: ReactNode;
   className?: string;
   tone?: "light" | "paper" | "ink";
+  /**
+   * `tight` when the section directly follows something that already ends in
+   * generous space, so the two do not stack into a gap. A prop rather than a
+   * `pt-*` passed through className, because that would collide with `py-*`
+   * here and let Tailwind's emission order pick the winner.
+   */
+  padTop?: "normal" | "tight";
 }) {
   const tones = {
     light: "bg-white",
@@ -30,7 +38,15 @@ export function Section({
   };
   return (
     // scroll-mt keeps a jumped-to heading clear of the floating header.
-    <section id={id} className={cn("scroll-mt-24 py-20 sm:py-28", tones[tone], className)}>
+    <section
+      id={id}
+      className={cn(
+        "scroll-mt-24 pb-20 sm:pb-28",
+        padTop === "tight" ? "pt-10 sm:pt-14" : "pt-20 sm:pt-28",
+        tones[tone],
+        className,
+      )}
+    >
       {children}
     </section>
   );

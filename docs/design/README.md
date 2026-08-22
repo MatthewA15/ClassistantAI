@@ -15,6 +15,8 @@ Read these before changing something that looks arbitrary. Most of it is not.
 | [06 Motion and SVG](06-motion-and-svg.md) | Where animation is used, the reduced-motion contract |
 | [07 Backend contract](07-backend-contract.md) | What the frontend hands over, and what it deliberately does not do |
 | [08 Legal pages](08-legal-pages.md) | Why they exist, what still needs a lawyer |
+| [09 School theming](09-school-theming.md) | Per-school colours, why no logos, the locked CTA |
+| [10 How-it-works scenes](10-how-it-works-scenes.md) | The four stick-figure loops and the bugs they taught |
 
 ## Ground rules that apply everywhere
 

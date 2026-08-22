@@ -27,21 +27,24 @@ export function GlowSlot({
     <div className={cn("relative", className)}>
       <div
         aria-hidden="true"
+        // Dialled well back from the first version. At full strength the light
+        // competed with the page content underneath instead of just lifting the
+        // capsule off it.
         className={cn(
           "absolute -inset-x-3 -bottom-3 -top-2 -z-10 transition-opacity duration-700",
-          scrolled ? "opacity-100" : "opacity-70",
+          scrolled ? "opacity-80" : "opacity-50",
         )}
       >
         <div
-          className="absolute inset-x-[8%] top-[25%] h-[95%] rounded-full bg-brand-600/40 blur-[24px] motion-safe:animate-glow-morph"
+          className="absolute inset-x-[8%] top-[25%] h-[95%] rounded-full bg-brand-600/22 blur-[26px] motion-safe:animate-glow-morph"
           style={{ animationDuration: "22s" }}
         />
         <div
-          className="absolute left-0 top-0 h-full w-[60%] bg-ink-800/55 blur-[22px] motion-safe:animate-glow-morph"
+          className="absolute left-0 top-0 h-full w-[60%] bg-ink-800/28 blur-[24px] motion-safe:animate-glow-morph"
           style={{ animationDuration: "18s", animationDelay: "-3s" }}
         />
         <div
-          className="absolute right-0 top-[8%] h-full w-[55%] bg-ink-700/50 blur-[24px] motion-safe:animate-glow-morph"
+          className="absolute right-0 top-[8%] h-full w-[55%] bg-ink-700/24 blur-[26px] motion-safe:animate-glow-morph"
           style={{ animationDuration: "29s", animationDelay: "-11s" }}
         />
       </div>

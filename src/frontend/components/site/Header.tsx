@@ -44,6 +44,14 @@ export function Header({ overHero = false }: { overHero?: boolean }) {
 
   const hidden = overHero && !pastHero;
 
+  /** On the landing page, scroll back to the hero's picker instead of routing. */
+  const backToHero = (e: React.MouseEvent) => {
+    setOpen(false);
+    if (pathname !== "/") return;
+    e.preventDefault();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   useEffect(() => {
     if (hidden) setOpen(false);
   }, [hidden]);
@@ -81,9 +89,13 @@ export function Header({ overHero = false }: { overHero?: boolean }) {
 
           <span className="flex-1" />
 
+          {/* Setup starts by picking a school, and that picker lives in the
+              hero, so this goes back there rather than jumping into a flow that
+              would immediately ask the same question. */}
           <GlowSlot scrolled={scrolled} className="hidden md:block">
             <Link
-              href="/onboarding"
+              href="/"
+              onClick={backToHero}
               className={cn(pillSurface(scrolled, "ink"), "px-5 text-[0.88rem] font-semibold")}
             >
               Get set up
@@ -125,8 +137,8 @@ export function Header({ overHero = false }: { overHero?: boolean }) {
                   </Link>
                 ))}
                 <Link
-                  href="/onboarding"
-                  onClick={() => setOpen(false)}
+                  href="/"
+                  onClick={backToHero}
                   className="mt-1 rounded-full bg-ink-900 px-4 py-3 text-center text-[0.95rem] font-semibold text-white"
                 >
                   Get set up

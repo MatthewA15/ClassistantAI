@@ -55,6 +55,10 @@
      an error must not repaint into a school's brand colour. */
   --color-alert: #e5484d;
 
+  /* Pairs with --color-alert. Functional only: it marks a step that passed,
+     never decoration. Like alert, school themes do not override it. */
+  --color-ok: #16a34a;
+
   --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
 
   --animate-glow-morph: glow-morph 18s ease-in-out infinite;
@@ -130,6 +134,172 @@
   }
   78% {
     transform: translateY(-3px) scale(1.01);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   How-it-works scenes. Four looping stick-figure animations, all on one 9s
+   cycle so the row breathes together. Percentages below are windows in that
+   cycle, which is why they look arbitrary: they are storyboard beats.
+   See docs/design/10-how-it-works-scenes.md.
+--------------------------------------------------------------------------- */
+
+/* Step 1: the four poses. Windows are contiguous, not spaced: an earlier
+   version left small gaps between them, and in each gap every arm was hidden
+   at once, so the figure briefly lost both arms. Each pose hands straight over
+   to the next at the same percentage. */
+@keyframes hiw-pose-type-a {
+  0%,
+  29.9% {
+    opacity: 1;
+  }
+  30%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes hiw-pose-scratch {
+  0%,
+  29.9% {
+    opacity: 0;
+  }
+  30%,
+  52.9% {
+    opacity: 1;
+  }
+  53%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes hiw-pose-type-b {
+  0%,
+  52.9% {
+    opacity: 0;
+  }
+  53%,
+  75.9% {
+    opacity: 1;
+  }
+  76%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes hiw-pose-cheer {
+  0%,
+  75.9% {
+    opacity: 0;
+  }
+  76%,
+  100% {
+    opacity: 1;
+  }
+}
+
+/* Rejected, then accepted. Beats line up with the poses above. */
+@keyframes hiw-screen {
+  0%,
+  28% {
+    fill: var(--color-sky-100);
+  }
+  32%,
+  74% {
+    fill: #fbd5d5;
+  }
+  78%,
+  100% {
+    fill: #cdf0da;
+  }
+}
+
+@keyframes hiw-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(1.8px);
+  }
+}
+
+@keyframes hiw-cheer-hop {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  40% {
+    transform: translateY(-3px);
+  }
+}
+
+/* Step 2: a highlight sweeps a line, then a copy chip pops. Three passes, so
+   each element carries a one-third delay. */
+@keyframes hiw-sweep {
+  0% {
+    transform: scaleX(0);
+  }
+  10%,
+  26% {
+    transform: scaleX(1);
+  }
+  32%,
+  100% {
+    transform: scaleX(0);
+  }
+}
+@keyframes hiw-pop {
+  0%,
+  9% {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+  15%,
+  26% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  32%,
+  100% {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+}
+@keyframes hiw-cursor {
+  0%,
+  18% {
+    transform: translate(0, 0);
+  }
+  30%,
+  51% {
+    transform: translate(7px, 15px);
+  }
+  63%,
+  84% {
+    transform: translate(-9px, 30px);
+  }
+  96%,
+  100% {
+    transform: translate(0, 0);
+  }
+}
+
+/* Steps 3 and 4: a mark (or a bubble) appears, holds, and clears. */
+@keyframes hiw-mark {
+  0%,
+  5% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  12%,
+  84% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  93%,
+  100% {
+    opacity: 0;
+    transform: scale(0.9);
   }
 }
 
