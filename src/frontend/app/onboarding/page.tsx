@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import Link from "next/link";
 import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
 import { Container } from "@/components/ui/primitives";
@@ -22,7 +23,10 @@ export default function OnboardingPage() {
       </div>
 
       <Container className="relative py-12 sm:py-16">
-        <OnboardingWizard />
+        {/* useSearchParams needs a boundary on a statically rendered route. */}
+        <Suspense fallback={<div className="min-h-[26rem]" />}>
+          <OnboardingWizard />
+        </Suspense>
 
         <p className="mt-12 text-center text-[0.82rem] text-body-soft">
           Trouble getting in? Email{" "}

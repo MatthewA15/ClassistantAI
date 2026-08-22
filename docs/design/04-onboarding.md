@@ -3,72 +3,90 @@
 Sources: [`app/onboarding/`](../../src/frontend/app/onboarding/),
 [`components/onboarding/`](../../src/frontend/components/onboarding/)
 
-## Step order, and why it is this order
+## Four screens, down from six
+
+The school is chosen in the hero and arrives as `?school=`, so onboarding starts
+at the sign-in hand-off and inherits the school's theme.
 
 | # | Step | Why here |
 | --- | --- | --- |
-| 1 | School | Cheapest possible question, and it is the one that can disqualify. Asking it first means an unsupported student burns ten seconds, not four minutes. |
-| 2 | Google sign in | Familiar and low-anxiety. Establishes we work through Google's consent screen before we ask for anything ourselves. |
-| 3 | Name, email, phone, SMS consent | Ordinary contact details. Momentum builder. |
-| 4 | Portal login | The hard ask. It lands fourth, after three steps of sunk cost and immediately after Google demonstrated a normal consent flow. |
-| 5 | Preferences | Deliberately after the hard ask. Choosing quiet hours and pushiness returns a sense of control right when the student is feeling most exposed. |
-| 6 | Confirm | Shows everything back, including "Password: stored encrypted, never shown again". |
+| 1 | Connect your school account | Familiar. Google's own consent screen, on the school's own login page. |
+| 2 | Let it work while you sleep | The portal password. Lands right after Google demonstrated a normal consent flow, which is the best moment to ask for something less normal. |
+| 3 | Check your details | Name and email come back from Google, so this is confirmation, not typing. Terms and marketing consent sit here. |
+| 4 | Where should it text you? | Behind the Finish button. |
 
-The single most important sequencing decision is **the portal password is step 4,
-not step 1.** Asking a stranger for their university password on the first screen
-loses most of the funnel, and deserves to.
+## Landing the student on their own school's login page
 
-## Unsupported schools are visible, not hidden
+Two OAuth parameters do the work, and they drove the UI:
 
-`SchoolPicker` lists `pending` schools greyed out with a "Not yet" tag rather
-than filtering them out. A student searching "Brock" and getting an empty box
-cannot tell whether they misspelled it or whether it is unsupported. Showing it
-answers the question and routes into the waitlist branch.
+- **`hd=<school domain>`** pins the consent screen to the school's Workspace
+  tenancy, so a personal gmail cannot be connected by accident. This one is
+  non-negotiable: without it a student can onboard successfully and get an
+  assistant that finds nothing.
+- **`login_hint=<user>@<domain>`** carries a full address. Where a school
+  federates Google to its own IdP, which the schools we support do, a full
+  address lets Google skip its account chooser and redirect straight to the
+  university login page.
 
-## Validation is split on purpose
+`hd` alone still stops at Google's screen first. That is why step 1 asks for
+just the username and appends the domain itself: one short field buys a direct
+hand-off to the school's page.
 
-- **Client**, in `canAdvance`: cheap presence and shape checks that gate the
-  Continue button. Instant feedback, no round trip.
-- **Server**, in `completeOnboarding`: the real validation. Re-checks everything,
-  including that the school email domain matches the chosen school, because the
-  client is not a trust boundary.
+## Why the portal password still exists
 
-The server action returns `errors` keyed by field name so the wizard can
-highlight the offending input without any shared schema library.
+Signing in with Google authorises **mail, calendar, and Drive**. It does **not**
+create a session on the school's LMS, and posted grades and course files live
+there. Classistant crawls the portal overnight, when the student is asleep and
+cannot approve anything, so it has to be able to sign in on its own.
 
-## The password handling rule
+That is the entire justification, and step 2 says it in those words rather than
+asking for a password and hoping nobody wonders why.
 
-In [`actions.ts`](../../src/frontend/app/onboarding/actions.ts), the portal
-password is read into a local, length-checked, and never touched again. It is
-never logged, never echoed into a response, never included in an error message.
+> **The password rule.** In
+> [`actions.ts`](../../src/frontend/app/onboarding/actions.ts) the password is
+> read into a local, length-checked, and dropped. Never logged, never echoed
+> into a response, never in an error message, never in a trace. When the backend
+> lands it goes straight from `formData` into the credential store and nowhere
+> else.
 
-This is written as a comment in the file and repeated here because it is the kind
-of rule that gets broken by someone adding a debug log during an incident. When
-the backend lands, the password should go straight from `formData` into the
-credential store call and nowhere else.
+## The phone number is last
 
-## Server actions, and what they do not do
+It sits behind the Finish button. It is the one field with no upside for the
+student until everything else is agreed, and asking for it early is what makes a
+form feel like a lead-capture page.
 
-All three actions are real server actions with real validation, and none of them
-persist anything. Each carries a `TODO(backend)` naming the specific integration
-that belongs there. The client is finished: wiring the backend should not require
-touching any component.
+## Details step
 
-- `startGoogleSignIn` builds toward an OAuth redirect. Note the `hd` parameter in
-  the TODO, which pins the consent screen to the school's domain so a student
-  cannot connect a personal Gmail by accident.
-- `completeOnboarding` validates the whole payload.
-- `joinWaitlist` records interest in a pending school.
+Name and email are shown as retrieved, not as empty inputs. Two escape hatches:
+**Change nickname** for what the agent calls you, and **Different email for
+Google Drive, Calendar, and email?** for the case where coursework lives in
+another account. Both are collapsed until clicked, so the default path is
+reading two lines and moving on.
 
-## Small things that matter
+While Google is stubbed, the name is placeholder text and the UI says so rather
+than pretending it came from the registrar.
 
-- Phone input formats to `(604) 555-0123` as you type, and only ever submits
-  digits.
-- `autoComplete="new-password"` on the portal field, so browsers do not offer to
-  fill a saved password from an unrelated site.
-- A Show/Hide toggle, because people mistype passwords they are already nervous
-  about entering.
-- `robots: { index: false }` on the onboarding page. It is a funnel step, not a
-  landing page, and should not compete in search.
-- The step rail's progress bar is driven off `step / (STEPS.length - 1)`, so
-  adding a step does not require touching the rail.
+## Validation is split
+
+- **Client**: presence and shape checks that gate each Continue. No round trip.
+- **Server**, in `completeOnboarding`: the real validation, including that the
+  email domain matches the chosen school. The client is not a trust boundary.
+
+Errors come back keyed by field name so the wizard can highlight the offending
+input without a shared schema library.
+
+## Consent is a legal artifact
+
+`acceptTerms` and `consentSms` are CASL consent records and A2P 10DLC
+registration evidence. Persist the **timestamp, the IP, and the exact wording
+shown**, not a boolean. `acceptMarketing` is separate and optional, and must
+stay separate: bundling product email into the terms checkbox would invalidate
+both.
+
+## A trap that cost a runtime 500
+
+`actions.ts` carries `"use server"`, and such a module **may only export async
+functions**. Exporting a scopes array from it builds cleanly and then throws
+`A "use server" file can only export async functions, found object` on every
+request. Constants belong in a plain module. This is invisible to `tsc` and to
+`next build`, and was only caught by driving the flow in a browser.

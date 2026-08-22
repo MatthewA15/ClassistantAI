@@ -20,23 +20,36 @@ They already do full server-side validation and return
 `{ ok, message, errors? }`. The UI is finished against that shape, so filling in
 the bodies should not require touching any component.
 
-### `startGoogleSignIn(formData)`
+### `buildGoogleAuthUrl(schoolId, username)` and `connectGoogle(prev, formData)`
 
-Receives `schoolId`. Should build the Google OAuth consent URL and `redirect()`.
+`buildGoogleAuthUrl` already assembles the authorisation URL with the right
+scopes, `hd`, and `login_hint`. Add `client_id`, `redirect_uri`, `state`,
+`code_challenge`, and `access_type=offline` + `prompt=consent` for a refresh
+token, then `redirect()`.
 
-- Scopes the agent needs: `gmail.readonly`, `gmail.send`, `calendar.events`,
-  `drive.readonly`.
-- **Set `hd` to the selected school's `emailDomain`.** Without it a student can
-  connect a personal Gmail, onboard successfully, and get an assistant that finds
-  nothing. `getSchool(schoolId).emailDomain` gives you the value.
-- The callback route exchanges the code and creates the Firestore user document.
+- **`hd` is non-negotiable.** Without it a student can connect a personal Gmail,
+  onboard successfully, and get an assistant that finds nothing.
+- `login_hint` is what makes the hand-off land on the school's own IdP rather
+  than Google's account chooser. Step 1 collects the username for this reason.
+
+`connectGoogle` currently stands in for the callback and returns a simulated
+identity so the rest of the flow is walkable. Replace it with the real code
+exchange; read `email` and `name` from the ID token.
+
+**Constants may not be exported from this file.** It is a `"use server"` module,
+so a non-function export throws at runtime on every request while still building
+cleanly. Put shared constants in a plain module.
 
 ### `completeOnboarding(prev, formData)`
 
-Fields: `schoolId`, `fullName`, `schoolEmail`, `phone` (digits), `portalUser`,
-`portalPassword`, `intensity` (`gentle` | `standard` | `relentless`),
-`quietFrom`, `quietTo` (24h `HH:00`), `callsEnabled`, `callsForEmail`,
-`consentSms` (all checkboxes are `"on"` or empty).
+Fields: `schoolId`, `email`, `name`, `nickname`, `serviceEmail` (optional
+alternate Google account), `portalUser`, `portalPassword`, `phone` (digits),
+`acceptTerms`, `acceptMarketing`, `consentSms` (checkboxes are `"on"` or empty).
+
+`portalPassword` is still collected, and deliberately so: OAuth authorises mail,
+calendar, and Drive but gives no session on the school's LMS, and the overnight
+crawl has to sign in without the student present. See
+[04](04-onboarding.md).
 
 On success it should: write the profile to Firestore, put the credential in the
 encrypted store, send the Twilio verification SMS, and enqueue the first portal
