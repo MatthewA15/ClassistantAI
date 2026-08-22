@@ -1,5 +1,4 @@
 import { Container, Section, SectionHeading } from "@/components/ui/primitives";
-import { PlaceholderShot } from "@/components/ui/PlaceholderShot";
 import { Reveal } from "@/components/ui/Reveal";
 import { SceneCalendar, ScenePhone, SceneReads, SceneSignIn } from "@/components/landing/hiwScenes";
 
@@ -45,15 +44,6 @@ export function HowItWorks() {
           </ol>
         </div>
 
-        <Reveal delay={120}>
-          <div className="mt-16">
-            <PlaceholderShot
-              variant="dashboard"
-              title="classistant.ca/dashboard"
-              caption="Check its work here. You almost never need to."
-            />
-          </div>
-        </Reveal>
       </Container>
     </Section>
   );
