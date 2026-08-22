@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Logo } from "@/components/brand/LogoMark";
-import { Container } from "@/components/ui/primitives";
 import { cn } from "@/lib/cn";
 
 const NAV = [
@@ -13,6 +12,18 @@ const NAV = [
   { href: "/#faq", label: "FAQ" },
 ];
 
+/**
+ * Floating pill header.
+ *
+ * It sits detached from the top of the viewport rather than spanning the full
+ * width, so the page reads as sliding underneath it. Two morphing blobs of dark
+ * blue sit behind the pill and are blurred hard enough to read as emitted light
+ * rather than as shapes. The pill itself stays a true `rounded-full` capsule:
+ * morphing its radius was tried and is invisible at 64px tall, so the motion
+ * lives entirely in the light behind it.
+ *
+ * See docs/design/06-motion-and-svg.md.
+ */
 export function Header() {
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
@@ -33,40 +44,47 @@ export function Header() {
   }, [open]);
 
   return (
-    <header
-      className={cn(
-        "sticky top-0 z-50 transition-all duration-300",
-        scrolled ? "bg-white/85 shadow-[0_1px_0_rgb(217_232_247_/_1)] backdrop-blur-md" : "bg-transparent",
-      )}
-    >
-      <Container>
-        <div className="flex h-[4.5rem] items-center justify-between gap-4">
-          <Link href="/" aria-label="Classistant home" className="group">
-            <Logo size={34} className="transition-transform duration-300 group-hover:scale-[1.02]" />
+    // pointer-events-none on the wrapper so the transparent gutter around the
+    // pill never swallows clicks meant for the page underneath.
+    <header className="pointer-events-none sticky top-0 z-50 px-3 pt-4 sm:px-6 sm:pt-6">
+      <div className="relative mx-auto max-w-[73rem]">
+        <GlowField scrolled={scrolled} />
+
+        <div
+          className={cn(
+            "pointer-events-auto relative flex h-16 items-center justify-between gap-4 rounded-full pl-5 pr-3 transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]",
+            "backdrop-blur-xl",
+            scrolled
+              ? "bg-white/90 shadow-[0_10px_40px_-12px_rgb(6_32_58_/_0.42)] ring-1 ring-white/70"
+              : "bg-white/65 shadow-[0_8px_32px_-14px_rgb(6_32_58_/_0.3)] ring-1 ring-white/55",
+          )}
+        >
+          <Link href="/" aria-label="Classistant home" className="group shrink-0">
+            <Logo size={32} className="transition-transform duration-300 group-hover:scale-[1.03]" />
           </Link>
 
-          <nav className="hidden items-center gap-1 md:flex">
+          <nav className="hidden items-center gap-0.5 md:flex">
             {NAV.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
-                className="rounded-lg px-3.5 py-2 text-[0.92rem] font-medium text-body transition-colors hover:bg-sky-100 hover:text-ink-900"
+                className="rounded-full px-3.5 py-2 text-[0.9rem] font-medium text-body transition-colors hover:bg-ink-900/6 hover:text-ink-900"
               >
                 {item.label}
               </Link>
             ))}
           </nav>
 
-          <div className="hidden items-center gap-2 md:flex">
+          <div className="hidden shrink-0 items-center gap-1.5 md:flex">
             <Link
               href="/onboarding"
-              className="rounded-lg px-3.5 py-2 text-[0.92rem] font-semibold text-ink-800 transition-colors hover:bg-sky-100"
+              className="rounded-full px-3.5 py-2 text-[0.9rem] font-semibold text-ink-800 transition-colors hover:bg-ink-900/6"
             >
               Sign in
             </Link>
             <Link
               href="/onboarding"
-              className="rounded-xl bg-brand-600 px-4.5 py-2.5 text-[0.92rem] font-semibold text-white shadow-[0_10px_22px_-12px_rgb(11_99_229_/_0.9)] transition-colors hover:bg-brand-700"
+              className="rounded-full bg-ink-900 px-5 py-2.5 text-[0.9rem] font-semibold text-white shadow-[0_8px_20px_-8px_rgb(6_32_58_/_0.8)] transition-all duration-200 hover:bg-ink-800 hover:shadow-[0_10px_26px_-8px_rgb(6_32_58_/_0.9)]"
             >
               Get set up
             </Link>
@@ -77,7 +95,7 @@ export function Header() {
             onClick={() => setOpen((v) => !v)}
             aria-expanded={open}
             aria-label={open ? "Close menu" : "Open menu"}
-            className="grid h-10 w-10 place-items-center rounded-lg ring-1 ring-line md:hidden"
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-full ring-1 ring-line transition-colors hover:bg-ink-900/6 md:hidden"
           >
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
               <path
@@ -89,18 +107,16 @@ export function Header() {
             </svg>
           </button>
         </div>
-      </Container>
 
-      {open ? (
-        <div className="border-t border-line bg-white md:hidden">
-          <Container>
-            <nav className="flex flex-col py-3">
+        {open ? (
+          <div className="pointer-events-auto relative mt-2 rounded-[1.75rem] bg-white/95 p-2 shadow-lift ring-1 ring-white/70 backdrop-blur-xl md:hidden">
+            <nav className="flex flex-col">
               {NAV.map((item) => (
                 <Link
                   key={item.href}
                   href={item.href}
                   onClick={() => setOpen(false)}
-                  className="rounded-lg px-3 py-3 text-[1rem] font-medium text-ink-800 hover:bg-sky-100"
+                  className="rounded-full px-4 py-3 text-[1rem] font-medium text-ink-800 hover:bg-ink-900/6"
                 >
                   {item.label}
                 </Link>
@@ -108,14 +124,46 @@ export function Header() {
               <Link
                 href="/onboarding"
                 onClick={() => setOpen(false)}
-                className="mt-2 rounded-xl bg-brand-600 px-4 py-3 text-center text-[0.95rem] font-semibold text-white"
+                className="mt-1 rounded-full bg-ink-900 px-4 py-3 text-center text-[0.95rem] font-semibold text-white"
               >
                 Get set up
               </Link>
             </nav>
-          </Container>
-        </div>
-      ) : null}
+          </div>
+        ) : null}
+      </div>
     </header>
+  );
+}
+
+/**
+ * The light behind the pill. Two blobs on different durations and offset
+ * delays, so their overlap never repeats on a short cycle.
+ */
+function GlowField({ scrolled }: { scrolled: boolean }) {
+  return (
+    <div
+      aria-hidden="true"
+      className={cn(
+        "absolute -inset-x-5 -bottom-7 -top-4 -z-10 transition-opacity duration-700",
+        scrolled ? "opacity-100" : "opacity-75",
+      )}
+    >
+      {/* Wide, low-opacity bed. This is what actually reads as light spilling
+          out from under the pill, so it is the widest and the most blurred. */}
+      <div
+        className="absolute inset-x-[6%] top-[30%] h-[95%] rounded-full bg-brand-600/40 blur-[46px] motion-safe:animate-glow-morph"
+        style={{ animationDuration: "22s" }}
+      />
+      {/* Two navy blobs drifting across it, for depth and colour variation. */}
+      <div
+        className="absolute left-[2%] top-0 h-full w-[54%] bg-ink-800/60 blur-[40px] motion-safe:animate-glow-morph"
+        style={{ animationDuration: "18s", animationDelay: "-3s" }}
+      />
+      <div
+        className="absolute right-[1%] top-[8%] h-full w-[50%] bg-ink-700/55 blur-[44px] motion-safe:animate-glow-morph"
+        style={{ animationDuration: "29s", animationDelay: "-11s" }}
+      />
+    </div>
   );
 }

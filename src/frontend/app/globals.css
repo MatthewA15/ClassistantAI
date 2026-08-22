@@ -48,10 +48,34 @@
 
   --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
 
+  --animate-glow-morph: glow-morph 18s ease-in-out infinite;
   --animate-float-slow: float-slow 9s var(--ease-out-soft) infinite;
   --animate-swing: swing 4.5s ease-in-out infinite;
   --animate-blink: blink 1.4s steps(2, start) infinite;
   --animate-marquee: marquee 42s linear infinite;
+}
+
+/* Slow blob morph for the light behind the floating header. The radii never
+   land on a circle, so the shape keeps drifting without ever settling. Heavy
+   blur is what turns this from a wobbling blob into breathing light. */
+@keyframes glow-morph {
+  0%,
+  100% {
+    border-radius: 42% 58% 46% 54% / 52% 44% 56% 48%;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  25% {
+    border-radius: 55% 45% 58% 42% / 44% 57% 43% 56%;
+    transform: translate3d(-2%, 2%, 0) scale(1.05);
+  }
+  50% {
+    border-radius: 46% 54% 41% 59% / 57% 48% 52% 43%;
+    transform: translate3d(2%, -1%, 0) scale(0.97);
+  }
+  75% {
+    border-radius: 59% 41% 53% 47% / 47% 53% 49% 51%;
+    transform: translate3d(1%, 2%, 0) scale(1.03);
+  }
 }
 
 @keyframes float-slow {

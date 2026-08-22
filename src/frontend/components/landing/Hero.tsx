@@ -89,10 +89,17 @@ function CheckDot() {
 function HeroBackdrop() {
   return (
     <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
-      <div className="grain-grid absolute inset-0 [mask-image:radial-gradient(70%_60%_at_50%_0%,black,transparent)]" />
+      {/* The grid's strongest point sits below the floating header rather than
+          at y=0, so it fades in instead of starting on a hard horizontal seam
+          where the header used to be attached. */}
+      <div className="grain-grid absolute inset-0 [mask-image:radial-gradient(68%_62%_at_50%_22%,black,transparent)]" />
 
-      <div className="absolute -left-32 -top-40 h-[32rem] w-[32rem] rounded-full bg-sky-200/45 blur-[110px]" />
-      <div className="absolute -right-24 top-24 h-[26rem] w-[26rem] rounded-full bg-brand-400/20 blur-[110px]" />
+      {/* Both washes stay clear of the section's top edge. The section is
+          overflow-hidden (to stop the left blob causing horizontal scroll), so
+          anything crossing that edge gets sliced into a hard line across the
+          page, right where the floating header no longer covers it. */}
+      <div className="absolute -left-32 top-4 h-[32rem] w-[32rem] rounded-full bg-sky-200/45 blur-[110px]" />
+      <div className="absolute -right-24 top-28 h-[26rem] w-[26rem] rounded-full bg-brand-400/20 blur-[110px]" />
 
       <svg
         className="absolute right-[6%] top-[12%] hidden h-[30rem] w-[30rem] lg:block"

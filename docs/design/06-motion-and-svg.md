@@ -20,6 +20,42 @@ it loops fast enough to compete with reading.
 | Step rail | Progress line grows by height transition | Cheapest possible sense of progress. |
 | Feature cards | Lift and ring-brighten on hover | Standard affordance, kept subtle. |
 | `SchoolStrip` | Marquee | Fits more names than fit on one line. |
+| `Header` | Three blurred navy blobs morphing behind the pill | Reads as light emitted from behind a floating object. See below. |
+
+## The floating header
+
+The header is a detached capsule rather than a full-width bar, so the page reads
+as sliding underneath it rather than under a lid. Behind it sit three heavily
+blurred blobs of dark blue, running `glow-morph` on three different durations
+(18s, 22s, 29s) with negative delays, so their overlap never repeats on a short
+cycle.
+
+Two things about it are worth knowing before editing:
+
+**The pill's own radius does not animate.** Morphing `border-radius` on a 64px
+capsule is mathematically invisible: anything above 32px clamps to the same
+shape. That was tried first. The motion had to live in the light behind it
+instead, where heavy blur turns a wobbling blob into something that reads as
+breathing.
+
+**Blur is what separates "light" from "smudge".** The blobs run 40 to 46px of
+blur at 38 to 60 percent opacity. Drop the blur and they immediately look like
+three navy shapes parked behind a button.
+
+The wrapper is `pointer-events-none` with `pointer-events-auto` on the pill, so
+the transparent gutter around the capsule never swallows clicks meant for the
+page underneath.
+
+### A trap this exposed
+
+Detaching the header removed the thing that was hiding a pre-existing bug. The
+hero section is `overflow-hidden` (needed, or the left backdrop blob causes
+horizontal scroll), and one blurred wash was positioned at `-top-40`, crossing
+that boundary. `overflow-hidden` sliced the blur into a hard horizontal line
+across the full page width, previously covered by the attached header.
+
+**Keep blurred decoration clear of the top edge of any `overflow-hidden`
+section.** A clipped blur is a visible seam, not a soft fade.
 
 ## How scroll reveal works
 
