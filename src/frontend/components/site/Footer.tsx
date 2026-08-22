@@ -14,7 +14,6 @@ const COLUMNS = [
   {
     title: "Company",
     links: [
-      { href: "/#faq", label: "FAQ" },
       { href: "mailto:hello@classistant.ca", label: "Contact" },
       { href: "mailto:schools@classistant.ca", label: "Request your school" },
     ],

@@ -21,7 +21,6 @@ const SECTIONS = [
   { id: null, label: "Overview" },
   { id: "how", label: "How it works" },
   { id: "features", label: "What it does" },
-  { id: "faq", label: "FAQ" },
 ] as const;
 
 /** Distance below the viewport top at which a section counts as "current". */
