@@ -1,0 +1,232 @@
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+   Classistant design tokens
+   Palette is deliberately narrow: dark blue, light blue, white.
+   Urgency is expressed with depth and motion, never with a new hue.
+   See docs/design/02-design-system.md for the reasoning.
+--------------------------------------------------------------------------- */
+
+@theme {
+  /* Dark blue ramp: surfaces, headings, "the agent is serious now" states */
+  --color-ink-950: #03121f;
+  --color-ink-900: #06203a;
+  --color-ink-800: #0a2c4d;
+  --color-ink-700: #0f3a63;
+  --color-ink-600: #17527f;
+
+  /* Working blue: actions, links, focus */
+  --color-brand-700: #0a4fb8;
+  --color-brand-600: #0b63e5;
+  --color-brand-500: #1b7bf5;
+  --color-brand-400: #4c9bff;
+
+  /* Light blue ramp: fills, chips, illustration */
+  --color-sky-500: #5fb0ff;
+  --color-sky-400: #8ecaff;
+  --color-sky-300: #b3dcff;
+  --color-sky-200: #d3e9ff;
+  --color-sky-100: #e8f3ff;
+  --color-sky-50: #f4f9ff;
+
+  /* Neutrals, all cooled slightly so nothing reads as grey-brown */
+  --color-paper: #f7fbff;
+  --color-line: #d9e8f7;
+  --color-line-soft: #eaf2fb;
+  --color-body: #3f5a76;
+  --color-body-soft: #6a83a0;
+
+  --font-display: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+  --radius-card: 1.25rem;
+  --radius-shell: 1.75rem;
+
+  --shadow-soft: 0 1px 2px rgb(6 32 58 / 0.05), 0 12px 28px -12px rgb(6 32 58 / 0.14);
+  --shadow-lift: 0 2px 4px rgb(6 32 58 / 0.06), 0 28px 60px -24px rgb(6 32 58 / 0.28);
+  --shadow-inset-line: inset 0 0 0 1px rgb(217 232 247 / 1);
+
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+
+  --animate-float-slow: float-slow 9s var(--ease-out-soft) infinite;
+  --animate-swing: swing 4.5s ease-in-out infinite;
+  --animate-blink: blink 1.4s steps(2, start) infinite;
+  --animate-marquee: marquee 42s linear infinite;
+}
+
+@keyframes float-slow {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes swing {
+  0%,
+  100% {
+    transform: rotate(-5deg);
+  }
+  50% {
+    transform: rotate(5deg);
+  }
+}
+
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes bubble-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.75);
+    opacity: 0.55;
+  }
+  70% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-white);
+    color: var(--color-body);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display);
+    color: var(--color-ink-900);
+    letter-spacing: -0.022em;
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  ::selection {
+    background: var(--color-sky-300);
+    color: var(--color-ink-900);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-brand-600);
+    outline-offset: 3px;
+    border-radius: 4px;
+  }
+}
+
+@layer components {
+  /* Reveal-on-scroll.
+     Elements start hidden only where scripting is actually available, so with
+     JS off (or broken) the page renders complete instead of blank. The
+     `scripting` media feature does this without an inline script mutating
+     <html>, which would trip React's hydration attribute check. Browsers too
+     old to know the feature simply skip the block and show everything at once,
+     which is the correct degradation. */
+  @media (scripting: enabled) {
+    .reveal {
+      opacity: 0;
+      transform: translateY(18px);
+      transition:
+        opacity 0.7s var(--ease-out-soft),
+        transform 0.7s var(--ease-out-soft);
+      transition-delay: var(--reveal-delay, 0ms);
+    }
+
+    .reveal[data-shown="true"] {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  .draw-line {
+    stroke-dasharray: var(--dash, 400);
+    stroke-dashoffset: var(--dash, 400);
+  }
+
+  [data-shown="true"] .draw-line,
+  .draw-line[data-shown="true"] {
+    animation: draw 1.5s var(--ease-out-soft) forwards;
+    animation-delay: var(--draw-delay, 0ms);
+  }
+
+  .grain-grid {
+    background-image:
+      linear-gradient(to right, rgb(11 99 229 / 0.05) 1px, transparent 1px),
+      linear-gradient(to bottom, rgb(11 99 229 / 0.05) 1px, transparent 1px);
+    background-size: 44px 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+
+  .reveal,
+  .reveal[data-shown="false"] {
+    opacity: 1;
+    transform: none;
+  }
+
+  .draw-line {
+    stroke-dashoffset: 0;
+  }
+}
