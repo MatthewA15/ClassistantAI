@@ -17,6 +17,13 @@ import { cn } from "@/lib/cn";
  * Blue and green because both are real: iMessage blue between Apple devices,
  * SMS green everywhere else. Alternating them says "works on your phone,
  * whichever one it is" without a line of copy.
+ *
+ * TODO(founders): the "84 hours a year" headline is a performance claim, and
+ * the asterisk in the footer points at an estimate. Under s.74.01(1)(b) of the
+ * Competition Act a performance claim must rest on adequate and proper testing
+ * carried out BEFORE the claim is published, and a footnote does not cure an
+ * untested one. Either run the survey the footnote describes and keep the
+ * method on file, or soften the headline. See docs/design/08-legal-pages.md.
  */
 
 type Pair = {
@@ -58,10 +65,11 @@ export function CtaBand() {
         <Reveal className="mx-auto max-w-2xl text-center">
           <LogoMark size={56} tone="white" animated className="mx-auto" />
           <h2 className="mt-7 text-[2.4rem] font-extrabold leading-[1.06] text-white sm:text-[3.2rem]">
-            Set it up before the syllabi pile up
+            The average student saves 84 hours a year
+            <span aria-hidden="true">*</span>
           </h2>
           <p className="mx-auto mt-5 max-w-md text-[1.08rem] leading-[1.6] text-sky-200/85">
-            Four minutes now. Free in early access.
+            It only costs 4 minutes of your time.
           </p>
           <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
             <Button href="/#hero" variant="onInk" className="group">

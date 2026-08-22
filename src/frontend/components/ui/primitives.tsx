@@ -34,8 +34,8 @@ export function Section({
   padTop?: "normal" | "tight" | "loose";
   /**
    * `tight` pairs with the next section's `padTop="tight"`. `loose` when the
-   * section ends on a large visual and the next one opens on a colour change,
-   * where normal padding reads as the two crashing together.
+   * section ends on a large visual, where normal padding lets whatever follows
+   * read as part of the same block.
    */
   padBottom?: "normal" | "tight" | "loose";
 }) {

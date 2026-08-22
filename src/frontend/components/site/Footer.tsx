@@ -77,7 +77,11 @@ export function Footer() {
               Designed by Wopara
             </a>
           </p>
-          <p>
+          <p className="max-w-md sm:text-right">
+            <span aria-hidden="true">*</span> The 84 hour figure is an estimate, based on time a
+            sampled group of students reported spending organising their own schedules. Individual
+            results vary.
+            <br />
             Classistant is not affiliated with, endorsed by, or operated by any university,
             college, or Google LLC.
           </p>

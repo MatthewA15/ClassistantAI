@@ -63,11 +63,12 @@ const ROWS: Row[] = [
 
 export function Showcase() {
   return (
-    // The step cards above end on a hard card edge and the section colour
-    // changes mid-gap, so a gap that measures the same as the one between rows
-    // still reads as tighter. It gets normal top padding to compensate. loose
-    // at the bottom for the same reason: the next section opens dark, and
-    // normal padding let the last scene crash straight into it.
+    // The step cards above end on a hard card edge and the paper-to-white
+    // change lands mid-gap, so a gap that measures the same as the one between
+    // rows still read as tighter than it: normal top padding buys it back.
+    // loose at the bottom because the last row ends on a full-height scene and
+    // the section after it starts on a heading with no visual of its own, so
+    // the break between them has to out-measure the gap between rows.
     <Section padTop="normal" padBottom="loose">
       <Container>
         <div className="flex flex-col gap-24 sm:gap-32">

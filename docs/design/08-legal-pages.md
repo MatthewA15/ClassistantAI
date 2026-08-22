@@ -12,6 +12,13 @@ works, rather than a generic template with the product name swapped in. They are
 
 Before launch:
 
+0. **Substantiate the "84 hours a year" headline, or soften it.** The closing
+   CTA makes a numeric performance claim with an asterisk pointing at a footer
+   estimate. Under s.74.01(1)(b) of the Competition Act a performance claim must
+   rest on **adequate and proper testing carried out before the claim is
+   published**, and a disclaimer does not cure an untested one. Either run the
+   survey the footnote describes and keep the methodology on file, or reword the
+   headline so it is not a measurable claim.
 1. Have a Canadian privacy lawyer review both, particularly the credential
    handling, the CASL consent language, and the liability cap.
 2. Replace the placeholders in `data/legal.ts`: legal entity name, registered

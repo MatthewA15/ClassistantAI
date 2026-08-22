@@ -2,28 +2,31 @@ import type { ReactNode } from "react";
 import { LogoMark } from "@/components/brand/LogoMark";
 import { Container, Section, SectionHeading } from "@/components/ui/primitives";
 import { Reveal } from "@/components/ui/Reveal";
+import * as I from "@/components/landing/featureGlyphs";
 import { cn } from "@/lib/cn";
 
 /**
  * The feature recap, built the way Apple closes a keynote.
  *
- * The first attempt got this wrong: it went dark and gave every tile a title
- * plus a sentence of explanation. That is a feature grid wearing a dark theme.
- * The actual pattern is:
- *
  *  - **Light.** Soft grey tiles on white. The tiles recede and the words carry.
- *  - **Names, not descriptions.** Almost every tile is a single feature name in
- *    bold, centred. If a feature needs a sentence, it is not recap material.
- *  - **Mostly small, a few big.** Twenty little tiles around five that hold a
- *    real visual. The little ones create the density; the big ones stop the
- *    wall reading as a word cloud.
- *  - **Tight.** 8px gutters, so tiles nearly touch and the wall reads as one
- *    object rather than a set of cards.
- *  - **A little colour.** Three tiles put one word in colour. Uniform black
- *    would be flat; colouring everything would be noise.
+ *  - **Names, not descriptions.** Every tile is an icon and a feature name. If
+ *    a feature needs a sentence, it is not recap material.
+ *  - **Every tile carries a mark.** Five hold a real visual (the brand plate, a
+ *    phone, a month grid, a score ring, the notification stack); the other
+ *    twenty carry a line icon. Tiles with nothing but text read as filler next
+ *    to tiles with art, which is exactly what the first pass looked like.
+ *  - **Tight.** 8px gutters, so the wall reads as one object.
+ *  - **A little colour.** Three names put one word in colour, and a few icons
+ *    take a functional hue where the meaning calls for it.
  *
- * Tile sizes sum to 42 cells, exactly seven rows of six. Land on a non-multiple
- * and `grid-auto-flow: dense` leaves a hole in the last row.
+ * The brand plate is explicitly placed at the dead centre of the grid on large
+ * screens, the way the OS tile anchors Apple's: rows 4-5 of eight, columns 3-4
+ * of six. Everything else is auto-placed with `grid-auto-flow: dense` and flows
+ * around it.
+ *
+ * Sizes sum to 48 cells, exactly eight rows of six. Pinning the plate changes
+ * how the rest packs, so the count had to grow from 42; land on anything else
+ * and dense flow leaves holes around the anchor.
  */
 
 type Span = { col?: 1 | 2; row?: 1 | 2 | 3 };
@@ -51,19 +54,37 @@ function Tile({
   );
 }
 
-/** A tile that is only a name. The bulk of the wall. */
+/** Icon over a name. The bulk of the wall. */
 function Name({
   children,
+  icon,
   col = 1,
-  row = 1,
   size = "sm",
-}: Span & { children: ReactNode; size?: "sm" | "md" }) {
+  tone = "brand",
+}: Span & {
+  children: ReactNode;
+  icon: ReactNode;
+  size?: "sm" | "md";
+  tone?: "brand" | "ink" | "alert";
+}) {
   return (
-    <Tile col={col} row={row}>
+    <Tile col={col}>
+      <span
+        className={cn(
+          "mb-1.5",
+          tone === "alert"
+            ? "text-[var(--color-alert)]"
+            : tone === "ink"
+              ? "text-ink-800"
+              : "text-brand-600",
+        )}
+      >
+        {icon}
+      </span>
       <p
         className={cn(
           "font-display font-bold leading-[1.15] text-ink-900",
-          size === "md" ? "text-[1.05rem] sm:text-[1.2rem]" : "text-[0.88rem] sm:text-[0.96rem]",
+          size === "md" ? "text-[1rem] sm:text-[1.12rem]" : "text-[0.84rem] sm:text-[0.92rem]",
         )}
       >
         {children}
@@ -77,83 +98,97 @@ export function Features() {
     <Section id="features">
       <Container>
         <Reveal>
-          <SectionHeading
-            label="The full list"
-            title="Everything it handles"
-            lead="One job, start of term to final grades."
-          />
+          <SectionHeading title="Everything it handles" lead="One job, start of term to final grades." />
         </Reveal>
 
         <Reveal delay={80}>
-          <div className="mt-12 grid auto-rows-[5.2rem] grid-cols-2 gap-2 sm:auto-rows-[5.6rem] sm:grid-cols-4 lg:grid-cols-6">
-            {/* The centrepiece, their gradient "iOS" tile */}
-            <Tile col={2} row={2} className="bg-gradient-to-br from-brand-500 to-ink-800">
+          <div className="mt-12 grid auto-rows-[6.2rem] grid-cols-2 gap-2 sm:auto-rows-[6.6rem] sm:grid-cols-4 lg:grid-cols-6">
+            {/* Anchored dead centre on lg: rows 3-4, columns 3-4 of a 6x7 grid. */}
+            <Tile
+              col={2}
+              row={2}
+              className="bg-gradient-to-br from-brand-500 to-ink-800 lg:col-start-3 lg:row-start-4"
+            >
               <LogoMark size={38} tone="white" />
-              <p className="mt-3 font-display text-[1.35rem] font-extrabold leading-none text-white sm:text-[1.55rem]">
+              <p className="mt-3 font-display text-[1.3rem] font-extrabold leading-none text-white sm:text-[1.5rem]">
                 Classistant
               </p>
-              <p className="mt-1.5 text-[0.74rem] font-medium text-white/70">One number, all term</p>
+              <p className="mt-1.5 text-[0.72rem] font-medium text-white/70">One number, all term</p>
             </Tile>
 
             <Tile col={1} row={3} className="justify-between p-2.5">
               <PhoneMock />
-              <p className="pb-1 font-display text-[0.86rem] font-bold text-ink-900">It calls you</p>
+              <p className="pb-1 font-display text-[0.84rem] font-bold text-ink-900">It calls you</p>
             </Tile>
 
             <Tile col={2} row={2}>
               <MiniCalendar />
-              <p className="mt-2.5 font-display text-[0.9rem] font-bold text-ink-900">
+              <p className="mt-2.5 font-display text-[0.88rem] font-bold text-ink-900">
                 Your whole term, filled in
               </p>
             </Tile>
 
             <Tile col={1} row={2}>
               <Score />
-              <p className="mt-2 font-display text-[0.86rem] font-bold text-ink-900">Grade alerts</p>
+              <p className="mt-2 font-display text-[0.84rem] font-bold text-ink-900">Grade alerts</p>
             </Tile>
-
-            <Name col={2} size="md">
-              Syllabus <span className="text-brand-600">parsing</span>
-            </Name>
-            <Name>Exam dates</Name>
-            <Name>Lab times</Name>
-            <Name>Room changes</Name>
-
-            <Name col={2} size="md">
-              <span className="text-[var(--color-alert)]">Final</span> warnings
-            </Name>
-            <Name>Grade history</Name>
-            <Name>Email drafts</Name>
 
             <Tile col={2} row={2}>
               <Notification />
-              <p className="mt-2.5 font-display text-[0.9rem] font-bold text-ink-900">
+              <p className="mt-2.5 font-display text-[0.88rem] font-bold text-ink-900">
                 It gets louder on purpose
               </p>
             </Tile>
 
-            <Name>Reads PDFs</Name>
-            <Name>Quiet hours</Name>
-            <Name>Weekly digest</Name>
-            <Name>Course files</Name>
+            <Name col={2} size="md" icon={<I.IconSyllabus />}>
+              Syllabus <span className="text-brand-600">parsing</span>
+            </Name>
+            <Name icon={<I.IconExam />}>Exam dates</Name>
+            <Name icon={<I.IconLab />}>Lab times</Name>
+            <Name icon={<I.IconRoom />}>Room changes</Name>
 
-            <Name col={2} size="md">
+            <Name col={2} size="md" tone="alert" icon={<I.IconWarning />}>
+              <span className="text-[var(--color-alert)]">Final</span> warnings
+            </Name>
+            <Name icon={<I.IconHistory />}>Grade history</Name>
+            <Name icon={<I.IconDraft />}>Email drafts</Name>
+
+            <Name icon={<I.IconPdf />}>Reads PDFs</Name>
+            <Name tone="ink" icon={<I.IconMoon />}>
+              Quiet hours
+            </Name>
+            <Name icon={<I.IconDigest />}>Weekly digest</Name>
+            <Name icon={<I.IconFolder />}>Course files</Name>
+
+            <Name col={2} size="md" icon={<I.IconOvernight />}>
               Works while you <span className="text-brand-600">sleep</span>
             </Name>
-            <Name>Study blocks</Name>
-            <Name>Timezone aware</Name>
+            <Name icon={<I.IconBlock />}>Study blocks</Name>
+            <Name icon={<I.IconGlobe />}>Timezone aware</Name>
 
-            <Name col={2} size="md">
+            <Name col={2} size="md" icon={<I.IconOfficeHours />}>
               Books office hours
             </Name>
-            <Name>Group chasing</Name>
-            <Name>Cancelled classes</Name>
+            <Name icon={<I.IconGroup />}>Group chasing</Name>
+            <Name tone="alert" icon={<I.IconCancelled />}>
+              Cancelled classes
+            </Name>
 
-            <Name col={2} size="md">
+            <Name col={2} size="md" icon={<I.IconRank />}>
               Ranks what to do next
             </Name>
-            <Name>iOS and Android</Name>
-            <Name>One text to stop</Name>
+            <Name icon={<I.IconPlatforms />}>iOS and Android</Name>
+            <Name tone="ink" icon={<I.IconStop />}>
+              One text to stop
+            </Name>
+            <Name icon={<I.IconWeight />}>Knows the weighting</Name>
+            <Name icon={<I.IconRefresh />}>Re-checks dates</Name>
+            <Name icon={<I.IconThreads />}>Summarises threads</Name>
+            <Name icon={<I.IconAnnounce />}>Announcements</Name>
+            <Name icon={<I.IconTimer />}>Deadline countdown</Name>
+            <Name tone="ink" icon={<I.IconShield />}>
+              Protects your time
+            </Name>
           </div>
         </Reveal>
       </Container>
@@ -187,29 +222,27 @@ function PhoneMock() {
 }
 
 function MiniCalendar() {
-  const marks: Record<number, "brand" | "alert"> = {
-    4: "brand",
-    9: "brand",
-    13: "alert",
-    18: "brand",
-    24: "alert",
+  const marks: Record<number, string> = {
+    4: "var(--color-brand-600)",
+    9: "var(--color-brand-600)",
+    13: "var(--color-alert)",
+    18: "var(--color-brand-600)",
+    24: "var(--color-alert)",
   };
   return (
-    <div className="grid w-full max-w-[9rem] grid-cols-7 gap-[3px]">
+    <svg viewBox="0 0 104 44" className="w-full max-w-[9rem]" aria-hidden="true">
       {Array.from({ length: 28 }).map((_, i) => (
-        <span
+        <rect
           key={i}
-          className={cn(
-            "aspect-square rounded-[0.2rem]",
-            marks[i] === "brand"
-              ? "bg-brand-600"
-              : marks[i] === "alert"
-                ? "bg-[var(--color-alert)]"
-                : "bg-white",
-          )}
+          x={(i % 7) * 15}
+          y={Math.floor(i / 7) * 11}
+          width="12"
+          height="8"
+          rx="2"
+          fill={marks[i] ?? "#fff"}
         />
       ))}
-    </div>
+    </svg>
   );
 }
 
@@ -237,22 +270,20 @@ function Score() {
 }
 
 function Notification() {
+  const rows = [
+    { tone: "var(--color-ok)", w: 74 },
+    { tone: "var(--color-warn)", w: 88 },
+    { tone: "var(--color-alert)", w: 102 },
+  ];
   return (
-    <div className="flex w-full max-w-[10rem] flex-col gap-1">
-      {[
-        { tone: "var(--color-ok)", w: "72%" },
-        { tone: "var(--color-warn)", w: "86%" },
-        { tone: "var(--color-alert)", w: "100%" },
-      ].map((row) => (
-        <span
-          key={row.tone}
-          className="flex items-center gap-1.5 rounded-[0.5rem] bg-white px-1.5 py-1.5"
-          style={{ width: row.w }}
-        >
-          <span className="h-2.5 w-2.5 shrink-0 rounded-[0.2rem]" style={{ background: row.tone }} />
-          <span className="h-1 flex-1 rounded-full bg-ink-900/12" />
-        </span>
+    <svg viewBox="0 0 104 44" className="w-full max-w-[10rem]" aria-hidden="true">
+      {rows.map((row, i) => (
+        <g key={row.tone}>
+          <rect x="0" y={i * 15} width={row.w} height="12" rx="4" fill="#fff" />
+          <rect x="4" y={i * 15 + 3.5} width="5" height="5" rx="1.4" fill={row.tone} />
+          <rect x="13" y={i * 15 + 5} width={row.w - 20} height="2" rx="1" fill="var(--color-line)" />
+        </g>
       ))}
-    </div>
+    </svg>
   );
 }
