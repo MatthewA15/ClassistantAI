@@ -53,7 +53,10 @@ export function CtaBand() {
   return (
     <section
       id="final-cta"
-      className="relative flex flex-col justify-center overflow-hidden bg-ink-900 py-24 xl:min-h-[52rem]"
+      // Curved top corners, mirroring the hero's curved bottom, so the page
+      // opens and closes on the same shape. The white section above shows
+      // through the corners, which is what makes the curve read at all.
+      className="relative flex flex-col justify-center overflow-hidden rounded-t-[2rem] bg-ink-900 py-24 sm:rounded-t-[3rem] xl:min-h-[52rem]"
     >
       <Backdrop />
 

@@ -28,14 +28,19 @@ const COLUMNS = [
   },
 ];
 
+/**
+ * Same ink as the closing CTA above it, so the page ends on one uninterrupted
+ * dark block instead of a dark band and then a light strip. No top border for
+ * the same reason: with both sides the same colour there is no edge to draw.
+ */
 export function Footer() {
   return (
-    <footer className="border-t border-line bg-paper">
+    <footer className="bg-ink-900">
       <Container>
         <div className="grid gap-10 py-14 sm:grid-cols-2 lg:grid-cols-[1.4fr_repeat(3,1fr)]">
           <div>
-            <Logo size={34} />
-            <p className="mt-4 max-w-xs text-[0.9rem] leading-[1.6] text-body">
+            <Logo size={34} tone="white" />
+            <p className="mt-4 max-w-xs text-[0.9rem] leading-[1.6] text-sky-200/75">
               A school assistant that lives in your text messages. Built in Canada, for
               students at Canadian schools running on Google.
             </p>
@@ -43,7 +48,7 @@ export function Footer() {
 
           {COLUMNS.map((col) => (
             <div key={col.title}>
-              <h3 className="text-[0.8rem] font-semibold uppercase tracking-[0.14em] text-ink-900">
+              <h3 className="text-[0.8rem] font-semibold uppercase tracking-[0.14em] text-white">
                 {col.title}
               </h3>
               <ul className="mt-4 flex flex-col gap-2.5">
@@ -51,7 +56,7 @@ export function Footer() {
                   <li key={link.label}>
                     <Link
                       href={link.href}
-                      className="text-[0.9rem] text-body transition-colors hover:text-brand-600"
+                      className="text-[0.9rem] text-sky-200/75 transition-colors hover:text-white"
                     >
                       {link.label}
                     </Link>
@@ -62,17 +67,17 @@ export function Footer() {
           ))}
         </div>
 
-        <div className="flex flex-col gap-3 border-t border-line py-7 text-[0.82rem] text-body-soft sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 border-t border-white/12 py-7 text-[0.82rem] text-sky-200/60 sm:flex-row sm:items-center sm:justify-between">
           <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span>&copy; {new Date().getFullYear()} Classistant. All rights reserved.</span>
-            <span aria-hidden="true" className="hidden text-line sm:inline">
+            <span aria-hidden="true" className="hidden text-white/25 sm:inline">
               &middot;
             </span>
             <a
               href="https://wopara.com"
               target="_blank"
               rel="noreferrer"
-              className="font-semibold text-body transition-colors hover:text-brand-600"
+              className="font-semibold text-sky-200/85 transition-colors hover:text-white"
             >
               Designed by Wopara
             </a>

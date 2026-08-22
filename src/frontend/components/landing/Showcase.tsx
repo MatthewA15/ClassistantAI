@@ -20,6 +20,31 @@ type Row = {
 
 // No prose paragraphs here on purpose. The screenshot carries the explanation
 // and the four points carry the detail. See docs/design/02-design-system.md.
+/**
+ * Volume-at-full, set inline after the word it belongs to.
+ *
+ * Sized in `em` so it tracks the heading at every breakpoint, and wrapped with
+ * the word in a nowrap span so the icon can never be orphaned onto its own
+ * line. Brand blue picks up the same accent treatment the other headlines use
+ * on a single word.
+ */
+function VolumeFull() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      className="ml-[0.12em] inline-block h-[0.7em] w-[0.7em] align-[-0.03em] text-brand-600"
+    >
+      <path d="M3 9.2h3.4L11.6 5v14L6.4 14.8H3z" fill="currentColor" />
+      <g fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round">
+        <path d="M14.9 9.5a3.9 3.9 0 0 1 0 5" />
+        <path d="M17.8 7.1a7.8 7.8 0 0 1 0 9.8" />
+        <path d="M20.7 4.7a11.7 11.7 0 0 1 0 14.6" />
+      </g>
+    </svg>
+  );
+}
+
 const ROWS: Row[] = [
   {
     key: "syllabus",
@@ -50,7 +75,16 @@ const ROWS: Row[] = [
   },
   {
     key: "escalation",
-    title: "It gets louder on purpose",
+    title: (
+      <>
+        It gets{" "}
+        <span className="whitespace-nowrap">
+          louder
+          <VolumeFull />
+        </span>{" "}
+        on purpose
+      </>
+    ),
     points: [
       "A quiet nudge while there is still time",
       "A real reminder once you have not started",

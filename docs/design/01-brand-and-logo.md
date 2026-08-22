@@ -2,60 +2,70 @@
 
 ## The problem the mark has to solve
 
-Classistant is two things at once: it is about school, and it lives in your text
-messages. A logo that only says "school" looks like every other edtech product.
-A logo that only says "chat" looks like a support widget. The mark had to fuse
-both, and stay legible at 24px in a browser tab.
+Classistant is two things at once: it is about school, and it is about someone
+handling that for you. A logo that only says "school" looks like every other
+edtech product. A logo that only says "assistant" or "chat" looks like a support
+widget. The mark had to fuse both and stay legible at 24px in a browser tab.
 
 ## What we built
 
-A **mortarboard board that is also a message bubble.**
+**An OK hand holding up half a graduation cap.**
 
-- The diamond is a graduation cap's board seen from above.
-- Its three upper corners are softly rounded, but the **bottom corner comes to a
-  near point**, which is what a chat bubble's tail does. That one asymmetry is
-  what makes the shape read as both objects instead of a plain diamond.
-- Two white bars sit inside it, which read as lines of text in a message.
-- A **tassel** hangs off the right corner, cord plus bead. The tassel is what
-  removes any remaining ambiguity: a diamond with a tassel is unmistakably a
-  graduation cap.
+- The **hand** is the promise: handled, sorted, you are good.
+- The **cap** is the subject.
+- The cap is drawn whole, but its left point sits behind the fingers, so what
+  reads is the right half of a mortarboard emerging from a fist.
 
 Source: [`components/brand/LogoMark.tsx`](../../src/frontend/components/brand/LogoMark.tsx)
+
+### Construction notes
+
+The crown is drawn **first**, so the board sits on top of it. Without the crown
+the board is just a diamond and the mark stops saying "cap" at all.
+
+The hand is not one path. The ring is the thumb and index as a stroked circle;
+the palm and three fingers are separate strokes that merge into a single
+silhouette. Drawn as one filled shape the counter inside the ring closes up at
+small sizes, and the whole thing turns into a blob.
+
+The tassel is anchored at the board's right corner, which is also the pivot the
+swing animation rotates around.
 
 ## Alternatives considered and rejected
 
 | Idea | Why it lost |
 | --- | --- |
+| Cap cut with a real vertical edge | Read as a pennant on a pole. A right-pointing triangle needs the crown above and the button over it before anyone sees a graduation cap. |
+| Mortarboard that doubles as a message bubble | The earlier mark. Legible, but it said "school" and "texting" without saying anything about the thing doing the work. |
 | Letter mark, a "C" in a rounded square | Exactly the low-effort result the brief ruled out. Says nothing. |
-| Speech bubble sitting on top of a mortarboard | Two whole objects stacked. Turned to mush below 32px. |
-| Open book forming a bubble | Book shapes and bubble shapes fight each other; the silhouette read as neither. |
 | Bell or alarm glyph | Describes nagging, which is one feature, not the product. |
 
 ## Tones
 
 Three, defined in one table in the component so nobody invents a fourth.
 
-- `brand` (default): board carries an ink-to-blue gradient. For white and light
-  backgrounds.
-- `white`: board flips to white so the mark keeps its visual weight on the navy
-  sections. Tassel stays light blue, which is the one constant across tones.
-- `ink`: flat single colour. For the favicon, print, embroidery, and anywhere a
-  gradient will not survive.
+- `brand` (default): the hand carries a dark-to-working-blue gradient, the cap
+  is light. For white and light backgrounds.
+- `white`: the hand flips to white so the mark keeps its weight on navy
+  sections, which is where the footer and closing CTA now sit.
+- `ink`: one hue at three values. For the favicon, print, embroidery, and
+  anywhere a gradient dies.
 
 ## Wordmark
 
-Plus Jakarta Sans ExtraBold, tracking tightened to -0.03em. Set solid next to the
-mark with a 2.5 gap. It is a geometric humanist face, so it sits comfortably next
-to a geometric mark without looking like a tech startup default.
+Bricolage Grotesque ExtraBold, tracking tightened to -0.03em, set solid next to
+the mark. It is a face with real character, so it sits beside a characterful
+mark without either fighting the other.
 
-The name is always **Classistant**, one word, capital C only. Never "ClassistantAI"
-in user-facing copy. The repo is named that for historical reasons.
+The name is always **Classistant**, one word, capital C only. Never
+"ClassistantAI" in user-facing copy; the repo is named that for historical
+reasons.
 
 ## Rules
 
-- Do not rotate the mark. The tassel establishes an up direction.
-- Do not recolour the tassel. It is the recognition anchor.
-- The tassel swing animation (`animated` prop) is for moments of arrival only:
-  the final CTA and the onboarding success screen. It is not for the header,
-  where a permanently moving logo is distracting.
-- Minimum size 20px. Below that the message bars close up.
+- Do not rotate the mark. The hand establishes an up direction.
+- Do not recolour the tassel independently. It is the recognition anchor.
+- The tassel swing (`animated` prop) is for moments of arrival only: the closing
+  CTA and the onboarding success screen. Not the header, where a permanently
+  moving logo is a distraction.
+- Minimum size 20px. Below that the counter inside the hand's ring closes.

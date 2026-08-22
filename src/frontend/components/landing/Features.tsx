@@ -104,7 +104,6 @@ export function Features() {
               <p className="mt-3 font-display text-[1.3rem] font-extrabold leading-none text-white sm:text-[1.5rem]">
                 Classistant
               </p>
-              <p className="mt-1.5 text-[0.72rem] font-medium text-white/70">One number, all term</p>
             </Tile>
 
             <Tile col={1} row={3} className="justify-between p-2.5">
