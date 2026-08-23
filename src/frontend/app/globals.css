@@ -1,0 +1,509 @@
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+   Classistant design tokens
+   Palette is deliberately narrow: dark blue, light blue, white.
+   Urgency is expressed with depth and motion, never with a new hue.
+   See docs/design/02-design-system.md for the reasoning.
+--------------------------------------------------------------------------- */
+
+@theme {
+  /* Dark blue ramp: surfaces, headings, "the agent is serious now" states */
+  --color-ink-950: #03121f;
+  --color-ink-900: #06203a;
+  --color-ink-800: #0a2c4d;
+  --color-ink-700: #0f3a63;
+  --color-ink-600: #17527f;
+
+  /* Working blue: actions, links, focus */
+  --color-brand-700: #0a4fb8;
+  --color-brand-600: #0b63e5;
+  --color-brand-500: #1b7bf5;
+  --color-brand-400: #4c9bff;
+
+  /* Light blue ramp: fills, chips, illustration */
+  --color-sky-500: #5fb0ff;
+  --color-sky-400: #8ecaff;
+  --color-sky-300: #b3dcff;
+  --color-sky-200: #d3e9ff;
+  --color-sky-100: #e8f3ff;
+  --color-sky-50: #f4f9ff;
+
+  /* Neutrals, all cooled slightly so nothing reads as grey-brown */
+  --color-paper: #f7fbff;
+  --color-line: #d9e8f7;
+  --color-line-soft: #eaf2fb;
+  --color-body: #3f5a76;
+  --color-body-soft: #6a83a0;
+
+  --font-display: var(--font-display-face), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-body-face), ui-sans-serif, system-ui, sans-serif;
+
+  --radius-card: 1.25rem;
+  --radius-shell: 1.75rem;
+
+  --shadow-soft: 0 1px 2px rgb(6 32 58 / 0.05), 0 12px 28px -12px rgb(6 32 58 / 0.14);
+  --shadow-lift: 0 2px 4px rgb(6 32 58 / 0.06), 0 28px 60px -24px rgb(6 32 58 / 0.28);
+  --shadow-inset-line: inset 0 0 0 1px rgb(217 232 247 / 1);
+
+  /* Second brand colour when a school theme is active. Defaults to our own
+     light blue so components can reference it before a school is picked. */
+  --color-accent: #8ecaff;
+
+  /* The one non-blue in the system. Functional only: it marks "you missed a
+     required step", never decoration. Not overridden by school themes, since
+     an error must not repaint into a school's brand colour. */
+  --color-alert: #e5484d;
+
+  /* Pairs with --color-alert. Functional only: it marks a step that passed,
+     never decoration. Like alert, school themes do not override it. */
+  --color-ok: #16a34a;
+
+  /* Hero wash. A tint of the accent rather than a fixed blue, so a school
+     theme carries into the largest surface on the page: U of A's gold, Mount
+     Royal's Lincoln blue. Deliberately a shade deeper than the old sky-50, and
+     it also makes the hero's curved bottom edge read against the white below.
+     Kept light enough that ink-900 headings stay well clear of AA. */
+  --color-hero: color-mix(in oklab, var(--color-accent) 22%, white);
+
+  /* The middle of the escalation ramp. ok -> warn -> alert is the only place
+     the palette runs three non-blue hues, and it earns it: the whole point of
+     that section is that the pressure visibly increases, and hue is the one
+     signal a reader decodes without being taught it. Functional only. */
+  --color-warn: #f0a020;
+
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+
+  --animate-glow-morph: glow-morph 18s ease-in-out infinite;
+  --animate-float-slow: float-slow 9s var(--ease-out-soft) infinite;
+  --animate-swing: swing 4.5s ease-in-out infinite;
+  --animate-blink: blink 1.4s steps(2, start) infinite;
+  --animate-marquee: marquee 42s linear infinite;
+}
+
+/* Slow blob morph for the light behind the floating header. The radii never
+   land on a circle, so the shape keeps drifting without ever settling. Heavy
+   blur is what turns this from a wobbling blob into breathing light. */
+@keyframes glow-morph {
+  0%,
+  100% {
+    border-radius: 42% 58% 46% 54% / 52% 44% 56% 48%;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  25% {
+    border-radius: 55% 45% 58% 42% / 44% 57% 43% 56%;
+    transform: translate3d(-2%, 2%, 0) scale(1.05);
+  }
+  50% {
+    border-radius: 46% 54% 41% 59% / 57% 48% 52% 43%;
+    transform: translate3d(2%, -1%, 0) scale(0.97);
+  }
+  75% {
+    border-radius: 59% 41% 53% 47% / 47% 53% 49% 51%;
+    transform: translate3d(1%, 2%, 0) scale(1.03);
+  }
+}
+
+/* Handset cross-swap in the hero. Slight lift and rotation so the platform
+   change reads as one device replacing another, not a texture cross-fade. */
+@keyframes phone-swap {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.965) rotate(-1.2deg);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1) rotate(0deg);
+  }
+}
+
+/* The three-dot typing indicator, matching the ease of the real thing. */
+@keyframes typing-dot {
+  0%,
+  60%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-2.5px);
+  }
+}
+
+/* Each school button hops once, in sequence, while the page explains that the
+   list is the whole list. Overshoot on the way down so it reads as weight
+   landing rather than a linear bounce. */
+@keyframes button-jump {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  30% {
+    transform: translateY(-11px) scale(1.06);
+  }
+  58% {
+    transform: translateY(0) scale(0.97);
+  }
+  78% {
+    transform: translateY(-3px) scale(1.01);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   How-it-works scenes. Four looping stick-figure animations, all on one 9s
+   cycle so the row breathes together. Percentages below are windows in that
+   cycle, which is why they look arbitrary: they are storyboard beats.
+   See docs/design/10-how-it-works-scenes.md.
+--------------------------------------------------------------------------- */
+
+/* Step 1: the four poses. Windows are contiguous, not spaced: an earlier
+   version left small gaps between them, and in each gap every arm was hidden
+   at once, so the figure briefly lost both arms. Each pose hands straight over
+   to the next at the same percentage. */
+@keyframes hiw-pose-type-a {
+  0%,
+  29.9% {
+    opacity: 1;
+  }
+  30%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes hiw-pose-scratch {
+  0%,
+  29.9% {
+    opacity: 0;
+  }
+  30%,
+  52.9% {
+    opacity: 1;
+  }
+  53%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes hiw-pose-type-b {
+  0%,
+  52.9% {
+    opacity: 0;
+  }
+  53%,
+  75.9% {
+    opacity: 1;
+  }
+  76%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes hiw-pose-cheer {
+  0%,
+  75.9% {
+    opacity: 0;
+  }
+  76%,
+  100% {
+    opacity: 1;
+  }
+}
+
+/* Rejected, then accepted. Beats line up with the poses above. */
+@keyframes hiw-screen {
+  0%,
+  28% {
+    fill: var(--color-sky-100);
+  }
+  32%,
+  74% {
+    fill: #fbd5d5;
+  }
+  78%,
+  100% {
+    fill: #cdf0da;
+  }
+}
+
+@keyframes hiw-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(1.8px);
+  }
+}
+
+@keyframes hiw-cheer-hop {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  40% {
+    transform: translateY(-3px);
+  }
+}
+
+/* Step 2: a highlight sweeps a line, then a copy chip pops. Three passes, so
+   each element carries a one-third delay. */
+@keyframes hiw-sweep {
+  0% {
+    transform: scaleX(0);
+  }
+  10%,
+  26% {
+    transform: scaleX(1);
+  }
+  32%,
+  100% {
+    transform: scaleX(0);
+  }
+}
+@keyframes hiw-pop {
+  0%,
+  9% {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+  15%,
+  26% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  32%,
+  100% {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+}
+@keyframes hiw-cursor {
+  0%,
+  18% {
+    transform: translate(0, 0);
+  }
+  30%,
+  51% {
+    transform: translate(7px, 15px);
+  }
+  63%,
+  84% {
+    transform: translate(-9px, 30px);
+  }
+  96%,
+  100% {
+    transform: translate(0, 0);
+  }
+}
+
+/* Steps 3 and 4: a mark (or a bubble) appears, holds, and clears. */
+@keyframes hiw-mark {
+  0%,
+  5% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  12%,
+  84% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  93%,
+  100% {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+}
+
+@keyframes float-slow {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes swing {
+  0%,
+  100% {
+    transform: rotate(-5deg);
+  }
+  50% {
+    transform: rotate(5deg);
+  }
+}
+
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes bubble-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.75);
+    opacity: 0.55;
+  }
+  70% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-white);
+    color: var(--color-body);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display);
+    color: var(--color-ink-900);
+    letter-spacing: -0.022em;
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  ::selection {
+    background: var(--color-sky-300);
+    color: var(--color-ink-900);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-brand-600);
+    outline-offset: 3px;
+    border-radius: 4px;
+  }
+}
+
+@layer components {
+  /* Reveal-on-scroll.
+     Elements start hidden only where scripting is actually available, so with
+     JS off (or broken) the page renders complete instead of blank. The
+     `scripting` media feature does this without an inline script mutating
+     <html>, which would trip React's hydration attribute check. Browsers too
+     old to know the feature simply skip the block and show everything at once,
+     which is the correct degradation. */
+  @media (scripting: enabled) {
+    .reveal {
+      opacity: 0;
+      transform: translateY(18px);
+      transition:
+        opacity 0.7s var(--ease-out-soft),
+        transform 0.7s var(--ease-out-soft);
+      transition-delay: var(--reveal-delay, 0ms);
+    }
+
+    .reveal[data-shown="true"] {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  .draw-line {
+    stroke-dasharray: var(--dash, 400);
+    stroke-dashoffset: var(--dash, 400);
+  }
+
+  [data-shown="true"] .draw-line,
+  .draw-line[data-shown="true"] {
+    animation: draw 1.5s var(--ease-out-soft) forwards;
+    animation-delay: var(--draw-delay, 0ms);
+  }
+
+  /* Applied to <html> for ~600ms while a school theme swaps in, so the whole
+     page cross-fades instead of snapping. Scoped to the switch on purpose: a
+     permanent global colour transition would also lag every hover state. */
+  .theme-shift *,
+  .theme-shift *::before,
+  .theme-shift *::after {
+    transition:
+      background-color 0.5s ease,
+      border-color 0.5s ease,
+      color 0.5s ease,
+      fill 0.5s ease,
+      stroke 0.5s ease,
+      box-shadow 0.5s ease !important;
+  }
+
+  .grain-grid {
+    background-image:
+      linear-gradient(to right, rgb(11 99 229 / 0.05) 1px, transparent 1px),
+      linear-gradient(to bottom, rgb(11 99 229 / 0.05) 1px, transparent 1px);
+    background-size: 44px 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+
+  .reveal,
+  .reveal[data-shown="false"] {
+    opacity: 1;
+    transform: none;
+  }
+
+  .draw-line {
+    stroke-dashoffset: 0;
+  }
+}
