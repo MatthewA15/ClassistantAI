@@ -20,7 +20,7 @@ env:
   # Public half of the OAuth client. Safe to commit; the secret half is mounted
   # into the connector service on Cloud Run and never reaches this app.
   - variable: NEXT_PUBLIC_GOOGLE_CLIENT_ID
-    value: 945345983057-afoprh857qtv09ce85kst196hj3o9tb0.apps.googleusercontent.com
+    value: 945345983057-v45ksbfcu1epohvq1cb1asfqvfp3u9ek.apps.googleusercontent.com
     availability: [BUILD, RUNTIME]
 
   # Server-to-server only. Deliberately not NEXT_PUBLIC_: the connector is
