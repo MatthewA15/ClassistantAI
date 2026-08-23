@@ -1,0 +1,14 @@
+{
+  "apphosting": {
+    "backendId": "classistant",
+    "rootDir": "src/frontend",
+    "ignore": [
+      "node_modules",
+      ".git",
+      ".next",
+      ".next-verify",
+      "firebase-debug.log",
+      "**/*.local"
+    ]
+  }
+}

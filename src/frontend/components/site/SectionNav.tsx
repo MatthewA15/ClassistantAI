@@ -124,7 +124,9 @@ export function SectionNav({ scrolled = false }: { scrolled?: boolean }) {
       ref={rootRef}
       inert={!visible}
       className={cn(
-        "relative hidden md:block",
+        // Present on phones too. This pill replaced the hamburger, so hiding it
+        // below md would leave a phone with no way to move between sections.
+        "relative",
         "transition-all duration-400 ease-[cubic-bezier(0.22,1,0.36,1)]",
         visible
           ? "translate-x-0 scale-100 opacity-100"
@@ -150,13 +152,17 @@ export function SectionNav({ scrolled = false }: { scrolled?: boolean }) {
         aria-label={`Jump to a section, currently ${SECTIONS[active].label}`}
         className={cn(
           pillSurface(scrolled),
-          "gap-2 pl-4 pr-3 text-[0.88rem] font-semibold text-ink-800",
-          open && "text-ink-900",
+          "gap-1.5 pl-3 pr-2 text-[0.82rem] font-semibold sm:gap-2 sm:pl-4 sm:pr-3 sm:text-[0.88rem]",
+          // Both colours live in the branches. A base `text-ink-800` with a
+          // conditional `text-ink-900` is resolved by Tailwind's emission
+          // order, not the order written, so the open state never landed.
+          open ? "text-ink-900" : "text-ink-800",
         )}
       >
         {/* Fixed width, so the header does not twitch as the label changes
-            length while you scroll. */}
-        <span className="min-w-[6.6rem] text-left">{SECTIONS[active].label}</span>
+            length while you scroll. Narrower on phones, where it is still wide
+            enough for the longest label at the smaller size. */}
+        <span className="min-w-[5.6rem] text-left sm:min-w-[6.6rem]">{SECTIONS[active].label}</span>
         <svg
           width="14"
           height="14"
@@ -182,7 +188,7 @@ export function SectionNav({ scrolled = false }: { scrolled?: boolean }) {
           aria-label="Sections"
           // Fully opaque, not white/95: the menu overlays the hero headline, and
           // even 5% transparency ghosts 3rem type through behind the items.
-          className="absolute left-0 top-[calc(100%+0.6rem)] w-[15rem] rounded-[1.4rem] bg-white p-1.5 shadow-lift ring-1 ring-line"
+          className="absolute left-0 top-[calc(100%+0.6rem)] w-[13.5rem] rounded-[1.4rem] bg-white p-1.5 shadow-lift ring-1 ring-line sm:w-[15rem]"
           style={{ animation: "bubble-in .22s var(--ease-out-soft) both" }}
         >
           {SECTIONS.map((section, i) => {
@@ -212,6 +218,3 @@ export function SectionNav({ scrolled = false }: { scrolled?: boolean }) {
     </div>
   );
 }
-
-/** Same destinations, rendered flat for the mobile sheet. */
-export const NAV_SECTIONS = SECTIONS;

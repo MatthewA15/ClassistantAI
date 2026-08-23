@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { LogoPlate } from "@/components/brand/LogoMark";
 import { cn } from "@/lib/cn";
 
 /**
@@ -254,12 +255,10 @@ function CallScreen({
       }}
     >
       <div className="flex flex-col items-center">
-        <span
-          className={cn(
-            "relative grid place-items-center bg-gradient-to-b from-[#4C9BFF] to-[#0B63E5]",
-            ios ? "h-[3.6rem] w-[3.6rem] rounded-full" : "h-[3.6rem] w-[3.6rem] rounded-[1.2rem]",
-          )}
-        >
+        {/* Caller photo. A white plate, not the brand blue one: this sits on a
+            near-black call screen, where the mark's own dark-to-blue hand would
+            disappear into it. */}
+        <span className="relative">
           {!answered && !ended ? (
             <span
               aria-hidden="true"
@@ -269,13 +268,12 @@ function CallScreen({
               )}
             />
           ) : null}
-          <svg width="20" height="20" viewBox="0 0 48 48" fill="none" aria-hidden="true">
-            <path
-              d="M17.4 8.6 Q22 4 26.6 8.6 L34.4 16.4 Q39 21 34.4 25.6 L23.6 36.4 Q22 38 20.4 36.4 L9.6 25.6 Q5 21 9.6 16.4 Z"
-              fill="#fff"
-            />
-            <path d="M14.5 18.6H29.5M14.5 25.4H24.5" stroke="#0B63E5" strokeWidth="3" strokeLinecap="round" />
-          </svg>
+          <LogoPlate
+            size={58}
+            plate="white"
+            shape={ios ? "circle" : "squircle"}
+            className="relative"
+          />
         </span>
 
         <p className="mt-3 text-[0.92rem] font-semibold">Classistant</p>
@@ -545,18 +543,15 @@ function IosTail({ mine, dark }: { mine: boolean; dark: boolean }) {
   );
 }
 
+/**
+ * Contact photo at the top of the thread, which on this phone is the app icon.
+ *
+ * 1.75rem rather than the 1.25rem it used to be: the mark has a counter inside
+ * the hand's ring that closes below 20px, and 20px of plate left only 15px of
+ * mark. This is also closer to what iOS actually draws there.
+ */
 function Avatar() {
-  return (
-    <span className="grid h-[1.25rem] w-[1.25rem] shrink-0 place-items-center rounded-full bg-gradient-to-b from-[#4C9BFF] to-[#0B63E5]">
-      <svg width="11" height="11" viewBox="0 0 48 48" fill="none" aria-hidden="true">
-        <path
-          d="M17.4 8.6 Q22 4 26.6 8.6 L34.4 16.4 Q39 21 34.4 25.6 L23.6 36.4 Q22 38 20.4 36.4 L9.6 25.6 Q5 21 9.6 16.4 Z"
-          fill="#fff"
-        />
-        <path d="M14.5 18.6H29.5M14.5 25.4H24.5" stroke="#0B63E5" strokeWidth="3" strokeLinecap="round" />
-      </svg>
-    </span>
-  );
+  return <LogoPlate size={28} plate="ink" />;
 }
 
 function IosSignal() {

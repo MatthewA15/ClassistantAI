@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
+import { joinWaitlist } from "@/app/onboarding/actions";
 import { useSchoolTheme } from "@/components/theme/SchoolTheme";
 import { LIVE_SCHOOLS, schoolInitials, type School } from "@/data/schools";
 import { cn } from "@/lib/cn";
@@ -42,9 +43,13 @@ function SchoolCrest({ school, active }: { school: School; active: boolean }) {
  * and it shows the product is built for that specific campus rather than being
  * a generic tool with a Canadian flag on it.
  *
- * The CTA stays disabled until a school is chosen. The list is only six long,
- * so the choice is quick, and it means nobody starts onboarding only to find
- * their school is unsupported four steps in.
+ * The CTA stays disabled until a school is chosen. The list is short, so the
+ * choice is quick, and it means nobody starts onboarding only to find their
+ * school is unsupported four steps in.
+ *
+ * A two-school list makes "not mine" the common case rather than the edge case,
+ * so it gets a real answer instead of a dead end: the same composer, asking for
+ * a school address, which is what tells us which campus to open next.
  */
 export function HeroStart() {
   const { school, setSchool } = useSchoolTheme();
@@ -57,6 +62,9 @@ export function HeroStart() {
    * 0 idle, 1 "pick your school", 2 "only these schools" plus the hop.
    */
   const [nudge, setNudge] = useState<0 | 1 | 2>(0);
+  /** True once the student has said their school is not on the list. */
+  const [asking, setAsking] = useState(false);
+  const [waitlist, submitWaitlist, sending] = useActionState(joinWaitlist, null);
 
   useEffect(() => {
     if (nudge !== 1) return;
@@ -90,7 +98,9 @@ export function HeroStart() {
         {nudge === 1
           ? "Pick your school before continuing."
           : nudge === 2
-            ? "Classistant is only supported at these six schools."
+            ? // Counted, never typed. This sentence used to say "six" and would
+              // have quietly become a lie the moment the list changed.
+              `Classistant is only supported at these ${LIVE_SCHOOLS.length} schools.`
             : ""}
       </p>
 
@@ -101,7 +111,10 @@ export function HeroStart() {
             <button
               key={s.id}
               type="button"
-              onClick={() => setSchool(on ? null : s.id)}
+              onClick={() => {
+                setSchool(on ? null : s.id);
+                setAsking(false);
+              }}
               aria-pressed={on}
               // Hop in list order during beat two, so the eye is walked across
               // the full set rather than being told it is short.
@@ -126,38 +139,114 @@ export function HeroStart() {
             </button>
           );
         })}
+
+        {/* Sits in the same row as the chips, styled as an outline rather than
+            a chip: it is the same kind of choice, but it is not a school. */}
+        <button
+          type="button"
+          onClick={() => {
+            setAsking((v) => !v);
+            setNudge(0);
+            if (!asking) setSchool(null);
+          }}
+          aria-expanded={asking}
+          className={cn(
+            "flex items-center gap-1.5 rounded-full border border-dashed py-1.5 pl-3 pr-3.5 text-[0.85rem] font-semibold transition-colors duration-300",
+            asking
+              ? "border-brand-600 text-brand-600"
+              : "border-line text-body hover:border-brand-400 hover:text-ink-800",
+          )}
+        >
+          <span aria-hidden="true" className="text-[1rem] leading-none">
+            {asking ? "‹" : "+"}
+          </span>
+          {asking ? "Back to the list" : "Mine is not here"}
+        </button>
       </div>
 
-      <div className="mt-7 flex flex-wrap items-center gap-3">
-        {school ? (
+      {/* The CTA is a message composer, because the product is a thread. Locked,
+          it holds placeholder text naming the step you skipped; once a school is
+          picked the same bar holds a message you are about to send, and the send
+          button lights up. The state change reads as "typed and ready" rather
+          than as a button turning from grey to blue. */}
+      <div className="mt-7">
+        {asking ? (
+          waitlist?.ok ? (
+            <p className="max-w-[21.5rem] rounded-2xl bg-white/80 px-4 py-3 text-[0.88rem] leading-[1.55] text-ink-800 ring-1 ring-line">
+              {waitlist.message}
+            </p>
+          ) : (
+            // Same composer, different message. The student is still sending us
+            // something, so the bar does not change shape just because what it
+            // carries is an address rather than "i'm ready to start".
+            <form
+              action={submitWaitlist}
+              className={cn(
+                COMPOSER,
+                waitlist?.errors?.email
+                  ? "ring-2 ring-[var(--color-alert)]"
+                  : "ring-1 ring-line focus-within:ring-brand-400",
+              )}
+            >
+              <input
+                type="email"
+                name="email"
+                required
+                autoFocus
+                placeholder="you@yourschool.ca"
+                aria-label="Your school email address"
+                aria-invalid={Boolean(waitlist?.errors?.email)}
+                className="min-w-0 flex-1 bg-transparent font-medium text-ink-900 placeholder:font-normal placeholder:text-body-soft focus:outline-none"
+              />
+              <button type="submit" disabled={sending} aria-label="Send">
+                <ComposerAction ready={!sending} />
+              </button>
+            </form>
+          )
+        ) : school ? (
           <Link
             href={`/onboarding?school=${school.id}`}
-            className="inline-flex items-center justify-center rounded-xl bg-brand-600 px-5 py-3 text-[0.95rem] font-semibold text-white shadow-[0_10px_24px_-10px_var(--color-brand-600)] transition-colors duration-200 hover:bg-brand-700"
+            className={cn(COMPOSER, "ring-1 ring-line hover:ring-brand-400")}
           >
-            Get set up
+            <span className="flex-1 truncate font-medium text-ink-900">
+              i&rsquo;m ready to start for free
+            </span>
+            <ComposerAction ready />
           </Link>
         ) : (
           <button
             type="button"
-            // aria-disabled, not `disabled`: a truly disabled button swallows
+            // aria-disabled, not `disabled`: a truly disabled control swallows
             // the click and gives no feedback at all. This one still responds,
             // and points at the step that is missing.
             aria-disabled="true"
             onClick={() => setNudge(1)}
             className={cn(
-              "flex items-center gap-2 rounded-xl px-5 py-3 text-[0.95rem] font-semibold transition-all duration-300",
-              nudge > 0
-                ? "bg-line text-ink-800 ring-2 ring-[var(--color-alert)]"
-                : "bg-line text-body-soft",
+              COMPOSER,
+              nudge > 0 ? "ring-2 ring-[var(--color-alert)]" : "ring-1 ring-line",
             )}
           >
-            <LockGlyph />
-            Get set up
+            <span className="flex-1 truncate text-left text-body-soft">
+              Pick a school above, then click here
+            </span>
+            <ComposerAction ready={false} />
           </button>
         )}
       </div>
 
-      {school ? (
+      {asking && !waitlist?.ok ? (
+        <p
+          role="status"
+          aria-live="polite"
+          className={cn(
+            "mt-4 max-w-sm text-[0.82rem] leading-[1.55]",
+            waitlist?.errors?.email ? "font-semibold text-[var(--color-alert)]" : "text-body-soft",
+          )}
+        >
+          {waitlist?.errors?.email ??
+            "Your school address tells us which campus to open next. We will email you there the day it is ready."}
+        </p>
+      ) : school ? (
         <p className="mt-4 max-w-sm text-[0.82rem] leading-[1.55] text-body-soft">
           Continuing as a{" "}
           <span className="font-semibold text-ink-800">{school.name}</span> student.
@@ -168,11 +257,54 @@ export function HeroStart() {
   );
 }
 
-function LockGlyph() {
+/**
+ * Shared composer surface. No ring and no shadow here on purpose: those differ
+ * per state, and a base value plus a branch value in one class list is resolved
+ * by Tailwind's emission order rather than by the order they were written.
+ */
+const COMPOSER =
+  "flex w-full max-w-[21.5rem] items-center gap-2 rounded-full bg-white py-1.5 pl-4 pr-1.5 text-[0.95rem] transition-all duration-300";
+
+/**
+ * The right-hand control in the bar, which is two different affordances in
+ * iMessage rather than one control that dims.
+ *
+ * Empty, you get the bare voice-memo waveform in grey with no button behind it.
+ * With something to send, that is replaced by a filled blue circle holding the
+ * send arrow. Keeping the box the same size across both means the swap does not
+ * shift the text beside it.
+ */
+function ComposerAction({ ready }: { ready: boolean }) {
   return (
-    <svg width="15" height="15" viewBox="0 0 20 20" fill="none" aria-hidden="true" className="shrink-0">
-      <rect x="4" y="8.6" width="12" height="8.4" rx="2.2" stroke="currentColor" strokeWidth="1.7" />
-      <path d="M7 8.4V6.6a3 3 0 0 1 6 0v1.8" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-    </svg>
+    <span
+      className={cn(
+        "grid h-8 w-8 shrink-0 place-items-center rounded-full transition-colors duration-300",
+        ready
+          ? "bg-brand-600 text-white shadow-[0_6px_16px_-6px_var(--color-brand-600)]"
+          : "text-body-soft",
+      )}
+    >
+      {ready ? (
+        <svg width="15" height="15" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <path
+            d="M10 15.6V5M10 5 5.6 9.4M10 5l4.4 4.4"
+            stroke="currentColor"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      ) : (
+        <svg width="19" height="19" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <g stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+            <path d="M3.2 8.4v3.2" />
+            <path d="M6.6 5.9v8.2" />
+            <path d="M10 3.6v12.8" />
+            <path d="M13.4 5.9v8.2" />
+            <path d="M16.8 8.4v3.2" />
+          </g>
+        </svg>
+      )}
+    </span>
   );
 }

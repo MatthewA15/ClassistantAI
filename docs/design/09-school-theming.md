@@ -75,9 +75,25 @@ student confirms we mean their school.
 
 ## The locked CTA
 
-Until a school is picked the CTA shows a lock. It is `aria-disabled`, not
-`disabled`, because a truly disabled button swallows the click and gives no
-feedback at all. Pressing it instead:
+The CTA is a **message composer**, not a button, because the product is a thread.
+
+The right-hand control is two different affordances, the way iMessage's is, not
+one control that dims. With nothing to send it is the bare voice-memo waveform in
+grey, no button behind it. With something to send it becomes a filled circle
+holding the send arrow. Both sit in the same 8x8 box so the swap does not shift
+the text beside them.
+
+The copy follows the same split. Locked, the bar holds instruction text,
+"Pick a school above, then click here": it is addressing the reader, so it is
+sentence case. Once a school is chosen the bar holds the message the reader is
+about to send, "i'm ready to start for free", lowercase because that is how a
+person types a text.
+
+The send circle fills with `--color-brand-600`, so it repaints into the school's
+own colour along with the rest of the page.
+
+It is `aria-disabled`, not `disabled`, because a truly disabled control swallows
+the click and gives no feedback at all. Pressing it while locked instead:
 
 - grows "Pick your school" to 150% and extra-bold for three seconds,
 - outlines the six school buttons in `--color-alert`,

@@ -214,7 +214,11 @@ const SECTIONS: LegalSection[] = [
               Reply <Strong>HELP</Strong> for support, or email {LEGAL.contactEmail}.
             </>,
             <>
-              Reply <Strong>DELETE</Strong> to close your account and erase your data.
+              Reply <Strong>DELETE</Strong> to close your account and erase your data, or use{" "}
+              <Link href="/delete-my-data" className="font-semibold text-brand-600 hover:underline">
+                delete my data
+              </Link>
+              .
             </>,
           ]}
         />
@@ -278,7 +282,11 @@ const SECTIONS: LegalSection[] = [
         />
         <p>
           Email {LEGAL.privacyEmail} and we will respond within thirty days, which is the
-          deadline PIPEDA sets.
+          deadline PIPEDA sets. To delete, start at{" "}
+          <Link href="/delete-my-data" className="font-semibold text-brand-600 hover:underline">
+            delete my data
+          </Link>
+          , which writes the request for you and sets out exactly what disappears.
         </p>
       </>
     ),
