@@ -11,7 +11,7 @@ from app.routers.calendar import router as calendar_router
 from app.routers.drive import router as drive_router
 from app.routers.docs_service import router as docs_router
 
-app = FastAPI(title="Classistant AI Connectors", version="0.1.0")
+app = FastAPI(title="Classistant AI Connectors", version="0.3.0")
 
 app.include_router(auth_router)
 app.include_router(gmail_router)
