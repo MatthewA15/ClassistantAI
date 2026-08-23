@@ -1,0 +1,26 @@
+# Firebase App Hosting runtime config.
+#
+# Lives beside package.json rather than at the repo root, because the backend's
+# rootDir is src/frontend. App Hosting looks for this file at the root it was
+# given, not at the top of the repository.
+#
+# No `env:` block yet. Every server action in app/onboarding/actions.ts is still
+# a stub, so the app reads no API keys, no database, and no secrets. When the
+# backend lands, secrets go in through `firebase apphosting:secrets:set` and are
+# referenced here by name, never pasted in as literal values: this file is
+# committed to a repository.
+
+runConfig:
+  # A marketing site with bursty term-start traffic and long quiet stretches.
+  # Scaling to zero is the right default; the cold start costs a first visitor
+  # a second, and paying for an idle instance year-round to avoid that is a bad
+  # trade before there is real traffic to measure.
+  minInstances: 0
+  maxInstances: 10
+
+  # The pages are static or lightly server-rendered, so a single instance
+  # handles many requests at once. Raise memory before concurrency if the build
+  # ever starts holding real work in memory.
+  concurrency: 80
+  cpu: 1
+  memoryMiB: 512

@@ -78,17 +78,112 @@ export function SceneFrame({
   );
 }
 
-export function PhoneFrame({ children }: { children: React.ReactNode }) {
+export function PhoneFrame({
+  children,
+  screen = "app",
+  time,
+}: {
+  children: React.ReactNode;
+  /**
+   * `app` keeps the white chrome: a light status row, then padded content, for
+   * the scenes that show something running inside an app.
+   *
+   * `full` hands the whole screen to the child, for a lock or call screen drawn
+   * edge to edge in its own wallpaper. Those used to fake it by pulling
+   * themselves out over the app padding with a negative margin and an
+   * overhanging height, which left a sliver of the light status row showing
+   * above them and put two different clocks on the same phone.
+   *
+   * A parameter rather than classes appended by the caller: the two variants
+   * disagree about padding and background, and competing utilities in one class
+   * list are resolved by Tailwind's emission order, not by writing order.
+   */
+  screen?: "app" | "full";
+  /**
+   * Status bar clock. A lock screen passes nothing, because it prints the time
+   * in 30px type a few millimetres below and phones drop the small one for
+   * exactly that reason. A call screen passes its own, because a real one keeps
+   * the clock running up there.
+   */
+  time?: string;
+}) {
+  const full = screen === "full";
+
   return (
     <div className="h-full w-[42%] min-w-[9.5rem] max-w-[12rem] rounded-[1.5rem] bg-ink-950 p-[0.4rem] shadow-lift">
-      <div className="flex h-full flex-col gap-1.5 overflow-hidden rounded-[1.15rem] bg-white p-2.5">
-        <div className="flex items-center justify-between px-1 pb-1 text-[0.5rem] font-semibold text-ink-900">
-          <span>9:41</span>
-          <span className="h-1.5 w-8 rounded-full bg-ink-900/15" />
-        </div>
+      <div
+        className={cn(
+          "relative flex h-full flex-col overflow-hidden rounded-[1.15rem]",
+          full ? "bg-ink-950" : "gap-1.5 bg-white p-2.5",
+        )}
+      >
+        {full ? (
+          // Floats over the wallpaper rather than sitting in flow, so the child
+          // owns the full height and nothing has to reach around it.
+          <>
+            <div className="pointer-events-none absolute inset-x-0 top-[0.3rem] z-20 flex items-center justify-between px-2.5">
+              <span className="text-[0.5rem] font-semibold tabular-nums text-white/85">
+                {time}
+              </span>
+              <StatusIcons tone="light" />
+            </div>
+            <span
+              aria-hidden="true"
+              className="absolute left-1/2 top-[0.28rem] z-20 h-[0.32rem] w-7 -translate-x-1/2 rounded-full bg-white/20"
+            />
+          </>
+        ) : (
+          <div className="flex items-center justify-between px-1 pb-1 text-[0.5rem] font-semibold text-ink-900">
+            <span className="tabular-nums">{time ?? "9:41"}</span>
+            <StatusIcons tone="dark" />
+          </div>
+        )}
+
         {children}
       </div>
     </div>
+  );
+}
+
+/** Signal, wifi, battery. The cluster every phone status bar ends with. */
+function StatusIcons({ tone }: { tone: "light" | "dark" }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "flex items-center gap-[0.14rem]",
+        tone === "light" ? "text-white/85" : "text-ink-900/45",
+      )}
+    >
+      <svg width="9" height="6" viewBox="0 0 9 6" fill="currentColor">
+        <rect x="0" y="4" width="1.6" height="2" rx="0.5" />
+        <rect x="2.4" y="2.8" width="1.6" height="3.2" rx="0.5" />
+        <rect x="4.8" y="1.4" width="1.6" height="4.6" rx="0.5" />
+        <rect x="7.2" y="0" width="1.6" height="6" rx="0.5" />
+      </svg>
+      <svg width="8" height="6" viewBox="0 0 8 6" fill="none">
+        <path
+          d="M0.6 2.1a5.2 5.2 0 0 1 6.8 0M2.1 3.6a3 3 0 0 1 3.8 0"
+          stroke="currentColor"
+          strokeWidth="0.9"
+          strokeLinecap="round"
+        />
+        <circle cx="4" cy="5.2" r="0.8" fill="currentColor" />
+      </svg>
+      <svg width="12" height="6" viewBox="0 0 12 6" fill="none">
+        <rect
+          x="0.4"
+          y="0.4"
+          width="9.2"
+          height="5.2"
+          rx="1.5"
+          stroke="currentColor"
+          strokeWidth="0.8"
+        />
+        <rect x="1.5" y="1.5" width="5.4" height="3" rx="0.8" fill="currentColor" />
+        <rect x="10.4" y="2" width="1" height="2" rx="0.5" fill="currentColor" opacity="0.6" />
+      </svg>
+    </span>
   );
 }
 

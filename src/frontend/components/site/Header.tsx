@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { LogoMark } from "@/components/brand/LogoMark";
 import { GlowSlot, pillSurface } from "@/components/site/Pill";
-import { NAV_SECTIONS, SectionNav } from "@/components/site/SectionNav";
+import { SectionNav } from "@/components/site/SectionNav";
 import { cn } from "@/lib/cn";
 
 /**
@@ -17,12 +17,17 @@ import { cn } from "@/lib/cn";
  * hovering over it, and they let the middle pill appear and disappear with the
  * scrollspy without leaving a hole in a container.
  *
+ * All three are present on phones too. There is no hamburger: the menu it
+ * opened held the same two sections the switcher already lists plus the button
+ * sitting next to it, so it was a tap costing a tap. Three pills fit across a
+ * 320px screen once the brand capsule drops to the mark alone, which is the
+ * trade that makes this work.
+ *
  * Over the hero there is no header at all: the hero already carries the brand,
  * the pitch, and a bigger CTA, so a bar on top of it is duplication.
  */
 export function Header({ overHero = false }: { overHero?: boolean }) {
   const pathname = usePathname();
-  const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [pastHero, setPastHero] = useState(false);
   // True once the closing CTA is properly on screen. The header hides its own
@@ -52,15 +57,10 @@ export function Header({ overHero = false }: { overHero?: boolean }) {
 
   /** On the landing page, scroll back to the hero's picker instead of routing. */
   const backToHero = (e: React.MouseEvent) => {
-    setOpen(false);
     if (pathname !== "/") return;
     e.preventDefault();
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
-
-  useEffect(() => {
-    if (hidden) setOpen(false);
-  }, [hidden]);
 
   return (
     <>
@@ -77,15 +77,22 @@ export function Header({ overHero = false }: { overHero?: boolean }) {
         {/* Three sibling capsules, all h-11, each its own single pill. The
             brand mark and wordmark are sized to match the other pills' text,
             so nothing in the row shouts louder than the rest. */}
-        <div className="mx-auto flex max-w-[73rem] items-center gap-2 sm:gap-2.5">
+        <div className="mx-auto flex max-w-[73rem] items-center gap-1.5 sm:gap-2.5">
           <GlowSlot scrolled={scrolled}>
             <Link
               href="/"
               aria-label="Classistant home"
-              className={cn(pillSurface(scrolled), "group gap-2 px-4")}
+              className={cn(
+                pillSurface(scrolled),
+                // Mark alone on phones, as a circle the same height as its
+                // siblings. The wordmark is ~80px, which is most of the room
+                // the other two pills need; the hero one scroll above already
+                // spells the name out.
+                "group w-11 justify-center gap-2 sm:w-auto sm:justify-start sm:px-4",
+              )}
             >
               <LogoMark size={21} className="transition-transform duration-300 group-hover:scale-[1.05]" />
-              <span className="font-display text-[0.88rem] font-extrabold tracking-[-0.03em] text-ink-900">
+              <span className="hidden font-display text-[0.88rem] font-extrabold tracking-[-0.03em] text-ink-900 sm:inline">
                 Classistant
               </span>
             </Link>
@@ -101,7 +108,7 @@ export function Header({ overHero = false }: { overHero?: boolean }) {
           <GlowSlot
             scrolled={scrolled}
             className={cn(
-              "hidden transition-all duration-400 ease-[cubic-bezier(0.22,1,0.36,1)] md:block",
+              "transition-all duration-400 ease-[cubic-bezier(0.22,1,0.36,1)]",
               atFinalCta ? "pointer-events-none scale-95 opacity-0" : "scale-100 opacity-100",
             )}
           >
@@ -109,57 +116,15 @@ export function Header({ overHero = false }: { overHero?: boolean }) {
               href="/"
               onClick={backToHero}
               {...(atFinalCta ? { tabIndex: -1, "aria-hidden": true } : {})}
-              className={cn(pillSurface(scrolled, "ink"), "px-5 text-[0.88rem] font-semibold")}
+              className={cn(
+                pillSurface(scrolled, "ink"),
+                "whitespace-nowrap px-3.5 text-[0.82rem] font-semibold sm:px-5 sm:text-[0.88rem]",
+              )}
             >
               Get set up
             </Link>
           </GlowSlot>
-
-          <GlowSlot scrolled={scrolled} className="md:hidden">
-            <button
-              type="button"
-              onClick={() => setOpen((v) => !v)}
-              aria-expanded={open}
-              aria-label={open ? "Close menu" : "Open menu"}
-              className={cn(pillSurface(scrolled), "w-11 justify-center")}
-            >
-              <svg width="19" height="19" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                <path
-                  d={open ? "M5 5l10 10M15 5L5 15" : "M3 6h14M3 10h14M3 14h14"}
-                  stroke="var(--color-ink-900)"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                />
-              </svg>
-            </button>
-          </GlowSlot>
         </div>
-
-        {open ? (
-          <div className="mx-auto mt-2 max-w-[73rem] md:hidden">
-            <div className="pointer-events-auto rounded-[1.75rem] bg-white/95 p-2 shadow-lift ring-1 ring-line backdrop-blur-xl">
-              <nav className="flex flex-col">
-                {NAV_SECTIONS.filter((item) => item.id).map((item) => (
-                  <Link
-                    key={item.label}
-                    href={`/#${item.id}`}
-                    onClick={() => setOpen(false)}
-                    className="rounded-full px-4 py-3 text-[1rem] font-medium text-ink-800 hover:bg-ink-900/6"
-                  >
-                    {item.label}
-                  </Link>
-                ))}
-                <Link
-                  href="/"
-                  onClick={backToHero}
-                  className="mt-1 rounded-full bg-ink-900 px-4 py-3 text-center text-[0.95rem] font-semibold text-white"
-                >
-                  Get set up
-                </Link>
-              </nav>
-            </div>
-          </div>
-        ) : null}
       </header>
 
       {overHero ? null : <div aria-hidden="true" className="h-20 sm:h-[5.5rem]" />}

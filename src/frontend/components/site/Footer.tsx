@@ -23,7 +23,7 @@ const COLUMNS = [
     links: [
       { href: "/privacy", label: "Privacy policy" },
       { href: "/terms", label: "Terms of service" },
-      { href: "mailto:privacy@classistant.ca", label: "Delete my data" },
+      { href: "/delete-my-data", label: "Delete my data" },
     ],
   },
 ];

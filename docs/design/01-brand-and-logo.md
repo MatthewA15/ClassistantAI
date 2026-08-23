@@ -15,8 +15,33 @@ widget. The mark had to fuse both and stay legible at 24px in a browser tab.
 - The **cap** is the subject.
 - The cap is drawn whole, but its left point sits behind the fingers, so what
   reads is the right half of a mortarboard emerging from a fist.
+- The hand **faces right**: the thumb-and-index ring is on the cap side, the
+  three fingers behind it. Facing left the ring lands at the far edge of the
+  mark, away from the cap, and the pinch stops reading as a pinch.
 
 Source: [`components/brand/LogoMark.tsx`](../../src/frontend/components/brand/LogoMark.tsx)
+
+The favicon at [`app/icon.svg`](../../src/frontend/app/icon.svg) is the same
+geometry on a dark rounded square, hand-copied rather than imported. Change one
+and the other does not follow, which has already bitten once: the favicon's copy
+of the hand was **mirrored**, ring on the left and away from the cap, which is
+the orientation the rules below rule out. If you edit the mark, diff the two.
+
+## The app icon
+
+`LogoPlate` is the mark on a plate, for anywhere it stands in for the product
+rather than labelling a page: a contact photo, a caller, a notification sender.
+Same recipe as the favicon.
+
+The plate is a parameter and picks the tone with it, because the two are not
+independent. The `white` tone's crown is brand blue and vanishes on a blue
+plate; the `brand` tone's hand is near-navy and vanishes on a dark one. Both
+mistakes ship a mark with a hole in it. Dark plate for light surroundings, white
+plate for a dark screen.
+
+It scales the mark to 0.76 of the plate rather than filling it. The tassel
+reaches the right edge of the artwork, so at full bleed a circular plate cuts it
+off, and the tassel is the recognition anchor.
 
 ### Construction notes
 
@@ -64,8 +89,17 @@ reasons.
 ## Rules
 
 - Do not rotate the mark. The hand establishes an up direction.
+- Do not mirror it. See above: the direction the hand faces is load-bearing.
 - Do not recolour the tassel independently. It is the recognition anchor.
 - The tassel swing (`animated` prop) is for moments of arrival only: the closing
   CTA and the onboarding success screen. Not the header, where a permanently
   moving logo is a distraction.
-- Minimum size 20px. Below that the counter inside the hand's ring closes.
+- Minimum size 20px. Below that the counter inside the hand's ring closes. That
+  is 20px of **mark**, not of plate: a 20px `LogoPlate` holds a 15px mark and is
+  too small. 28px of plate is the practical floor.
+- **Never redraw it inline.** The old mortarboard-bubble survived for months in
+  four hand-rolled copies (both call screens, the hero thread avatar, the
+  feature-wall handset) after the mark itself changed, because each was an
+  anonymous `<svg>` in a layout file rather than an import. Import `LogoMark` or
+  `LogoPlate`. The favicon is the single sanctioned copy, and it is called out
+  above for the same reason.

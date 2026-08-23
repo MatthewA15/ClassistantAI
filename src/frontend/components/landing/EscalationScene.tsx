@@ -1,5 +1,6 @@
 "use client";
 
+import { LogoPlate } from "@/components/brand/LogoMark";
 import {
   PhoneFrame,
   SceneFrame,
@@ -92,23 +93,61 @@ function daysAt(t: number): number {
   return days;
 }
 
+/**
+ * November 2026 opens on a Sunday, so a weekday falls out of the date with no
+ * Date object involved. Hardcoding one weekday per beat would have let the two
+ * drift the first time a beat moved.
+ */
+const WEEKDAYS = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+] as const;
+
+function weekdayOf(day: number) {
+  return WEEKDAYS[(day - 1) % 7];
+}
+
+/**
+ * Each notification carries the clock, not the date: the date it lands on is
+ * whatever the calendar just finished counting to, so the two cannot disagree.
+ *
+ * The times are the point of the ladder as much as the colours are. The first
+ * arrives mid-morning on a Thursday, the second on a Tuesday evening, the third
+ * before eight on a Sunday, and the call on the Friday commute. All inside
+ * waking hours, because quiet hours are a promise the product makes elsewhere
+ * and a 3am screenshot would contradict it.
+ */
 const NOTES = {
   green: {
     tone: "ok" as const,
+    time: "9:41",
+    meridiem: "AM",
     title: "PSYC 258 essay posted",
-    body: "Due the 30th. Plenty of time.",
+    body: "Due Monday the 30th. Plenty of time.",
   },
   amber: {
     tone: "warn" as const,
+    time: "6:12",
+    meridiem: "PM",
     title: "Still not started",
-    body: "Two weeks left, about 6 hours of work.",
+    body: "Twenty days out, about 6 hours of work.",
   },
   red: {
     tone: "alert" as const,
+    time: "7:58",
+    meridiem: "AM",
     title: "Final warning",
     body: "Start today or you will not finish on time.",
   },
 };
+
+/** The call lands on the Friday evening, ten days out. */
+const CALL_TIME = "5:30";
 
 export function EscalationScene() {
   const t = useSceneClock(CYCLE, 16_500, TICK);
@@ -121,16 +160,19 @@ export function EscalationScene() {
         <Calendar days={days} />
       </Stage>
 
+      {/* `days` rather than a date per note: at every phone cut it already holds
+          the tally the viewer just watched close, so the lockscreen cannot show
+          a date the calendar never reached. */}
       {(["green", "amber", "red"] as const).map((key) => (
         <Stage key={key} show={view === key}>
-          <PhoneFrame>
-            <Lockscreen {...NOTES[key]} />
+          <PhoneFrame screen="full">
+            <Lockscreen {...NOTES[key]} day={days} />
           </PhoneFrame>
         </Stage>
       ))}
 
       <Stage show={view === "ringing" || view === "answered"}>
-        <PhoneFrame>
+        <PhoneFrame screen="full" time={CALL_TIME}>
           <CallScreen answered={view === "answered"} />
         </PhoneFrame>
       </Stage>
@@ -267,13 +309,19 @@ function Lockscreen({
   tone,
   title,
   body,
+  day,
+  time,
+  meridiem,
 }: {
   tone: "ok" | "warn" | "alert";
   title: string;
   body: string;
+  day: number;
+  time: string;
+  meridiem: string;
 }) {
   return (
-    <div className="relative -m-2.5 flex h-[calc(100%+1.25rem)] flex-col items-center overflow-hidden rounded-[1.15rem] bg-ink-950 p-2.5 pt-5">
+    <div className="relative flex h-full flex-col items-center overflow-hidden bg-ink-950 px-2.5 pb-2 pt-7">
       {/* wallpaper wash, tinted by severity */}
       <div
         aria-hidden="true"
@@ -284,16 +332,19 @@ function Lockscreen({
       />
 
       <div className="relative flex flex-col items-center">
-        <span className="text-[0.55rem] font-medium text-white/70">
-          Friday 14 November
+        <Padlock />
+        <span className="mt-1 text-[0.55rem] font-medium text-white/70">
+          {weekdayOf(day)} {day} November
         </span>
-        <span className="font-display text-[1.9rem] font-extrabold leading-none text-white">
-          9:41
+        <span className="font-display text-[1.9rem] font-extrabold tabular-nums leading-none text-white">
+          {time}
         </span>
       </div>
 
+      {/* Pushed to the foot of the screen, where a phone actually stacks
+          notifications, instead of floating under the clock. */}
       <div
-        className="relative mt-4 w-full rounded-[0.7rem] bg-white/14 p-2 backdrop-blur"
+        className="relative mt-auto w-full rounded-[0.7rem] bg-white/14 p-2 backdrop-blur"
         style={{ animation: "bubble-in .45s var(--ease-out-soft) both" }}
       >
         <span className="flex items-center gap-1.5">
@@ -306,6 +357,12 @@ function Lockscreen({
           <span className="text-[0.48rem] font-semibold uppercase tracking-[0.1em] text-white/70">
             Classistant
           </span>
+          {/* The one place the meridiem is spelled out. The big clock runs
+              bare, the way a phone does, so this is what settles whether 6:12
+              was morning or evening. */}
+          <span className="ml-auto text-[0.45rem] font-semibold tabular-nums text-white/55">
+            {time} {meridiem}
+          </span>
         </span>
         <p className="mt-1 text-[0.58rem] font-bold leading-tight text-white">
           {title}
@@ -314,7 +371,33 @@ function Lockscreen({
           {body}
         </p>
       </div>
+
+      <HomeBar className="mt-2" />
     </div>
+  );
+}
+
+/** Closed padlock over the clock, the one glyph that says "locked". */
+function Padlock() {
+  return (
+    <svg width="9" height="11" viewBox="0 0 12 15" fill="none" aria-hidden="true">
+      <path
+        d="M3.4 6.4V4.3a2.6 2.6 0 0 1 5.2 0v2.1"
+        stroke="rgb(255 255 255 / 0.55)"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+      <rect x="1.6" y="6.2" width="8.8" height="7.2" rx="1.9" fill="rgb(255 255 255 / 0.55)" />
+    </svg>
+  );
+}
+
+function HomeBar({ className }: { className?: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn("relative h-[0.13rem] w-1/3 shrink-0 rounded-full bg-white/45", className)}
+    />
   );
 }
 
@@ -322,7 +405,7 @@ function Lockscreen({
 
 function CallScreen({ answered }: { answered: boolean }) {
   return (
-    <div className="relative -m-2.5 flex h-[calc(100%+1.25rem)] flex-col items-center justify-between overflow-hidden rounded-[1.15rem] bg-ink-950 px-3 pb-4 pt-6">
+    <div className="relative flex h-full flex-col items-center justify-between overflow-hidden bg-ink-950 px-3 pb-3 pt-8">
       <div
         aria-hidden="true"
         className="absolute inset-0 opacity-45"
@@ -333,31 +416,16 @@ function CallScreen({ answered }: { answered: boolean }) {
       />
 
       <div className="relative flex flex-col items-center">
-        <span className="relative grid h-11 w-11 place-items-center rounded-full bg-gradient-to-b from-[#4C9BFF] to-[#0B63E5]">
+        {/* White plate: the mark's own hand runs navy-to-blue and would sink
+            into this screen's near-black wallpaper. */}
+        <span className="relative">
           {!answered ? (
             <span
               aria-hidden="true"
               className="absolute inset-0 rounded-full bg-white/25 motion-safe:animate-[pulse-ring_1.5s_ease-out_infinite]"
             />
           ) : null}
-          <svg
-            width="18"
-            height="18"
-            viewBox="0 0 48 48"
-            fill="none"
-            aria-hidden="true"
-          >
-            <path
-              d="M17.4 8.6 Q22 4 26.6 8.6 L34.4 16.4 Q39 21 34.4 25.6 L23.6 36.4 Q22 38 20.4 36.4 L9.6 25.6 Q5 21 9.6 16.4 Z"
-              fill="#fff"
-            />
-            <path
-              d="M14.5 18.6H29.5M14.5 25.4H24.5"
-              stroke="#0B63E5"
-              strokeWidth="3"
-              strokeLinecap="round"
-            />
-          </svg>
+          <LogoPlate size={44} plate="white" className="relative" />
         </span>
         <p className="mt-2 text-[0.68rem] font-bold text-white">Classistant</p>
         <p className="text-[0.52rem] text-white/60">
@@ -375,17 +443,20 @@ function CallScreen({ answered }: { answered: boolean }) {
         ) : null}
       </div>
 
-      <div className="relative flex w-full items-center justify-around">
-        <span className="grid h-8 w-8 place-items-center rounded-full bg-[var(--color-alert)]">
-          <span className="rotate-[134deg]">
-            <PhoneGlyph />
+      <div className="relative flex w-full flex-col items-center gap-3">
+        <div className="flex w-full items-center justify-around">
+          <span className="grid h-8 w-8 place-items-center rounded-full bg-[var(--color-alert)]">
+            <span className="rotate-[134deg]">
+              <PhoneGlyph />
+            </span>
           </span>
-        </span>
-        {!answered ? (
-          <span className="grid h-8 w-8 place-items-center rounded-full bg-[var(--color-ok)] motion-safe:animate-[float-slow_1.3s_ease-in-out_infinite]">
-            <PhoneGlyph />
-          </span>
-        ) : null}
+          {!answered ? (
+            <span className="grid h-8 w-8 place-items-center rounded-full bg-[var(--color-ok)] motion-safe:animate-[float-slow_1.3s_ease-in-out_infinite]">
+              <PhoneGlyph />
+            </span>
+          ) : null}
+        </div>
+        <HomeBar />
       </div>
     </div>
   );

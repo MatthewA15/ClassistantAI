@@ -14,7 +14,7 @@ it loops fast enough to compete with reading.
 | `PhoneThread` | Bubbles stagger in, typing dots pulse forever | Makes the thread read as live. The never-finishing typing indicator is the trick. |
 | Floating cards | Slow 9s vertical drift, offset delays | Separates them from the static phone so they read as system output. |
 | `HowItWorks` | Dashed connector draws left to right | Turns four cards into one sequence. |
-| `Escalation` | Ladder line draws and rises, final node pulses | The rising line *is* the escalation. The pulse marks the phone call. |
+| `Escalation` | Days tally off a calendar, cutting to a lockscreen a shade louder each time, then the handset rings | The pressure is a function of time running out, not of the agent getting impatient. See [11](11-phone-mockups.md). |
 | `PlaceholderShot` | Chart path draws, calendar and inbox rows stagger in | Suggests real software populating rather than a static mock. |
 | `LogoMark` | Tassel swings | Arrival moments only. See [01](01-brand-and-logo.md). |
 | Step rail | Progress line grows by height transition | Cheapest possible sense of progress. |

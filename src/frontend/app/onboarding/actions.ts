@@ -1,6 +1,6 @@
 "use server";
 
-import { getSchool } from "@/data/schools";
+import { findSchoolByEmail, getSchool } from "@/data/schools";
 
 /**
  * Onboarding server actions.
@@ -188,15 +188,44 @@ export async function completeOnboarding(
   return { ok: true, message: "You are set up." };
 }
 
-/** Records interest in a school Classistant does not support yet. */
+/**
+ * Personal mailboxes. The waitlist asks for a SCHOOL address because the domain
+ * is how we identify the campus and how we size demand for it; a personal
+ * address tells us a person is interested in nothing in particular.
+ */
+const PERSONAL_MAIL = new Set([
+  "gmail.com",
+  "googlemail.com",
+  "hotmail.com",
+  "hotmail.ca",
+  "outlook.com",
+  "live.com",
+  "live.ca",
+  "yahoo.com",
+  "yahoo.ca",
+  "icloud.com",
+  "me.com",
+  "proton.me",
+  "protonmail.com",
+]);
+
+/**
+ * Records interest in a school Classistant does not support yet.
+ *
+ * Serves two callers, which is why the school is optional. Onboarding already
+ * knows which school was picked and passes `schoolId`. The hero's "my school is
+ * not here" button does not: nothing was picked, so the school is read out of
+ * the address the student types.
+ */
 export async function joinWaitlist(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const email = String(formData.get("email") ?? "").trim();
-  const school = getSchool(String(formData.get("schoolId") ?? ""));
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
 
-  if (!email.includes("@") || email.length < 5) {
+  // A rough shape check, not RFC validation. The address is confirmed by us
+  // actually reaching it, and over-strict client-side rules reject real ones.
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(email)) {
     return {
       ok: false,
       message: "Enter an email so we can reach you.",
@@ -204,11 +233,33 @@ export async function joinWaitlist(
     };
   }
 
-  // TODO(backend): append to the waitlist collection in Firestore.
+  const domain = email.split("@")[1];
+  if (PERSONAL_MAIL.has(domain)) {
+    return {
+      ok: false,
+      message: "Use your school address.",
+      errors: { email: "Your school address, not a personal one. It tells us which campus." },
+    };
+  }
+
+  const school = getSchool(String(formData.get("schoolId") ?? "")) ?? findSchoolByEmail(email);
+
+  // Already supported. Sending them away to wait for something they can use
+  // right now would be the worst possible outcome of this form.
+  if (school?.status === "live") {
+    return {
+      ok: true,
+      message: `${school.name} is already live. Pick it above and you can start now.`,
+    };
+  }
+
+  // TODO(backend): append to the waitlist collection in Firestore, keyed by
+  // domain so demand per campus is countable. Send the confirmation, then the
+  // "it is ready" mail on launch. Both are transactional, not marketing.
   return {
     ok: true,
     message: school
-      ? `You are on the list for ${school.name}. We will email you the day it goes live.`
-      : "You are on the list. We will email you when your school goes live.",
+      ? `You are on the list for ${school.name}. We will email you at ${email} the day it is ready.`
+      : `You are on the list. We will email you at ${email} once we support ${domain}.`,
   };
 }

@@ -81,15 +81,57 @@ export function LogoMark({
         <circle cx="45.2" cy="29.5" r="2.4" fill={palette.tassel} />
       </g>
 
-      {/* Hand, in front of the cap. The ring is the thumb and index; the palm
-          and three fingers are separate strokes that merge into one silhouette,
-          which keeps the counter inside the ring open at small sizes. */}
-      <circle cx="8.4" cy="34.6" r="5.9" stroke={hand} strokeWidth="4.3" fill="none" />
-      <rect x="8.8" y="35.6" width="12.8" height="9.4" rx="4.7" fill={hand} />
-      <path d="M12.6 37.6 L12.4 17.2" stroke={hand} strokeWidth="4.7" strokeLinecap="round" />
-      <path d="M17 37.2 L17.8 15.2" stroke={hand} strokeWidth="4.7" strokeLinecap="round" />
-      <path d="M20.8 38 L22.6 18.4" stroke={hand} strokeWidth="4.7" strokeLinecap="round" />
+      {/* Hand, in front of the cap, facing right: the thumb-and-index ring sits
+          on the cap side so it reads as pinching the crown, with the three
+          fingers behind it. Palm and fingers are separate strokes that merge
+          into one silhouette, which keeps the ring's counter open at small
+          sizes where a single filled path would close up. */}
+      <circle cx="21.6" cy="34.6" r="5.9" stroke={hand} strokeWidth="4.3" fill="none" />
+      <rect x="8.4" y="35.6" width="12.8" height="9.4" rx="4.7" fill={hand} />
+      <path d="M17.4 37.6 L17.6 17.2" stroke={hand} strokeWidth="4.7" strokeLinecap="round" />
+      <path d="M13 37.2 L12.2 15.2" stroke={hand} strokeWidth="4.7" strokeLinecap="round" />
+      <path d="M9.2 38 L7.4 18.4" stroke={hand} strokeWidth="4.7" strokeLinecap="round" />
     </svg>
+  );
+}
+
+/**
+ * The mark as an app icon: LogoMark on a plate, for the places a phone mockup
+ * shows Classistant as a contact or a caller rather than as page furniture.
+ * Same recipe as `app/icon.svg`.
+ *
+ * The plate is a parameter and picks the tone with it, because the two are not
+ * independent: the `white` tone's crown is brand blue and vanishes on a blue
+ * plate, and the `brand` tone's hand is near-navy and vanishes on a dark one.
+ * Callers that chose those separately got a mark with a hole in it.
+ *
+ * Scaled to 0.76 of the plate rather than filled: the tassel reaches the right
+ * edge of the artwork, so at full bleed a circular plate clips it off.
+ */
+export function LogoPlate({
+  size = 32,
+  plate = "ink",
+  shape = "circle",
+  className,
+}: {
+  size?: number;
+  plate?: "ink" | "white";
+  shape?: "circle" | "squircle";
+  className?: string;
+}) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "grid shrink-0 place-items-center",
+        plate === "ink" ? "bg-ink-900" : "bg-white",
+        shape === "circle" ? "rounded-full" : "rounded-[27%]",
+        className,
+      )}
+      style={{ width: size, height: size }}
+    >
+      <LogoMark size={Math.round(size * 0.76)} tone={plate === "ink" ? "white" : "brand"} />
+    </span>
   );
 }
 

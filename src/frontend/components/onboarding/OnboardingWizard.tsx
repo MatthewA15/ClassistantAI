@@ -640,10 +640,24 @@ function UnsupportedScreen({ school, onBack }: { school: School; onBack: () => v
       <h1 className="mt-8 text-[1.75rem] font-extrabold leading-tight text-ink-900">
         {school.name} is not supported yet
       </h1>
+      {/* Two different facts, and saying the wrong one is a real error. A
+          `soon` school HAS been confirmed on Google and is simply not open yet;
+          telling that student we have not checked is both false and a worse
+          answer than the truth, which is that they are next. */}
       <p className="mt-4 text-[0.98rem] leading-[1.7] text-body">
-        Classistant reads your courses through Google, and we have not confirmed that student
-        email at {school.name} runs on Google Workspace. Leave your address and we will tell you
-        the day that changes.
+        {school.status === "soon" ? (
+          <>
+            Student email at {school.name} does run on Google, so Classistant will work there. We
+            have not opened the campus yet. Leave your address and we will email you the day it is
+            ready.
+          </>
+        ) : (
+          <>
+            Classistant reads your courses through Google, and we have not confirmed that student
+            email at {school.name} runs on Google Workspace. Leave your address and we will tell
+            you the day that changes.
+          </>
+        )}
       </p>
 
       {state?.ok ? (

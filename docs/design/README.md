@@ -7,7 +7,7 @@ Read these before changing something that looks arbitrary. Most of it is not.
 
 | Doc | What it settles |
 | --- | --- |
-| [01 Brand and logo](01-brand-and-logo.md) | The mark, why a mortarboard-bubble, wordmark, usage rules |
+| [01 Brand and logo](01-brand-and-logo.md) | The mark, why a hand holding a cap, wordmark, usage rules |
 | [02 Design system](02-design-system.md) | Palette constraint, type, spacing, the "no AI tells" rules |
 | [03 Landing page](03-landing-page.md) | Section order and what each one has to accomplish |
 | [04 Onboarding](04-onboarding.md) | Step order, why credentials come late, validation split |
@@ -17,6 +17,7 @@ Read these before changing something that looks arbitrary. Most of it is not.
 | [08 Legal pages](08-legal-pages.md) | Why they exist, what still needs a lawyer |
 | [09 School theming](09-school-theming.md) | Per-school colours, why no logos, the locked CTA |
 | [10 How-it-works scenes](10-how-it-works-scenes.md) | The four stick-figure loops and the bugs they taught |
+| [11 Phone mockups](11-phone-mockups.md) | The fake phones, their status bars, and keeping their clocks honest |
 
 ## Ground rules that apply everywhere
 

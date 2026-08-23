@@ -9,10 +9,17 @@
  *  - Nothing goes in as `live` without a `source` URL from the school's own IT
  *    pages. We put institution names on a public marketing page, so a wrong
  *    entry is a factual error about a real organisation, not a cosmetic bug.
- *  - Schools we have not confirmed sit in `pending`. They are searchable during
- *    onboarding so a student gets a real answer, but they never appear in
- *    marketing copy as supported.
  *  - Platforms migrate. Re-verify every entry each August before term starts.
+ *
+ * Three statuses, and the difference between the last two matters:
+ *  - `live`    We run there today. Only these appear in marketing copy.
+ *  - `soon`    Student mail CONFIRMED on Google, with a source, but we have not
+ *              launched there. Launch scope, not a research gap.
+ *  - `pending` Not checked yet. We do not know what their mail runs on.
+ *
+ * `soon` and `pending` both read as unsupported to a student, so onboarding
+ * treats them the same. They are kept apart here because collapsing them would
+ * throw away confirmed verification work and quietly invite someone to redo it.
  *
  * Known NOT eligible (student mail is Microsoft 365), keep out of the list:
  *  - Carleton University (cmail is M365)
@@ -23,7 +30,7 @@
  * mailbox platform is what matters.
  */
 
-export type SchoolStatus = "live" | "pending";
+export type SchoolStatus = "live" | "soon" | "pending";
 
 /**
  * A school's own brand colours, used to re-skin the whole site when a student
@@ -78,59 +85,7 @@ export function schoolInitials(name: string): string {
 }
 
 export const SCHOOLS: School[] = [
-  {
-    id: "tmu",
-    name: "Toronto Metropolitan University",
-    short: "TMU",
-    province: "ON",
-    emailDomain: "torontomu.ca",
-    status: "live",
-    source: "https://www.torontomu.ca/google/",
-    brand: { primary: "#004C9B", source: "https://www.torontomu.ca/brand/brand-toolkit/colours/" },
-  },
-  {
-    id: "yorku",
-    name: "York University",
-    short: "York",
-    province: "ON",
-    emailDomain: "my.yorku.ca",
-    status: "live",
-    source: "https://google.info.yorku.ca/",
-    note: "Undergraduate accounts only. Graduate mail at yorku.ca is on a different platform.",
-    brand: { primary: "#E31837", source: "https://www.yorku.ca/brand/using-the-brand/colours/" },
-  },
-  {
-    id: "lakehead",
-    name: "Lakehead University",
-    short: "Lakehead",
-    province: "ON",
-    emailDomain: "lakeheadu.ca",
-    status: "live",
-    source:
-      "https://www.lakeheadu.ca/faculty-and-staff/departments/services/helpdesk/email",
-    brand: {
-      primary: "#004271",
-      accent: "#FFC20E",
-      source:
-        "https://www.lakeheadu.ca/faculty-and-staff/departments/services/marketing-communications/marketing/brand-guidelines",
-    },
-  },
-  {
-    id: "mun",
-    name: "Memorial University of Newfoundland",
-    short: "Memorial",
-    province: "NL",
-    emailDomain: "mun.ca",
-    status: "live",
-    source:
-      "https://www.mun.ca/cio/it-services/communication-and-collaboration/google-workspace/",
-    note: "Access requires registration within the last three semesters.",
-    brand: {
-      primary: "#862633",
-      source:
-        "https://www.mun.ca/marcomm/media/production/memorial/administrative/marcomm/files/BrandStandards_August_2017_FA.pdf",
-    },
-  },
+  // ---------------------------------------------------------------- live
   {
     id: "ualberta",
     name: "University of Alberta",
@@ -148,12 +103,90 @@ export const SCHOOLS: School[] = [
     },
   },
   {
+    id: "ontariotech",
+    name: "Ontario Tech University",
+    short: "Ontario Tech",
+    province: "ON",
+    emailDomain: "ontariotechu.net",
+    status: "live",
+    // Student Google Workspace is branded "OntarioTechU.Net" on their own IT
+    // pages, which is why searching for "Ontario Tech Microsoft 365" is
+    // misleading: that page is real, but it covers faculty and staff mail.
+    // Students are on Gmail.
+    source:
+      "https://itsc.ontariotechu.ca/ontariotechunet-google-apps-for-education/google-email-gmail.php",
+    note: "Undergraduates, graduates, and alumni all get an OntarioTechU.Net account.",
+    brand: {
+      primary: "#003C71",
+      accent: "#E75D2A",
+      source:
+        "https://brand.ontariotechu.ca/guidelines/brand-standards/colours-design-graphics-and-fonts/colours.php",
+    },
+  },
+
+  // ------------------------------------------------- confirmed, not launched
+  // Student mail verified on Google against the sources below. These are out of
+  // launch scope, not unverified. Flip to `live` when we open the campus.
+  {
+    id: "tmu",
+    name: "Toronto Metropolitan University",
+    short: "TMU",
+    province: "ON",
+    emailDomain: "torontomu.ca",
+    status: "soon",
+    source: "https://www.torontomu.ca/google/",
+    brand: { primary: "#004C9B", source: "https://www.torontomu.ca/brand/brand-toolkit/colours/" },
+  },
+  {
+    id: "yorku",
+    name: "York University",
+    short: "York",
+    province: "ON",
+    emailDomain: "my.yorku.ca",
+    status: "soon",
+    source: "https://google.info.yorku.ca/",
+    note: "Undergraduate accounts only. Graduate mail at yorku.ca is on a different platform.",
+    brand: { primary: "#E31837", source: "https://www.yorku.ca/brand/using-the-brand/colours/" },
+  },
+  {
+    id: "lakehead",
+    name: "Lakehead University",
+    short: "Lakehead",
+    province: "ON",
+    emailDomain: "lakeheadu.ca",
+    status: "soon",
+    source:
+      "https://www.lakeheadu.ca/faculty-and-staff/departments/services/helpdesk/email",
+    brand: {
+      primary: "#004271",
+      accent: "#FFC20E",
+      source:
+        "https://www.lakeheadu.ca/faculty-and-staff/departments/services/marketing-communications/marketing/brand-guidelines",
+    },
+  },
+  {
+    id: "mun",
+    name: "Memorial University of Newfoundland",
+    short: "Memorial",
+    province: "NL",
+    emailDomain: "mun.ca",
+    status: "soon",
+    source:
+      "https://www.mun.ca/cio/it-services/communication-and-collaboration/google-workspace/",
+    note: "Access requires registration within the last three semesters.",
+    brand: {
+      primary: "#862633",
+      source:
+        "https://www.mun.ca/marcomm/media/production/memorial/administrative/marcomm/files/BrandStandards_August_2017_FA.pdf",
+    },
+  },
+  {
     id: "mtroyal",
     name: "Mount Royal University",
     short: "Mount Royal",
     province: "AB",
     emailDomain: "mtroyal.ca",
-    status: "live",
+    status: "soon",
     source:
       "https://www.mtroyal.ca/CampusServices/CampusResources/InformationTechnology/EmailCalendaring/index.htm",
     brand: {
@@ -163,7 +196,10 @@ export const SCHOOLS: School[] = [
     },
   },
 
-  // Awaiting confirmation. Searchable during onboarding, never shown as supported.
+  // ------------------------------------------------------------- not checked
+  // Mail platform unknown. Searchable during onboarding so a student gets a real
+  // answer, never shown as supported. Confirm against the school's own IT mail
+  // page before promoting, and add the `source` in the same commit.
   { id: "kpu", name: "Kwantlen Polytechnic University", short: "KPU", province: "BC", emailDomain: "student.kpu.ca", status: "pending" },
   { id: "seneca", name: "Seneca Polytechnic", short: "Seneca", province: "ON", emailDomain: "myseneca.ca", status: "pending" },
   { id: "sheridan", name: "Sheridan College", short: "Sheridan", province: "ON", emailDomain: "sheridancollege.ca", status: "pending" },
@@ -190,4 +226,26 @@ export function searchSchools(query: string): School[] {
 
 export function getSchool(id: string): School | undefined {
   return SCHOOLS.find((s) => s.id === id);
+}
+
+/**
+ * Matches a typed address to a school by its mail domain, so the waitlist can
+ * answer with the school's name instead of echoing a raw domain back.
+ *
+ * Matches across a subdomain in both directions on purpose. York's student mail
+ * is `my.yorku.ca`, but a York student typing their address from memory writes
+ * `@yorku.ca` about as often. A `pending` school matches too: we do not know
+ * what their mail runs on, but we do know what the school is called.
+ */
+export function findSchoolByEmail(email: string): School | undefined {
+  const domain = email.trim().toLowerCase().split("@")[1]?.replace(/[>\s]+$/, "");
+  // A bare TLD would `endsWith`-match half the list, so require a real domain.
+  if (!domain || !domain.includes(".")) return undefined;
+
+  return SCHOOLS.find(
+    (s) =>
+      domain === s.emailDomain ||
+      domain.endsWith(`.${s.emailDomain}`) ||
+      s.emailDomain.endsWith(`.${domain}`),
+  );
 }
