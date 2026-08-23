@@ -452,8 +452,16 @@
      `scripting` media feature does this without an inline script mutating
      <html>, which would trip React's hydration attribute check. Browsers too
      old to know the feature simply skip the block and show everything at once,
-     which is the correct degradation. */
-  @media (scripting: enabled) {
+     which is the correct degradation.
+
+     Phones opt out (< 768px). A narrow viewport shows only one section at a
+     time, so the tease of the next one — its top edge sitting just above the
+     fold, inviting the scroll — is the whole navigation cue. Hiding that slice
+     until it intersects replaces the tease with blank space and fires an
+     animation in the reader's face on every single swipe. On desktop the
+     reveal still works, because several sections share the screen and the fade
+     directs attention rather than withholding it. */
+  @media (scripting: enabled) and (min-width: 768px) {
     .reveal {
       opacity: 0;
       transform: translateY(18px);

@@ -147,7 +147,7 @@ export function Features() {
                 Capped at a fixed width it left a third of the tallest tile on
                 the wall empty, which read as a loading state. */}
             <Tile col={1} row={3}>
-              <div className="flex w-full min-h-0 flex-1 items-stretch justify-center pb-2">
+              <div className="flex w-full min-h-0 flex-1 items-center justify-center pb-2">
                 <PhoneMock />
               </div>
               <p className="font-display text-[0.84rem] font-bold text-ink-900">It calls you</p>
@@ -232,9 +232,13 @@ export function Features() {
 
 /**
  * A ringing handset, sized off the tile rather than off a fixed width: height
- * comes from the box, width from the phone's own 1:2 proportions, and
- * `max-w-full` gives way on the narrow phone grid rather than pushing out of
- * the tile.
+ * comes from the box, width from the phone's own proportions, and `max-w-full`
+ * gives way on the narrow phone grid rather than pushing out of the tile.
+ *
+ * 70% of the height, not all of it. This is the tallest tile on the wall and a
+ * handset filling it ran to 1:2.13 against a clamped width, which reads as a
+ * sliver rather than a phone. Centred, so what is left over sits as margin
+ * above and below rather than as a hole under it.
  *
  * Answer and decline carry the handset glyph instead of being bare colour
  * dots. Two circles alone said "traffic light"; the glyph is what makes the
@@ -242,7 +246,7 @@ export function Features() {
  */
 function PhoneMock() {
   return (
-    <div className="aspect-[1/2] h-full w-auto max-w-full rounded-[0.9rem] bg-ink-950 p-[0.22rem] shadow-soft">
+    <div className="aspect-[1/1.85] h-[70%] w-auto max-w-full rounded-[0.9rem] bg-ink-950 p-[0.22rem] shadow-soft">
       <div className="flex h-full flex-col items-center rounded-[0.75rem] bg-white px-2 pb-2 pt-1.5">
         <span className="h-[0.15rem] w-5 shrink-0 rounded-full bg-ink-900/20" />
 
