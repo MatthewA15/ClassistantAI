@@ -7,10 +7,27 @@ observability judging criteria, and it's less code than hand-rolling crypto.
 Secret naming: user-{google_sub}-refresh-token
 The Google `sub` claim is a stable numeric user id -> safe for secret ids.
 """
+import google.auth
 from google.api_core import exceptions as gexc
+from google.auth import impersonated_credentials
 from google.cloud import secretmanager
 
-_client = secretmanager.SecretManagerServiceClient()
+from app.config import settings
+
+
+def _gcp_credentials():
+    """ADC, optionally impersonating the app's service account for local dev."""
+    creds, _ = google.auth.default()
+    if settings.gcp_service_account:
+        creds = impersonated_credentials.Credentials(
+            source_credentials=creds,
+            target_principal=settings.gcp_service_account,
+            target_scopes=["https://www.googleapis.com/auth/cloud-platform"],
+        )
+    return creds
+
+
+_client = secretmanager.SecretManagerServiceClient(credentials=_gcp_credentials())
 
 
 def _secret_id(user_id: str) -> str:

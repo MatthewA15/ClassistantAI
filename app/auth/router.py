@@ -30,6 +30,7 @@ def _flow(state: str | None = None) -> Flow:
     return Flow.from_client_config(
         client_config, scopes=settings.scopes, state=state,
         redirect_uri=settings.oauth_redirect_uri,
+        autogenerate_code_verifier=False,
     )
 
 
