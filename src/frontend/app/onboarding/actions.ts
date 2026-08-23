@@ -1,14 +1,30 @@
 "use server";
 
+import { headers } from "next/headers";
+
+import { consentWording } from "@/data/consent";
 import { findSchoolByEmail, getSchool } from "@/data/schools";
+import { FieldValue } from "@/lib/firebaseAdmin";
+import { buildAuthUrl, randomState } from "@/lib/googleOAuth";
+import { getSession, setPendingOAuth } from "@/lib/onboardingSession";
+import {
+  markOnboardingComplete,
+  savePortalCredentials,
+  upsertUser,
+} from "@/lib/users";
 
 /**
  * Onboarding server actions.
  *
- * FRONTEND ONLY. Nothing here persists anything, calls any provider, or writes
- * any log. Each action validates its input and returns the shape the UI
- * expects, so the backend team can fill in the marked bodies without the client
- * changing at all. See docs/design/07-backend-contract.md.
+ * These are live now. `connectGoogle` starts a real OAuth flow and
+ * `completeOnboarding` writes to Firestore and Secret Manager. The pieces sit
+ * in three places for a reason (docs/design/12-onboarding-persistence.md):
+ *
+ *   this file          validation, and the two writes onboarding owns
+ *   /onboarding/callback  the return leg from Google
+ *   connector on Cloud Run  the code exchange and the refresh token
+ *
+ * No OAuth secret is reachable from this process. See docs/design/07-backend-contract.md.
  */
 
 export type ActionResult = {
@@ -19,74 +35,42 @@ export type ActionResult = {
 
 export type Identity = {
   email: string;
+  /** Derived from the address, not from Google. The connector requests no
+   *  `profile` scope, so no real name is ever returned. */
   name: string;
-  /** True while Google is stubbed, so the UI can say the name is placeholder. */
-  simulated: boolean;
 };
 
 const PHONE_RE = /^[2-9]\d{9}$/;
 
 /**
- * Scopes the agent needs.
+ * Best-effort client IP for the consent record.
  *
- * NOT exported. A "use server" module may only export async functions, and
- * exporting this array makes every request to the route throw
- * `A "use server" file can only export async functions, found object` at
- * runtime while still building cleanly. If another module needs these, move
- * them to a plain file rather than exporting from here.
+ * App Hosting sits behind Google's load balancer, so the first entry in
+ * X-Forwarded-For is the client and the rest are proxies. Spoofable by a
+ * determined client, which is fine: this is corroborating evidence attached to
+ * a consent, not an access control decision.
  */
-const GOOGLE_SCOPES = [
-  "openid",
-  "email",
-  "profile",
-  "https://www.googleapis.com/auth/gmail.readonly",
-  "https://www.googleapis.com/auth/gmail.send",
-  "https://www.googleapis.com/auth/calendar.events",
-  "https://www.googleapis.com/auth/drive.readonly",
-] as const;
-
-/**
- * Builds the Google authorisation URL that lands the student on their own
- * school's sign-in page.
- *
- * How the hand-off actually works, since it drove the UI design:
- *  - `hd` pins the consent screen to the school's Workspace domain, so a
- *    personal gmail cannot be connected by accident. This is the important one.
- *  - `login_hint` carries the full address. When a school federates Google to
- *    its own IdP (which the Canadian schools we support do), supplying a full
- *    address lets Google skip its own account chooser and redirect straight to
- *    the university login page. `hd` alone still stops at Google's screen
- *    first, so the UI asks for just the username and appends the domain.
- *
- * TODO(backend): append client_id, redirect_uri, state, code_challenge, and
- * `access_type=offline` + `prompt=consent` for a refresh token, then redirect().
- */
-export async function buildGoogleAuthUrl(schoolId: string, username: string) {
-  const school = getSchool(schoolId);
-  if (!school || school.status !== "live") return null;
-
-  const params = new URLSearchParams({
-    response_type: "code",
-    scope: GOOGLE_SCOPES.join(" "),
-    hd: school.emailDomain,
-    include_granted_scopes: "true",
-  });
-  if (username) params.set("login_hint", `${username}@${school.emailDomain}`);
-
-  return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+async function clientIp(): Promise<string | null> {
+  const h = await headers();
+  const forwarded = h.get("x-forwarded-for");
+  if (forwarded) return forwarded.split(",")[0]?.trim() ?? null;
+  return h.get("x-real-ip");
 }
 
 /**
- * Stands in for the OAuth round trip and the userinfo call that follows it.
+ * Starts the Google sign-in.
  *
- * TODO(backend): replace with the real redirect. The callback exchanges the
- * code, reads `email` and `name` from the ID token, and creates the Firestore
- * user document.
+ * Returns a URL rather than calling redirect(). The wizard is a client
+ * component and the student is mid-form; letting it navigate deliberately keeps
+ * the "Opening your school sign-in..." state honest instead of yanking the page
+ * out from under a pending action.
+ *
+ * The scope list, `hd` pinning and `state` all live in lib/googleOAuth.ts.
  */
 export async function connectGoogle(
-  _prev: (ActionResult & { identity?: Identity }) | null,
+  _prev: (ActionResult & { redirectUrl?: string }) | null,
   formData: FormData,
-): Promise<ActionResult & { identity?: Identity }> {
+): Promise<ActionResult & { redirectUrl?: string }> {
   const schoolId = String(formData.get("schoolId") ?? "");
   const username = String(formData.get("username") ?? "")
     .trim()
@@ -106,28 +90,35 @@ export async function connectGoogle(
     };
   }
 
+  // The state is minted here and checked in /onboarding/callback. The school
+  // rides along in the same signed cookie because the wizard's React state does
+  // not survive the trip to accounts.google.com.
+  const state = randomState();
+  await setPendingOAuth({ state, schoolId, username });
+
   return {
     ok: true,
-    message: "Connected.",
-    identity: {
-      email: `${username}@${school.emailDomain}`,
-      // Real Google returns the registrar's name here. Until it is wired up
-      // this is placeholder text and the UI says so rather than pretending.
-      name: "Alex Mercer",
-      simulated: true,
-    },
+    message: "Opening your school sign-in...",
+    redirectUrl: buildAuthUrl({
+      emailDomain: school.emailDomain,
+      username,
+      state,
+    }),
   };
 }
 
 /**
- * Final submit.
+ * Final submit. Writes both onboarding collections.
  *
- * TODO(backend): write the profile to Firestore, store the refresh token, send
- * the Twilio verification SMS, and enqueue the first crawl on Cloud Run.
+ *   users/{sub}        profile + consent evidence
+ *   credentials/{sub}  portal username + a Secret Manager pointer
  *
- * Store `acceptTerms` and `consentSms` with a timestamp, the IP, and the exact
- * wording shown. They are CASL consent records and A2P registration evidence,
- * not UI state, so a bare boolean is not enough.
+ * Identity comes from the signed session cookie, never from the form. The form
+ * is client-supplied and the whole point of the OAuth round trip is that the
+ * email was proven; taking it from a hidden input would throw that away and let
+ * anyone write a document under someone else's id.
+ *
+ * Still TODO(backend): the Twilio verification SMS and the first crawl enqueue.
  */
 export async function completeOnboarding(
   _prev: ActionResult | null,
@@ -135,13 +126,19 @@ export async function completeOnboarding(
 ): Promise<ActionResult> {
   const errors: Record<string, string> = {};
 
-  const school = getSchool(String(formData.get("schoolId") ?? ""));
+  const session = await getSession();
+  if (!session) {
+    return {
+      ok: false,
+      message: "Your sign-in expired. Connect with Google again to finish.",
+    };
+  }
+
+  const school = getSchool(session.schoolId);
   if (!school || school.status !== "live") errors.schoolId = "Choose a supported school.";
 
-  const email = String(formData.get("email") ?? "").trim().toLowerCase();
-  if (!email.includes("@")) {
-    errors.email = "We did not get an address from Google.";
-  } else if (school && !email.endsWith(`@${school.emailDomain}`)) {
+  const email = session.email;
+  if (school && !email.endsWith(`@${school.emailDomain}`)) {
     errors.email = `That is not an @${school.emailDomain} address.`;
   }
 
@@ -162,10 +159,14 @@ export async function completeOnboarding(
     errors.portalUser = "Enter the username you use on the school portal.";
   }
 
-  // DELIBERATE, DO NOT REMOVE: read, length-checked, and dropped. The portal
-  // password is never logged, never echoed into a response, and never included
-  // in an error message. When the backend lands it should go straight from here
-  // into the encrypted credential store and nowhere else.
+  // DELIBERATE, DO NOT REMOVE: the portal password is never logged, never
+  // echoed into a response, and never included in an error message. It now goes
+  // straight into Secret Manager via savePortalCredentials() below and nowhere
+  // else -- in particular it is never written to Firestore, because a document
+  // is readable by anything with datastore.user and a secret is not.
+  //
+  // It is stored reversibly, not hashed. The agent has to replay it into the
+  // school portal overnight, so hashing is not an option here.
   const portalPassword = String(formData.get("portalPassword") ?? "");
   if (portalPassword.length < 6) {
     errors.portalPassword = "Enter your portal password.";
@@ -183,6 +184,56 @@ export async function completeOnboarding(
 
   if (Object.keys(errors).length > 0) {
     return { ok: false, message: "Some details still need fixing.", errors };
+  }
+
+  const now = FieldValue.serverTimestamp();
+  const ip = await clientIp();
+  const record = (key: Parameters<typeof consentWording>[0], granted: boolean) => ({
+    granted,
+    at: now,
+    ip,
+    wording: consentWording(key),
+  });
+
+  try {
+    await upsertUser({
+      id: session.userId,
+      email,
+      // Google never told us their name: the connector requests neither the
+      // `profile` scope nor returns a name from /auth/callback. The nickname
+      // they chose is the honest answer, and the address is the fallback rather
+      // than inventing something. See docs/design/12 for what a real registrar
+      // name would cost.
+      name: nickname || email.split("@")[0],
+      phoneNumber: `+1${phone}`,
+      schoolId: school!.id,
+      serviceEmail: serviceEmail || undefined,
+      consent: {
+        terms: record("terms", true),
+        sms: record("sms", true),
+        marketing: record("marketing", formData.get("acceptMarketing") === "on"),
+      },
+    });
+
+    await savePortalCredentials({
+      userId: session.userId,
+      username: portalUser,
+      password: portalPassword,
+    });
+
+    await markOnboardingComplete(session.userId);
+  } catch (err) {
+    // Never let the error text reach the student: a Firestore or Secret Manager
+    // failure can echo back argument values, and one of the arguments here is a
+    // portal password.
+    console.error("completeOnboarding failed", {
+      userId: session.userId,
+      error: err instanceof Error ? err.message : "unknown",
+    });
+    return {
+      ok: false,
+      message: "We could not save your setup. Try again in a moment.",
+    };
   }
 
   return { ok: true, message: "You are set up." };

@@ -13,6 +13,7 @@ import { SchoolPicker } from "@/components/onboarding/SchoolPicker";
 import { Choice, Field, TextInput, formatPhone } from "@/components/onboarding/fields";
 import { LogoMark } from "@/components/brand/LogoMark";
 import { useSchoolTheme } from "@/components/theme/SchoolTheme";
+import { CONSENT_COPY } from "@/data/consent";
 import { getSchool, type School } from "@/data/schools";
 import { cn } from "@/lib/cn";
 
@@ -43,11 +44,16 @@ const STEPS = [
   { title: "Where should it text you?", blurb: "The number the agent uses" },
 ];
 
-export function OnboardingWizard() {
+/** Set once the student has come back from Google. Read from the signed session
+ *  cookie by the page, because the cookie is httpOnly and this is a client
+ *  component. */
+export type ConnectedAccount = { email: string; schoolId: string };
+
+export function OnboardingWizard({ connected }: { connected: ConnectedAccount | null }) {
   const params = useSearchParams();
   const { school: themedSchool, setSchool } = useSchoolTheme();
 
-  const preselected = params.get("school");
+  const preselected = params.get("school") ?? connected?.schoolId;
   const [school, setLocalSchool] = useState<School | null>(
     preselected ? (getSchool(preselected) ?? null) : null,
   );
@@ -58,8 +64,14 @@ export function OnboardingWizard() {
     if (school && themedSchool?.id !== school.id) setSchool(school.id);
   }, [school, themedSchool, setSchool]);
 
-  const [step, setStep] = useState(0);
-  const [identity, setIdentity] = useState<Identity | null>(null);
+  // Coming back from Google lands on step 1 with the account already proven.
+  // The connect step has nothing left to ask at that point.
+  const [step, setStep] = useState(connected ? 1 : 0);
+  const [identity] = useState<Identity | null>(
+    connected
+      ? { email: connected.email, name: connected.email.split("@")[0] }
+      : null,
+  );
 
   const [nickname, setNickname] = useState("");
   const [editingNickname, setEditingNickname] = useState(false);
@@ -78,14 +90,29 @@ export function OnboardingWizard() {
   const [connectState, connectAction, connecting] = useActionState(
     async (prev: Awaited<ReturnType<typeof connectGoogle>> | null, formData: FormData) => {
       const result = await connectGoogle(prev, formData);
-      if (result.ok && result.identity) {
-        setIdentity(result.identity);
-        setStep(1);
-      }
+      // A full navigation, not a router push: we are leaving the app for
+      // accounts.google.com and will come back as a fresh page load.
+      if (result.ok && result.redirectUrl) window.location.assign(result.redirectUrl);
       return result;
     },
     null,
   );
+
+  // Errors the callback route reports back on the query string. Each is
+  // something the student can act on; the underlying detail is in the logs.
+  const OAUTH_ERRORS: Record<string, string> = {
+    cancelled: "You cancelled the Google sign-in. Try again when you are ready.",
+    domain: school
+      ? `That Google account is not an @${school.emailDomain} address. Sign in with your school account.`
+      : "That is not a school account.",
+    state: "That sign-in link expired. Start again.",
+    incomplete: "Google did not send us back everything we needed. Try again.",
+    exchange: "We could not finish the sign-in with Google. Try again.",
+    unreachable: "We could not reach our servers. Try again in a moment.",
+    google: "Google turned down the sign-in. Try again.",
+    school: "Pick a supported school first.",
+  };
+  const oauthError = OAUTH_ERRORS[params.get("error") ?? ""];
 
   const [submitState, submitAction, submitting] = useActionState(completeOnboarding, null);
   const errors = submitState?.errors ?? {};
@@ -167,6 +194,13 @@ export function OnboardingWizard() {
             {connectState && !connectState.ok ? (
               <p role="alert" className="text-[0.85rem] text-ink-800">
                 {connectState.message}
+              </p>
+            ) : oauthError ? (
+              <p
+                role="alert"
+                className="rounded-xl bg-paper p-4 text-[0.85rem] leading-[1.6] text-ink-800 ring-1 ring-line"
+              >
+                {oauthError}
               </p>
             ) : null}
 
@@ -274,9 +308,10 @@ export function OnboardingWizard() {
                       </button>
                     </dd>
                   )}
-                  {identity.simulated && !nickname ? (
+                  {!nickname ? (
                     <p className="mt-1.5 text-[0.76rem] text-body-soft">
-                      Google is not connected yet, so this name is placeholder data.
+                      Taken from your address. Change it to whatever you want to be
+                      called.
                     </p>
                   ) : null}
                 </div>
@@ -322,8 +357,8 @@ export function OnboardingWizard() {
               name="acceptTerms"
               checked={acceptTerms}
               onChange={() => setAcceptTerms((v) => !v)}
-              title="I accept the terms and privacy policy"
-              body="Including that Classistant can read course mail and write to your calendar."
+              title={CONSENT_COPY.terms.title}
+              body={CONSENT_COPY.terms.body}
             />
             {errors.acceptTerms ? (
               <p role="alert" className="-mt-3 text-[0.8rem] font-medium text-ink-800">
@@ -335,8 +370,8 @@ export function OnboardingWizard() {
               name="acceptMarketing"
               checked={acceptMarketing}
               onChange={() => setAcceptMarketing((v) => !v)}
-              title="Send me product emails"
-              body="Occasional updates about new features. Nothing to do with your coursework, and you can opt out any time."
+              title={CONSENT_COPY.marketing.title}
+              body={CONSENT_COPY.marketing.body}
             />
 
             <p className="text-[0.82rem] leading-[1.6] text-body-soft">
@@ -384,8 +419,8 @@ export function OnboardingWizard() {
               name="consentSms"
               checked={consentSms}
               onChange={() => setConsentSms((v) => !v)}
-              title="Text me about my coursework"
-              body="Automated texts from Classistant about your schoolwork. Message and data rates may apply. Reply STOP to end at any time."
+              title={CONSENT_COPY.sms.title}
+              body={CONSENT_COPY.sms.body}
             />
             {errors.consentSms ? (
               <p role="alert" className="-mt-3 text-[0.8rem] font-medium text-ink-800">
@@ -496,11 +531,17 @@ function ScopeList() {
       <li className="text-[0.75rem] font-semibold uppercase tracking-[0.14em] text-body-soft">
         Google will ask you to allow
       </li>
+      {/* These must describe the scopes actually requested in lib/googleOAuth.ts.
+          Consent copy that overstates what is granted is the kind of thing an
+          app review fails on, and it is also just untrue to the student.
+          Notably there is no send permission: gmail.compose writes drafts and
+          cannot send, so "send" must never appear in this list. */}
       {[
         "Read course email and announcements",
+        "Save draft replies for you to review and send yourself",
         "Create and update calendar events",
-        "Send email you have approved, from your address",
         "Read syllabi and course files in Drive",
+        "Create Google Docs on your behalf",
       ].map((scope) => (
         <li key={scope} className="flex items-start gap-2.5 text-[0.85rem] text-ink-800">
           <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-sky-400" />

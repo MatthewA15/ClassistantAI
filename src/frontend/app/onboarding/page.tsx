@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
 import { Container } from "@/components/ui/primitives";
+import { getSession } from "@/lib/onboardingSession";
 
 export const metadata: Metadata = {
   title: "Get set up",
@@ -11,7 +12,14 @@ export const metadata: Metadata = {
   robots: { index: false, follow: true },
 };
 
-export default function OnboardingPage() {
+// Reads the session cookie, so it cannot be statically rendered.
+export const dynamic = "force-dynamic";
+
+export default async function OnboardingPage() {
+  // The wizard is a client component and the session cookie is httpOnly, so the
+  // identity proven by the Google round trip has to be handed down from here.
+  // A student returning from consent lands on this page, not on a fresh one.
+  const session = await getSession();
   return (
     <div className="relative min-h-dvh bg-paper">
       <div
@@ -25,7 +33,11 @@ export default function OnboardingPage() {
       <Container className="relative py-12 sm:py-16">
         {/* useSearchParams needs a boundary on a statically rendered route. */}
         <Suspense fallback={<div className="min-h-[26rem]" />}>
-          <OnboardingWizard />
+          <OnboardingWizard
+            connected={
+              session ? { email: session.email, schoolId: session.schoolId } : null
+            }
+          />
         </Suspense>
 
         <p className="mt-12 text-center text-[0.82rem] text-body-soft">

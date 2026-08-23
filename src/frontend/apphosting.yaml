@@ -4,11 +4,36 @@
 # rootDir is src/frontend. App Hosting looks for this file at the root it was
 # given, not at the top of the repository.
 #
-# No `env:` block yet. Every server action in app/onboarding/actions.ts is still
-# a stub, so the app reads no API keys, no database, and no secrets. When the
-# backend lands, secrets go in through `firebase apphosting:secrets:set` and are
-# referenced here by name, never pasted in as literal values: this file is
-# committed to a repository.
+# Secrets are referenced by NAME, never pasted in as literal values: this file
+# is committed to a repository. Plain `value:` entries below are all public by
+# nature -- a URL, and the OAuth client id, which is shipped to every browser in
+# the consent link anyway.
+
+env:
+  # Where Google sends students back. Must match the connector's
+  # OAUTH_REDIRECT_URI byte for byte, and must be listed as an authorised
+  # redirect URI on the OAuth client, or the exchange fails.
+  - variable: NEXT_PUBLIC_APP_URL
+    value: https://classistant--classisstant.us-central1.hosted.app
+    availability: [BUILD, RUNTIME]
+
+  # Public half of the OAuth client. Safe to commit; the secret half is mounted
+  # into the connector service on Cloud Run and never reaches this app.
+  - variable: NEXT_PUBLIC_GOOGLE_CLIENT_ID
+    value: 945345983057-afoprh857qtv09ce85kst196hj3o9tb0.apps.googleusercontent.com
+    availability: [BUILD, RUNTIME]
+
+  # Server-to-server only. Deliberately not NEXT_PUBLIC_: the connector is
+  # currently deployed --allow-unauthenticated, so there is no reason to hand
+  # its address to every browser as well.
+  - variable: CONNECTORS_API_URL
+    value: https://classistant-connectors-945345983057.us-central1.run.app
+    availability: [RUNTIME]
+
+  # HMAC key for the onboarding and session cookies (lib/onboardingSession.ts).
+  - variable: SESSION_SECRET
+    secret: session-secret
+    availability: [RUNTIME]
 
 runConfig:
   # A marketing site with bursty term-start traffic and long quiet stretches.

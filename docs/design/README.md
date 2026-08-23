@@ -18,6 +18,7 @@ Read these before changing something that looks arbitrary. Most of it is not.
 | [09 School theming](09-school-theming.md) | Per-school colours, why no logos, the locked CTA |
 | [10 How-it-works scenes](10-how-it-works-scenes.md) | The four stick-figure loops and the bugs they taught |
 | [11 Phone mockups](11-phone-mockups.md) | The fake phones, their status bars, and keeping their clocks honest |
+| [12 Onboarding persistence](12-onboarding-persistence.md) | The real Google login, the two Firestore collections, where the portal password lives |
 
 ## Ground rules that apply everywhere
 
