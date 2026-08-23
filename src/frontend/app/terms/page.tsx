@@ -187,8 +187,11 @@ const SECTIONS: LegalSection[] = [
     body: (
       <>
         <p>
-          You can leave whenever you like by replying <Strong>DELETE</Strong> or emailing{" "}
-          {LEGAL.contactEmail}. Your data is handled as set out in the privacy policy.
+          You can leave whenever you like by replying <Strong>DELETE</Strong>, or from{" "}
+          <Link href="/delete-my-data" className="font-semibold text-brand-600 hover:underline">
+            delete my data
+          </Link>
+          . Your data is handled as set out in the privacy policy.
         </p>
         <p>
           We may suspend or end your access if you breach these terms, if we are required to by

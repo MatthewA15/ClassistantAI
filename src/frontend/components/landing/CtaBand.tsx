@@ -30,23 +30,32 @@ type Pair = {
   q: string;
   a: string;
   /**
-   * Percent offsets. Kept clear of the middle so the headline stays dominant,
-   * and the top row starts below 13% so it clears the fixed header, which
-   * overlays the first ~88px of the viewport wherever you are on the page.
+   * Percent offsets against the section height set below (38rem / 608px).
+   *
+   * Both columns start at 14.5%, which is the first row clear of the fixed
+   * header: it overlays the top ~88px of the viewport wherever you are on the
+   * page. From there each column spreads its own four threads evenly down to
+   * the bottom edge, which is why the two columns do not share a row rhythm:
+   * the threads are 74px to 110px depending on how far their answer wraps, so
+   * an even split lands in a different place on each side. That staggering is
+   * also what stops the two columns reading as a table.
+   *
+   * These are tuned to the measured thread heights. Shorten the section or
+   * lengthen an answer past two lines and the rows below it need re-spacing.
    */
   left: string;
   top: string;
 };
 
 const PAIRS: Pair[] = [
-  { q: "Do I need to download anything?", a: "No. It lives in your Messages app.", left: "1%", top: "13%" },
-  { q: "Why do you need my portal password?", a: "Grades sit behind it. It checks overnight while you sleep.", left: "0%", top: "27%" },
-  { q: "Will it text me at 3am?", a: "Never. You set quiet hours.", left: "2%", top: "53%" },
-  { q: "What does it cost?", a: "Nothing during early access.", left: "1%", top: "74%" },
-  { q: "My school is not on the list?", a: "Not yet. Search it and we will tell you the day it goes live.", left: "72%", top: "14%" },
-  { q: "Will it do my assignments?", a: "No. It gets you to the desk on time.", left: "74%", top: "31%" },
-  { q: "Can I turn off the calls?", a: "Reply STOP CALLS. Texts keep working.", left: "73%", top: "56%" },
-  { q: "What happens when the term ends?", a: "It goes quiet. Reply DELETE to wipe everything.", left: "72%", top: "77%" },
+  { q: "Do I need to download anything?", a: "No. It lives in your Messages app.", left: "1%", top: "14.5%" },
+  { q: "Why do you need my portal password?", a: "Grades sit behind it. It checks overnight while you sleep.", left: "0%", top: "36%" },
+  { q: "Will it text me at 3am?", a: "Never. You set quiet hours.", left: "2%", top: "63.5%" },
+  { q: "What does it cost?", a: "Nothing during early access.", left: "1%", top: "85%" },
+  { q: "My school is not on the list?", a: "Not yet. Search it and we will tell you the day it goes live.", left: "72%", top: "14.5%" },
+  { q: "Will it do my assignments?", a: "No. It gets you to the desk on time.", left: "74%", top: "38%" },
+  { q: "Can I turn off the calls?", a: "Reply STOP CALLS. Texts keep working.", left: "73%", top: "58.5%" },
+  { q: "What happens when the term ends?", a: "It goes quiet. Reply DELETE to wipe everything.", left: "72%", top: "82%" },
 ];
 
 export function CtaBand() {
@@ -56,7 +65,20 @@ export function CtaBand() {
       // Curved top corners, mirroring the hero's curved bottom, so the page
       // opens and closes on the same shape. The white section above shows
       // through the corners, which is what makes the curve read at all.
-      className="relative flex flex-col justify-center overflow-hidden rounded-t-[2rem] bg-ink-900 py-24 sm:rounded-t-[3rem] xl:min-h-[52rem]"
+      //
+      // The min-height only exists to give the conversation room to flank the
+      // headline, and it is what decides when the footer arrives.
+      //
+      // The headline is centred in this box and the footer is the same ink with
+      // no border between them, so "the footer appears" really means "the
+      // footer's first row of links clears the fold", 56px past the section
+      // end. With the headline centred that needs height < viewport - 112px, so
+      // 38rem (608px) is the tallest this can be and still land the footer on a
+      // 720px laptop. At 52rem it was a half-screen scroll through empty ink.
+      //
+      // The floor is 516px: py-24 plus the 324px headline block. Below that the
+      // padding takes over and the min-height stops doing anything.
+      className="relative flex flex-col justify-center overflow-hidden rounded-t-[2rem] bg-ink-900 py-24 sm:rounded-t-[3rem] xl:min-h-[38rem]"
     >
       <Backdrop />
 

@@ -75,6 +75,7 @@
   --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
 
   --animate-glow-morph: glow-morph 18s ease-in-out infinite;
+  --animate-card-morph: card-morph 16s ease-in-out infinite;
   --animate-float-slow: float-slow 9s var(--ease-out-soft) infinite;
   --animate-swing: swing 4.5s ease-in-out infinite;
   --animate-blink: blink 1.4s steps(2, start) infinite;
@@ -101,6 +102,24 @@
   75% {
     border-radius: 59% 41% 53% 47% / 47% 53% 49% 51%;
     transform: translate3d(1%, 2%, 0) scale(1.03);
+  }
+}
+
+/* Corner drift for the How it works cards. Radii are in rem, not the
+   percentages glow-morph uses: a percentage radius on a card this size turns it
+   into a blob and starts eating the artwork in the corners. This only ever
+   drifts between round and slightly rounder, which is what makes it read as a
+   soft object breathing rather than a shape changing. */
+@keyframes card-morph {
+  0%,
+  100% {
+    border-radius: 2.6rem 2.2rem 2.8rem 2.4rem / 2.4rem 2.8rem 2.2rem 2.6rem;
+  }
+  33% {
+    border-radius: 2.2rem 2.8rem 2.3rem 2.7rem / 2.8rem 2.3rem 2.7rem 2.2rem;
+  }
+  66% {
+    border-radius: 2.8rem 2.4rem 2.5rem 2.2rem / 2.2rem 2.6rem 2.4rem 2.8rem;
   }
 }
 

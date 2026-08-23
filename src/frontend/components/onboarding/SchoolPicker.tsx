@@ -33,11 +33,13 @@ export function SchoolPicker({
           ),
         )
       : SCHOOLS;
-    // Supported schools first, then alphabetical inside each group.
-    return [...matched].sort((a, b) => {
-      if (a.status !== b.status) return a.status === "live" ? -1 : 1;
-      return a.name.localeCompare(b.name);
-    });
+    // Supported first, then confirmed-but-unopened, then unchecked, and
+    // alphabetical inside each group. A plain `live ? -1 : 1` was fine while
+    // there were two statuses; with three it sorted `pending` above `soon`.
+    const rank = { live: 0, soon: 1, pending: 2 };
+    return [...matched].sort(
+      (a, b) => rank[a.status] - rank[b.status] || a.name.localeCompare(b.name),
+    );
   }, [query]);
 
   return (
@@ -110,8 +112,18 @@ export function SchoolPicker({
                     <SelectedTick />
                   ) : null
                 ) : (
-                  <span className="shrink-0 rounded-md bg-line-soft px-2 py-1 text-[0.66rem] font-semibold uppercase tracking-wide text-body-soft">
-                    Not yet
+                  // "Soon" is a promise, so only a school we have actually
+                  // confirmed on Google gets to make it. Everything else is
+                  // "Not yet", which promises nothing.
+                  <span
+                    className={cn(
+                      "shrink-0 rounded-md px-2 py-1 text-[0.66rem] font-semibold uppercase tracking-wide",
+                      school.status === "soon"
+                        ? "bg-sky-100 text-brand-600"
+                        : "bg-line-soft text-body-soft",
+                    )}
+                  >
+                    {school.status === "soon" ? "Soon" : "Not yet"}
                   </span>
                 )}
               </button>
