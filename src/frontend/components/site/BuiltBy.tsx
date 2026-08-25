@@ -43,8 +43,18 @@ export function BuiltBy() {
           others", and there are three of them with names worth reading, so they
           stand apart with the name under each. */}
       <div className="inline-flex flex-wrap items-center justify-center gap-x-9 gap-y-5 rounded-full bg-white px-9 py-6 shadow-soft ring-1 ring-line">
-        <span className="font-display text-[1.15rem] font-extrabold tracking-[-0.01em] text-ink-900">
-          Who solved this problem?
+        <span className="max-w-[25rem] text-center sm:text-left">
+          <span className="block font-display text-[1.15rem] font-extrabold tracking-[-0.01em] text-ink-900">
+            Who solved this problem?
+          </span>
+          {/* "three" is typed, not counted, unlike the school count in the hero
+              which is derived for exactly this reason. It is an idiom rather
+              than a tally, so it reads badly as `${PEOPLE.length}`, but it does
+              go stale the day a fourth name joins the list above. */}
+          <span className="mt-1.5 block text-[0.82rem] leading-[1.5] text-body-soft">
+            The three amigos set out to finally put an end to missed deadlines,
+            chronic procrastination, and so much more.
+          </span>
         </span>
 
         <span className="flex items-start gap-7">
