@@ -515,7 +515,7 @@ function IconOutline() {
  * portal overnight. See docs/design/13-connect-scenes.md.
  */
 
-const CYCLE_B = 27000;
+const CYCLE_B = 28400;
 
 /**
  * Storyboard beats, in ms, in three phases. Named because the numbers are
@@ -528,32 +528,32 @@ const B = {
   intoEnvelope: 3400,
   flapShut: 4400,
   sealed: 5400,
-  atClassistant: 7000,
-  atSchool: 8600,
-  absorbed: 9400,
-  refilled: 10800,
-  submitted: 11600,
-  signedIn: 12300,
+  atClassistant: 8400,
+  atSchool: 10000,
+  absorbed: 10800,
+  refilled: 12200,
+  submitted: 13000,
+  signedIn: 13700,
 
   // phase two: the overnight run
-  nightFrom: 13200,
-  nightTo: 16000,
-  nightSend: 16400,
-  nightAtSchool: 17200,
-  nightAbsorbed: 18000,
-  nightRefilled: 19000,
-  nightSubmitted: 19400,
-  nightSignedIn: 20000,
+  nightFrom: 14600,
+  nightTo: 17400,
+  nightSend: 17800,
+  nightAtSchool: 18600,
+  nightAbsorbed: 19400,
+  nightRefilled: 20400,
+  nightSubmitted: 20800,
+  nightSignedIn: 21400,
 
   // phase three: the next morning
-  morningFrom: 20800,
-  morningTo: 22400,
-  morningSend: 22800,
-  morningAtSchool: 23600,
-  morningAbsorbed: 24400,
-  morningRefilled: 25000,
-  morningSubmitted: 25300,
-  morningSignedIn: 25700,
+  morningFrom: 22200,
+  morningTo: 23800,
+  morningSend: 24200,
+  morningAtSchool: 25000,
+  morningAbsorbed: 25800,
+  morningRefilled: 26400,
+  morningSubmitted: 26700,
+  morningSignedIn: 27100,
 };
 
 /** Screen centres. The three monitors are 84 wide with 26 between them. */
@@ -643,11 +643,21 @@ export function SealedPasswordScene({ school }: { school: School }) {
   // the clock on yours reading the middle of the night, the tag up. That single
   // frame carries the whole scene. Parked on the last beat it would be three
   // idle monitors, and parked on the first sign-in it would lose the reuse.
-  const t = useSceneClock(CYCLE_B, 16800, 80);
+  const t = useSceneClock(CYCLE_B, 18200, 80);
 
   const typedDots = Math.min(6, Math.max(0, Math.floor((t - 400) / 300)));
   const open = t < B.flapShut;
   const sealed = t >= B.sealed;
+
+  /**
+   * The label beside the envelope while the wax is going on.
+   *
+   * It belongs to the act of sealing, not to the journey, so it arrives just
+   * after the stamp and is gone before anything starts moving. The gap between
+   * those two beats was 1.6s and is now 3s, which is the difference between a
+   * label and a flicker: 27 characters need reading time.
+   */
+  const showEncryption = t >= B.sealed + 200 && t < B.atClassistant - 400;
 
   // Every window where the middle machine is holding something it cannot read.
   const holding =
@@ -831,6 +841,34 @@ export function SealedPasswordScene({ school }: { school: School }) {
         </g>
         <text x={M.classistant + 30} y="16.6" fontSize="7" fill="var(--color-ink-800)">
           cannot see
+        </text>
+      </g>
+
+      {/* Sits to the right of the envelope on its resting spot, clear of the
+          lane's dashes on a chip of its own so it does not read as a caption
+          for the dotted line.
+
+          On the wording: "government grade" is a marketing phrase, not a
+          specification, and this repo's rule is that nothing factual ships
+          unverified. The verifiable version of the claim is that the portal
+          password is held in Google Secret Manager, encrypted at rest with
+          AES-256 under Google-managed keys. If this line ever has to be
+          defended, that is the sentence to defend, and "AES-256 encryption" or
+          "Encrypted in Secret Manager" would say it without the puffery. */}
+      <g opacity={showEncryption ? 1 : 0} style={{ transition: "opacity 300ms linear" }}>
+        <rect
+          x="76"
+          y="146"
+          width="116"
+          height="20"
+          rx="10"
+          fill="#fff"
+          stroke="var(--color-line)"
+          strokeWidth="1.6"
+        />
+        <Padlock x={85} y="151" />
+        <text x="97" y="159.5" fontSize="6.5" fill="var(--color-ink-800)">
+          Government grade encryption
         </text>
       </g>
 
