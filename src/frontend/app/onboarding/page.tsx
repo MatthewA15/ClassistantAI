@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import Link from "next/link";
 import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
+import { BuiltBy } from "@/components/site/BuiltBy";
 import { Container } from "@/components/ui/primitives";
 import { getSession } from "@/lib/onboardingSession";
 
@@ -53,6 +54,13 @@ export default async function OnboardingPage() {
           </Link>
           .
         </p>
+
+        {/* Everything above this is mechanism: fields, scopes, a progress bar.
+            Three faces at the bottom of the page that asks for a school login
+            is the cheapest way to say a person is behind it. */}
+        <div className="mt-8">
+          <BuiltBy />
+        </div>
       </Container>
     </div>
   );

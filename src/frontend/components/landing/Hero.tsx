@@ -58,7 +58,14 @@ export function Hero() {
                 they matter they need a home: the feature wall or the safety
                 line in the closing CTA.
               */}
-              <ul className="mt-8 flex flex-col gap-2.5 text-[0.88rem] text-body-soft">
+            {/* One row: two claims and the way to the rest of them. Down to two
+                items they no longer need a column of their own, and a single
+                line under the composer reads as a caption rather than as a
+                list, which is the right weight for the hero. flex-wrap because
+                the three of them are about 500px and the left column is not
+                much more than that. */}
+            <div className="mt-8 flex flex-wrap items-center gap-x-5 gap-y-2.5">
+              <ul className="flex flex-wrap items-center gap-x-5 gap-y-2.5 text-[0.88rem] text-body-soft">
                 {["Schedules your due dates", "Updates you from emails"].map((claim) => (
                   <li key={claim} className="flex items-center gap-2">
                     <CheckDot />
@@ -73,7 +80,7 @@ export function Hero() {
                   needs no JavaScript to behave. */}
               <a
                 href="#features"
-                className="mt-5 inline-flex items-center gap-1.5 text-[0.88rem] font-semibold text-brand-600 transition-colors hover:text-brand-700"
+                className="inline-flex items-center gap-1.5 text-[0.88rem] font-semibold text-brand-600 transition-colors hover:text-brand-700"
               >
                 See more
                 <svg
@@ -93,6 +100,7 @@ export function Hero() {
                   />
                 </svg>
               </a>
+            </div>
             </Reveal>
           </div>
 

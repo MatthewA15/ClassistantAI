@@ -95,12 +95,16 @@ export function CtaBand() {
       {/* Below xl there is not enough width to flank the headline without
           colliding with it, so the conversation simply does not render. The
           section still works as a plain CTA. */}
+      {/* Positioned against the section, deliberately NOT inside a Container.
+          A Container here caps the field at 76rem and centres it, so a thread
+          anchored to "the edge" was really anchored to the edge of the text
+          column: 112px short of the screen on a 1440 display, and further out
+          on anything wider. The conversation is meant to sit in the margins the
+          content does not use, which means it needs the full width. */}
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 hidden xl:block">
-        <Container className="relative h-full">
-          {PAIRS.map((pair, i) => (
-            <Thread key={pair.q} pair={pair} index={i} />
-          ))}
-        </Container>
+        {PAIRS.map((pair, i) => (
+          <Thread key={pair.q} pair={pair} index={i} />
+        ))}
       </div>
 
       <Container className="relative">
@@ -152,7 +156,7 @@ function Thread({ pair, index }: { pair: Pair; index: number }) {
       // there is room for it.
       className="absolute w-[14.5rem] motion-safe:animate-float-slow 2xl:w-[17rem]"
       style={{
-        ...(pair.side === "left" ? { left: "0.5rem" } : { right: "0.5rem" }),
+        ...(pair.side === "left" ? { left: "1.25rem" } : { right: "1.25rem" }),
         top: pair.top,
         animationDelay: `${index * 0.7}s`,
         animationDuration: `${9 + (index % 3)}s`,
