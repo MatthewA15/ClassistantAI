@@ -146,58 +146,152 @@ export function StartNudge() {
 
 /* --------------------------------------------------------------- the scene */
 
-const CYCLE = 9000;
+const CYCLE = 10_000;
 const B = {
-  reachChip: 1100,
-  clickChip: 2100,
-  lit: 2400,
-  reachCta: 2800,
-  clickCta: 3900,
+  reachChip: 1200,
+  clickChip: 2300,
+  reachCta: 3000,
+  clickCta: 4000,
 };
 
 const EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
 
-/** The two clicks, in the order they have to happen. */
+/** Approximate advance width per character at a given size, for this typeface. */
+const textWidth = (s: string, size: number) => s.length * size * 0.505;
+
+const CHIP_H = 22;
+const CHIP_Y = 90;
+const CHIP_TEXT = 6.2;
+
+const IDLE_LABEL = "Pick a school above, then click here";
+const READY_LABEL = "i’m ready to start for free";
+
+/**
+ * The two clicks, drawn as the hero actually looks.
+ *
+ * This is a picture whose whole job is recognition: a student should see it,
+ * scroll up, and find the same thing. So it copies the real hero rather than
+ * suggesting it. The real headline, the real "Pick your school" label, both
+ * schools side by side the way the row actually wraps, the composer's real
+ * placeholder, and the real send control, which is an arrow pointing UP, not
+ * right, and which only exists once a school is chosen.
+ *
+ * The accent switches too. Picking the University of Alberta re-themes the
+ * whole site into their green (SchoolThemeProvider rewrites --color-brand-*),
+ * so a hint that stayed blue through the click would be showing something that
+ * does not happen.
+ */
 function NudgeScene() {
-  // Rests with the school chosen, the button live, and the pointer on it: the
-  // frame that answers "why is that button not doing anything".
-  const t = useSceneClock(CYCLE, 4600, 90);
+  // Rests with the school chosen and the button live: the frame that answers
+  // "why is that button not doing anything".
+  const t = useSceneClock(CYCLE, 4700, 90);
 
   const picked = t >= B.clickChip;
-  const lit = t >= B.lit;
-  const pressingChip = t >= B.clickChip && t < B.clickChip + 260;
+  const pressingChip = t >= B.clickChip && t < B.clickChip + 240;
   const pressingCta = t >= B.clickCta && t < B.clickCta + 320;
+
+  const schools = LIVE_SCHOOLS.slice(0, 2);
+  const chosen = schools[0];
+
+  // The site's own theme colour once a school is picked, exactly as the real
+  // one does. Falls back to the default blue before the click.
+  const accent = picked ? (chosen?.brand?.primary ?? "var(--color-brand-600)") : "var(--color-brand-600)";
+
+  // Chips are laid out left to right on one row, which is how the real row sits
+  // at full width. Widths come from the names so a longer school does not
+  // silently overlap its neighbour.
+  let x = 16;
+  const laid = schools.map((s) => {
+    const w = 22 + textWidth(s.name, CHIP_TEXT) + 8;
+    const box = { school: s, x, w };
+    x += w + 6;
+    return box;
+  });
+  const notHereW = 12 + textWidth("+ Mine is not here", CHIP_TEXT) + 10;
+  const notHereX = x;
 
   const cursor =
     t < B.reachChip
-      ? { x: 250, y: 168 }
+      ? { x: 240, y: 172 }
       : t < B.reachCta
-        ? { x: 78, y: 88 }
-        : { x: 262, y: 160 };
-
-  const schools = LIVE_SCHOOLS.slice(0, 2);
+        ? { x: laid[0].x + 34, y: CHIP_Y + 15 }
+        : { x: 252, y: 146 };
 
   return (
     <svg viewBox="0 0 320 200" className="h-full w-full" aria-hidden="true" role="presentation">
-      <rect x="10" y="10" width="300" height="180" rx="14" fill="#fff" />
+      {/* The hero's own wash, so the card reads as a piece of that screen. */}
+      <rect x="0" y="0" width="320" height="200" fill="var(--color-hero)" />
 
-      {/* Stand-ins for the hero's headline. Bars rather than real words: the
-          card is teaching a gesture, and lettering here would be read instead
-          of the thing being pointed at. */}
-      <rect x="26" y="28" width="150" height="9" rx="4.5" fill="var(--color-sky-200)" />
-      <rect x="26" y="44" width="104" height="9" rx="4.5" fill="var(--color-sky-100)" />
+      <text
+        x="16"
+        y="42"
+        fontSize="15"
+        fontWeight="800"
+        letterSpacing="-0.45"
+        fill="var(--color-ink-900)"
+      >
+        Your semester,
+      </text>
+      <text
+        x="16"
+        y="60"
+        fontSize="15"
+        fontWeight="800"
+        letterSpacing="-0.45"
+        fill="var(--color-ink-900)"
+      >
+        handled over text.
+      </text>
 
-      {schools.map((s, i) => (
+      <text
+        x="16"
+        y="82"
+        fontSize="6"
+        fontWeight="600"
+        letterSpacing="1"
+        fill="var(--color-body-soft)"
+      >
+        PICK YOUR SCHOOL
+      </text>
+
+      {laid.map((box, i) => (
         <Chip
-          key={s.id}
-          school={s}
-          y={70 + i * 32}
+          key={box.school.id}
+          school={box.school}
+          x={box.x}
+          w={box.w}
           on={picked && i === 0}
+          accent={accent}
           pressing={pressingChip && i === 0}
         />
       ))}
 
-      {/* the composer, inert until a school is chosen */}
+      {/* "Mine is not here" is part of the row in the real hero, and leaving it
+          out would teach a two-option picker that does not exist. */}
+      <g>
+        <rect
+          x={notHereX}
+          y={CHIP_Y}
+          width={notHereW}
+          height={CHIP_H}
+          rx={CHIP_H / 2}
+          fill="none"
+          stroke="var(--color-line)"
+          strokeWidth="1.2"
+          strokeDasharray="3 2.5"
+        />
+        <text
+          x={notHereX + 10}
+          y={CHIP_Y + 14.5}
+          fontSize={CHIP_TEXT}
+          fontWeight="600"
+          fill="var(--color-body-soft)"
+        >
+          + Mine is not here
+        </text>
+      </g>
+
+      {/* the composer */}
       <g
         style={{
           transform: pressingCta ? "translateY(1.5px)" : "none",
@@ -205,47 +299,63 @@ function NudgeScene() {
         }}
       >
         <rect
-          x="26"
-          y="142"
-          width="258"
-          height="30"
-          rx="15"
+          x="16"
+          y="126"
+          width="250"
+          height="28"
+          rx="14"
           fill="#fff"
-          stroke={lit ? "var(--color-brand-500)" : "var(--color-line)"}
-          strokeWidth={lit ? 2 : 1.4}
-          style={{ transition: "stroke 400ms linear, stroke-width 400ms linear" }}
-        />
-        <text
-          x="42"
-          y="161"
-          fontSize="8"
-          fill={lit ? "var(--color-ink-900)" : "var(--color-body-soft)"}
-          style={{ transition: "fill 400ms linear" }}
-        >
-          i&rsquo;m ready to start for free
-        </text>
-        <circle
-          cx="266"
-          cy="157"
-          r="10"
-          fill={lit ? "var(--color-brand-600)" : "var(--color-line)"}
-          style={{ transition: "fill 400ms linear" }}
-        />
-        <path
-          d="M262 157h7M266.5 153.5l3.5 3.5-3.5 3.5"
-          fill="none"
-          stroke={lit ? "#fff" : "var(--color-body-soft)"}
-          strokeWidth="1.6"
-          strokeLinecap="round"
-          strokeLinejoin="round"
+          stroke={picked ? accent : "var(--color-line)"}
+          strokeWidth={picked ? 1.8 : 1.2}
           style={{ transition: "stroke 400ms linear" }}
         />
+        <text
+          x="32"
+          y="144"
+          fontSize="7.5"
+          fill={picked ? "var(--color-ink-900)" : "var(--color-body-soft)"}
+          style={{ transition: "fill 300ms linear" }}
+        >
+          {picked ? READY_LABEL : IDLE_LABEL}
+        </text>
+
+        {/* Two different affordances, not one control that dims: a waveform
+            while there is nothing to send, and a filled arrow once there is. */}
+        {picked ? (
+          <g>
+            <circle cx="250" cy="140" r="11" fill={accent} />
+            <g transform="translate(242.5 132.5) scale(0.75)">
+              <path
+                d="M10 15.6V5M10 5 5.6 9.4M10 5l4.4 4.4"
+                fill="none"
+                stroke="#fff"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </g>
+          </g>
+        ) : (
+          <g
+            transform="translate(240.5 130.5) scale(0.95)"
+            stroke="var(--color-body-soft)"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            fill="none"
+          >
+            <path d="M3.2 8.4v3.2" />
+            <path d="M6.6 5.9v8.2" />
+            <path d="M10 3.6v12.8" />
+            <path d="M13.4 5.9v8.2" />
+            <path d="M16.8 8.4v3.2" />
+          </g>
+        )}
       </g>
 
       <g
         style={{
           transform: `translate(${cursor.x}px, ${cursor.y}px)`,
-          transition: `transform 620ms ${EASE}`,
+          transition: `transform 640ms ${EASE}`,
         }}
       >
         <path
@@ -261,57 +371,69 @@ function NudgeScene() {
 }
 
 /**
- * One school chip. Full legal name, matching the real picker: the abbreviation
- * is unambiguous on campus and meaningless off it, and this is a picture of the
- * moment a student confirms we mean their school.
+ * One school chip, matching the real one: a rounded-square crest in the
+ * school's own brand colour, then the full legal name. Selected, the chip fills
+ * with that same colour and the crest goes translucent white on top of it.
  */
 function Chip({
   school,
-  y,
+  x,
+  w,
   on,
+  accent,
   pressing,
 }: {
   school: School;
-  y: number;
+  x: number;
+  w: number;
   on: boolean;
+  accent: string;
   pressing: boolean;
 }) {
-  const brand = school.brand?.primary ?? "var(--color-brand-600)";
+  const brand = school.brand?.primary ?? "var(--color-ink-800)";
 
   return (
     <g
       style={{
-        transform: pressing ? "scale(0.985)" : "none",
-        transformOrigin: `26px ${y + 13}px`,
+        transform: pressing ? "scale(0.98)" : "none",
+        transformOrigin: `${x + w / 2}px ${CHIP_Y + CHIP_H / 2}px`,
         transition: `transform 160ms ${EASE}`,
       }}
     >
       <rect
-        x="26"
-        y={y}
-        width="258"
-        height="26"
-        rx="13"
-        fill={on ? "var(--color-brand-600)" : "#fff"}
-        stroke={on ? "var(--color-brand-600)" : "var(--color-line)"}
-        strokeWidth="1.4"
+        x={x}
+        y={CHIP_Y}
+        width={w}
+        height={CHIP_H}
+        rx={CHIP_H / 2}
+        fill={on ? accent : "#fff"}
+        stroke={on ? accent : "var(--color-line)"}
+        strokeWidth="1.2"
         style={{ transition: "fill 300ms linear, stroke 300ms linear" }}
       />
-      <circle cx="41" cy={y + 13} r="9" fill={on ? "#fff" : brand} />
+      <rect
+        x={x + 5}
+        y={CHIP_Y + 4.5}
+        width="13"
+        height="13"
+        rx="3.2"
+        fill={on ? "rgba(255,255,255,0.22)" : brand}
+        style={{ transition: "fill 300ms linear" }}
+      />
       <text
-        x="41"
-        y={y + 16}
+        x={x + 11.5}
+        y={CHIP_Y + 13.6}
         textAnchor="middle"
-        fontSize="7"
-        fontWeight="700"
-        fill={on ? brand : "#fff"}
+        fontSize="4.4"
+        fontWeight="800"
+        fill="#fff"
       >
         {schoolInitials(school.name)}
       </text>
       <text
-        x="57"
-        y={y + 17}
-        fontSize="8.5"
+        x={x + 22}
+        y={CHIP_Y + 14.5}
+        fontSize={CHIP_TEXT}
         fontWeight="600"
         fill={on ? "#fff" : "var(--color-ink-800)"}
         style={{ transition: "fill 300ms linear" }}

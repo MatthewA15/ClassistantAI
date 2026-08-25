@@ -39,51 +39,48 @@ const PEOPLE: Person[] = [
 export function BuiltBy() {
   return (
     <div className="flex justify-center">
-      <div className="inline-flex items-center gap-3 rounded-full bg-white py-2 pl-2.5 pr-4 shadow-soft ring-1 ring-line">
-        {/* The ring is white rather than transparent, so overlapping circles
-            stay separate against each other as well as against the pill. */}
-        <span className="flex items-center">
-          {PEOPLE.map((person, i) => (
-            <Face key={person.name} person={person} first={i === 0} />
-          ))}
-        </span>
-
-        <span className="text-[0.85rem] font-semibold text-ink-900">
+      {/* Not a facepile. Overlapping circles are a density trick for "and 47
+          others", and there are three of them with names worth reading, so they
+          stand apart with the name under each. */}
+      <div className="inline-flex flex-wrap items-center justify-center gap-x-9 gap-y-5 rounded-full bg-white px-9 py-6 shadow-soft ring-1 ring-line">
+        <span className="font-display text-[1.15rem] font-extrabold tracking-[-0.01em] text-ink-900">
           Who solved this problem?
         </span>
 
-        {/* The pile is decorative to a screen reader, which would otherwise read
-            three names with no idea what they are. This says it once. */}
-        <span className="sr-only">
-          Built by {PEOPLE.map((p) => p.name).join(", ")}.
+        <span className="flex items-start gap-7">
+          {PEOPLE.map((person) => (
+            <span key={person.name} className="flex flex-col items-center gap-2">
+              <Face person={person} />
+              <span className="text-[0.82rem] font-semibold text-body-soft">{person.name}</span>
+            </span>
+          ))}
         </span>
       </div>
     </div>
   );
 }
 
-function Face({ person, first }: { person: Person; first: boolean }) {
-  const shared = "h-8 w-8 rounded-full ring-2 ring-white";
-  const offset = first ? "" : "-ml-2.5";
+function Face({ person }: { person: Person }) {
+  const shared = "h-16 w-16 rounded-full";
 
   if (person.photo) {
     return (
       <Image
         src={person.photo}
         alt={person.name}
-        title={person.name}
-        width={32}
-        height={32}
-        className={`${shared} ${offset} object-cover`}
+        width={64}
+        height={64}
+        className={`${shared} object-cover ring-1 ring-line`}
       />
     );
   }
 
   return (
+    // The name is printed directly underneath, so the circle itself is
+    // decoration and repeating the initial to a screen reader is noise.
     <span
-      title={person.name}
       aria-hidden="true"
-      className={`${shared} ${offset} grid place-items-center text-[0.72rem] font-bold text-white`}
+      className={`${shared} grid place-items-center text-[1.35rem] font-bold text-white`}
       style={{ background: person.tint }}
     >
       {person.name.slice(0, 1)}

@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
-import Link from "next/link";
 import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
 import { BuiltBy } from "@/components/site/BuiltBy";
 import { Container } from "@/components/ui/primitives";
@@ -41,24 +40,16 @@ export default async function OnboardingPage() {
           />
         </Suspense>
 
-        <p className="mt-12 text-center text-[0.82rem] text-body-soft">
-          Trouble getting in? Email{" "}
-          {/* A real mailbox until classistant.ca is bought, so "trouble getting
-              in" does not bounce off an address nobody owns yet. */}
-          <a href="mailto:chim@wopara.com" className="font-semibold text-brand-600 hover:underline">
-            chim@wopara.com
-          </a>{" "}
-          or read the{" "}
-          <Link href="/privacy" className="font-semibold text-brand-600 hover:underline">
-            privacy policy
-          </Link>
-          .
-        </p>
+        {/* A "trouble getting in? email chim@wopara.com or read the privacy
+            policy" line used to sit here. The privacy policy and terms are
+            still linked from the consent step, which is the screen where they
+            actually matter. The support address is not on this page any more,
+            so a student who cannot get in has nowhere to write from here.
 
-        {/* Everything above this is mechanism: fields, scopes, a progress bar.
+            Everything above this is mechanism: fields, scopes, a progress bar.
             Three faces at the bottom of the page that asks for a school login
             is the cheapest way to say a person is behind it. */}
-        <div className="mt-8">
+        <div className="mt-12">
           <BuiltBy />
         </div>
       </Container>
