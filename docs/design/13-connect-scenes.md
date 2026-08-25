@@ -23,8 +23,20 @@ Two looping scenes replace them, in
 | `SealedPasswordScene` | Where does my password go, and why can you not read it? |
 
 They sit side by side in one grid row at the top of the step, above the field
-they describe. Both are drawn in a 320x200 box: two figures of different aspect
-in one row leave one caption hanging below the other.
+they describe, and both are drawn in a 320x200 box so the two boxes align.
+
+**Neither carries a caption.** They had one each at first, and the captions were
+the same wordiness the scenes were brought in to replace. What is left in text
+on this step is the heading, one intro line, and the field label. The field's
+hint went too: "We add @domain for you, which is what sends you straight to your
+school's login page" is a sentence explaining a suffix that is printed on the
+input next to where you type.
+
+That trade has a cost worth stating. "Classistant never sees your password" is
+now made only by a drawing, and the scenes are `aria-hidden`, so a screen reader
+gets no version of it at all. If it has to come back without adding visible
+copy, the cheap fix is a visually hidden line beside each scene rather than
+restoring the captions.
 
 ## ConnectScene is one scene in two acts, not two scenes
 
@@ -145,13 +157,16 @@ Two consequences worth weighing before this ships:
 ## Rest beats are chosen, not defaulted
 
 `useSceneClock` parks on `restAt` under `prefers-reduced-motion`, so every scene
-needs a still frame that carries its point. Neither of these wanted its last
-frame:
+needs a still frame that carries its point. With the captions gone those frames
+are the entire message, so a rest beat is load-bearing here rather than a
+nicety. Neither scene wanted its last frame:
 
 - **`ConnectScene` rests at the end of act one**, on the fully typed address.
-  Of the two acts that is the one asking the student to do something. A rest
-  beat inside act two would park the card on a consent screen with no hint of
-  what to type to reach it, so the caption carries what act two says instead.
+  Of the two acts that is the one asking the student to do something, and it is
+  the act that names the thing to type. A rest beat inside act two would park
+  the card on a consent screen with no hint of what to type to reach it. The
+  cost is that a reader with reduced motion never sees act two at all, which is
+  the strongest argument for the hidden line described above.
 - **`SealedPasswordScene` rests with the envelope on the Classistant machine**,
   not on the signed-in frame at the end. Parked on its last beat the scene is
   three idle monitors, which says nothing. Parked here it is a sealed envelope

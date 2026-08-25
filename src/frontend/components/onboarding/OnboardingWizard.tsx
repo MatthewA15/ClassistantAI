@@ -83,6 +83,9 @@ export function OnboardingWizard({ connected }: { connected: ConnectedAccount | 
   const [serviceEmail, setServiceEmail] = useState("");
   const [editingServiceEmail, setEditingServiceEmail] = useState(false);
 
+  // Controlled only so the Google button can wait for it to be non-empty.
+  const [username, setUsername] = useState("");
+
   const [portalUser, setPortalUser] = useState("");
   const [portalPassword, setPortalPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -167,13 +170,12 @@ export function OnboardingWizard({ connected }: { connected: ConnectedAccount | 
             {/* Two things a student wants to know before touching the button:
                 what happens if I do, and what you get out of it. The first is a
                 sequence, so it is one scene in two acts rather than two cards.
-                The sentence about the password used to sit in the paragraph
-                above and now sits under the scene that demonstrates it. */}
+                Both used to carry a caption; the scenes label themselves. */}
             <div className="grid gap-4 sm:grid-cols-2">
-              <SceneCard caption="Type your school address, then approve the five things Classistant asks Google for.">
+              <SceneCard>
                 <ConnectScene school={school} />
               </SceneCard>
-              <SceneCard caption="Classistant never sees your password.">
+              <SceneCard>
                 <SealedPasswordScene school={school} />
               </SceneCard>
             </div>
@@ -182,7 +184,6 @@ export function OnboardingWizard({ connected }: { connected: ConnectedAccount | 
               label="Your school username"
               htmlFor="username"
               error={connectState?.errors?.username}
-              hint={`We add @${school.emailDomain} for you, which is what sends you straight to your school's login page instead of a Google account chooser.`}
             >
               <div className="flex items-stretch overflow-hidden rounded-xl border border-line bg-white focus-within:border-brand-500 focus-within:ring-4 focus-within:ring-brand-500/12">
                 <input
@@ -190,6 +191,15 @@ export function OnboardingWizard({ connected }: { connected: ConnectedAccount | 
                   name="username"
                   autoComplete="username"
                   placeholder="yourname"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  // The button below is the form's default submit target, so
+                  // while it is absent Enter would fall through to the form's
+                  // own action, which is completeOnboarding. Nothing to submit
+                  // yet, so swallow it.
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !username.trim()) e.preventDefault();
+                  }}
                   className="min-w-0 flex-1 bg-transparent px-4 py-3 text-[0.95rem] text-ink-900 outline-none placeholder:text-body-soft/70"
                 />
                 <span className="grid shrink-0 place-items-center border-l border-line bg-paper px-3 font-mono text-[0.85rem] text-body-soft">
@@ -200,15 +210,23 @@ export function OnboardingWizard({ connected }: { connected: ConnectedAccount | 
 
             <input type="hidden" name="schoolId" value={school.id} />
 
-            <button
-              type="submit"
-              formAction={connectAction}
-              disabled={connecting}
-              className="flex items-center justify-center gap-3 rounded-xl border border-line bg-white px-5 py-3.5 text-[0.95rem] font-semibold text-ink-900 transition-colors hover:bg-sky-50 disabled:opacity-60"
-            >
-              <GoogleGlyph />
-              {connecting ? "Opening your school sign-in..." : "Continue with Google"}
-            </button>
+            {/* Appears once there is something to sign in with. An always-on
+                button here asks a student to commit before they have done the
+                one thing the step is for, and a disabled one just sits there
+                looking broken. Rendered rather than hidden, so it does not
+                hold a gap open in the flex column while it is not wanted. */}
+            {username.trim() ? (
+              <button
+                type="submit"
+                formAction={connectAction}
+                disabled={connecting}
+                style={{ animation: "bubble-in .35s var(--ease-out-soft) both" }}
+                className="flex items-center justify-center gap-3 rounded-xl border border-line bg-white px-5 py-3.5 text-[0.95rem] font-semibold text-ink-900 transition-colors hover:bg-sky-50 disabled:opacity-60"
+              >
+                <GoogleGlyph />
+                {connecting ? "Opening your school sign-in..." : "Continue with Google"}
+              </button>
+            ) : null}
 
             {connectState && !connectState.ok ? (
               <p role="alert" className="text-[0.85rem] text-ink-800">

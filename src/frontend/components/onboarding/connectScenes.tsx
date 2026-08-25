@@ -23,10 +23,18 @@ import { useSceneClock } from "@/components/landing/sceneParts";
  * two figures of different aspect in that row leave one caption hanging below
  * the other.
  *
- * Every scene is decorative and aria-hidden. The heading, the field label, and
- * the captions carry the meaning, so nothing is lost with animation off.
+ * Both are aria-hidden, and they no longer carry captions, so what is left in
+ * text on this step is the heading, the intro line, and the field label.
+ *
+ * That is a deliberate trade and worth knowing: "Classistant never sees your
+ * password" is now made only by a drawing. A screen reader gets no version of
+ * it. If it needs to come back without adding visible copy, the cheap fix is a
+ * visually hidden line beside each scene rather than restoring the captions.
+ *
  * `useSceneClock` parks on its rest beat under prefers-reduced-motion, which is
  * why each is given a rest beat that is a payoff frame rather than a first one.
+ * With the captions gone those frames are the whole message, so a rest beat is
+ * now load-bearing rather than a nicety.
  */
 
 const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
@@ -65,14 +73,18 @@ const EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
 const MONO = "ui-monospace, SFMono-Regular, Menlo, monospace";
 const CH = 5.1;
 
-export function SceneCard({ caption, children }: { caption: string; children: React.ReactNode }) {
+/**
+ * The frame around a scene. No caption: the scenes label themselves now, and a
+ * line of explanatory text under each one was the wordiness they replaced.
+ *
+ * A `figure` with nothing accessible in it is noise to a screen reader, so this
+ * is a plain box. See the note on what that costs at the top of this file.
+ */
+export function SceneCard({ children }: { children: React.ReactNode }) {
   return (
-    <figure className="flex min-w-0 flex-col">
-      <div className="overflow-hidden rounded-[1.1rem] bg-paper ring-1 ring-line">{children}</div>
-      <figcaption className="mt-2.5 text-[0.78rem] leading-[1.5] text-body-soft">
-        {caption}
-      </figcaption>
-    </figure>
+    <div className="min-w-0 overflow-hidden rounded-[1.1rem] bg-paper ring-1 ring-line">
+      {children}
+    </div>
   );
 }
 
