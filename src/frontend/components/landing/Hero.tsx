@@ -37,11 +37,16 @@ export function Hero() {
 
             <Reveal delay={240}>
               {/*
-                Three claims, not six, and one column rather than two: a block
-                of six ticks beside the phone is a specification sheet, and the
+                Two claims, not six, and one column rather than two: a block of
+                six ticks beside the phone is a specification sheet, and the
                 hero is meant to make one promise and then get out of the way.
                 The rest of the argument is the feature wall, which is where
                 "See more" goes.
+
+                Both are phrased as things it does to your week rather than
+                features it has. "Full schedule in calendar" describes a data
+                structure; "Schedules your due dates" describes the afternoon
+                you get back.
 
                 What was here and is not any more: "Your portal password stays
                 encrypted", "Revoke its Google access any time", and "One text
@@ -54,14 +59,12 @@ export function Hero() {
                 line in the closing CTA.
               */}
               <ul className="mt-8 flex flex-col gap-2.5 text-[0.88rem] text-body-soft">
-                {["Full schedule in calendar", "Text and call reminders", "Auto emails classmates"].map(
-                  (claim) => (
-                    <li key={claim} className="flex items-center gap-2">
-                      <CheckDot />
-                      {claim}
-                    </li>
-                  ),
-                )}
+                {["Schedules your due dates", "Updates you from emails"].map((claim) => (
+                  <li key={claim} className="flex items-center gap-2">
+                    <CheckDot />
+                    {claim}
+                  </li>
+                ))}
               </ul>
 
               {/* A plain anchor. globals.css sets scroll-behavior: smooth and
