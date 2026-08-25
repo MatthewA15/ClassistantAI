@@ -10,6 +10,11 @@ import {
   type Identity,
 } from "@/app/onboarding/actions";
 import { SchoolPicker } from "@/components/onboarding/SchoolPicker";
+import {
+  ConnectScene,
+  SceneCard,
+  SealedPasswordScene,
+} from "@/components/onboarding/connectScenes";
 import { Choice, Field, TextInput, formatPhone } from "@/components/onboarding/fields";
 import { LogoMark } from "@/components/brand/LogoMark";
 import { useSchoolTheme } from "@/components/theme/SchoolTheme";
@@ -156,8 +161,22 @@ export function OnboardingWizard({ connected }: { connected: ConnectedAccount | 
           <div className="mt-7 flex flex-col gap-5">
             <p className="text-[0.95rem] leading-[1.6] text-body">
               This takes you to {school.name}&rsquo;s own sign-in page, the same one you use for
-              your email. Classistant never sees your password.
+              your email.
             </p>
+
+            {/* Two things a student wants to know before touching the button:
+                what happens if I do, and what you get out of it. The first is a
+                sequence, so it is one scene in two acts rather than two cards.
+                The sentence about the password used to sit in the paragraph
+                above and now sits under the scene that demonstrates it. */}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <SceneCard caption="Type your school address, then approve the five things Classistant asks Google for.">
+                <ConnectScene school={school} />
+              </SceneCard>
+              <SceneCard caption="Classistant never sees your password.">
+                <SealedPasswordScene school={school} />
+              </SceneCard>
+            </div>
 
             <Field
               label="Your school username"
@@ -204,7 +223,6 @@ export function OnboardingWizard({ connected }: { connected: ConnectedAccount | 
               </p>
             ) : null}
 
-            <ScopeList />
           </div>
         ) : null}
 
@@ -522,33 +540,6 @@ function HiddenState({ step, values }: { step: number; values: Record<string, st
           <input key={key} type="hidden" name={key} value={value} />
         ))}
     </>
-  );
-}
-
-function ScopeList() {
-  return (
-    <ul className="flex flex-col gap-2 rounded-xl bg-paper p-4 ring-1 ring-line">
-      <li className="text-[0.75rem] font-semibold uppercase tracking-[0.14em] text-body-soft">
-        Google will ask you to allow
-      </li>
-      {/* These must describe the scopes actually requested in lib/googleOAuth.ts.
-          Consent copy that overstates what is granted is the kind of thing an
-          app review fails on, and it is also just untrue to the student.
-          Notably there is no send permission: gmail.compose writes drafts and
-          cannot send, so "send" must never appear in this list. */}
-      {[
-        "Read course email and announcements",
-        "Save draft replies for you to review and send yourself",
-        "Create and update calendar events",
-        "Read syllabi and course files in Drive",
-        "Create Google Docs on your behalf",
-      ].map((scope) => (
-        <li key={scope} className="flex items-start gap-2.5 text-[0.85rem] text-ink-800">
-          <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-sky-400" />
-          {scope}
-        </li>
-      ))}
-    </ul>
   );
 }
 
