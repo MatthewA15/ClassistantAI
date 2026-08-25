@@ -80,6 +80,47 @@
   --animate-swing: swing 4.5s ease-in-out infinite;
   --animate-blink: blink 1.4s steps(2, start) infinite;
   --animate-marquee: marquee 42s linear infinite;
+  --animate-cta-attention: cta-attention 20s ease-in-out infinite;
+}
+
+/* Attention pulse for the light under "Get set up".
+ *
+ * Fifteen seconds of rest, then about five brighter, then back. The two levels
+ * are passed in as custom properties rather than written here, because the glow
+ * already sits at two different strengths depending on whether the page has
+ * been scrolled, and a keyframe with hard-coded opacity would flatten that
+ * distinction every time it ran.
+ *
+ * The scale is doing real work, not decoration. The resting glow is already at
+ * 0.8 once scrolled, so 40% more opacity clips at 1 and barely reads; growing
+ * the light slightly is what makes the pulse visible at the top end. */
+/* Scrim behind the start nudge. Its own keyframe rather than a transition,
+   because the element mounts already in place and a transition from nothing has
+   no first frame to animate from. */
+@keyframes nudge-scrim {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes cta-attention {
+  0%,
+  75% {
+    opacity: var(--cta-glow);
+    transform: scale(1);
+  }
+  80%,
+  95% {
+    opacity: var(--cta-glow-peak);
+    transform: scale(1.06);
+  }
+  100% {
+    opacity: var(--cta-glow);
+    transform: scale(1);
+  }
 }
 
 /* Slow blob morph for the light behind the floating header. The radii never

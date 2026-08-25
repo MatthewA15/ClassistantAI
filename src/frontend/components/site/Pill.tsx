@@ -17,12 +17,25 @@ import { cn } from "@/lib/cn";
 export function GlowSlot({
   children,
   scrolled,
+  pulse = false,
   className,
 }: {
   children: ReactNode;
   scrolled: boolean;
+  /**
+   * Brighten on a slow loop to draw the eye back. Only the CTA sets this: a
+   * header where all three capsules breathe in time is a light show, and the
+   * point is to single one of them out.
+   */
+  pulse?: boolean;
   className?: string;
 }) {
+  // Opacity moved out of a Tailwind class and into a variable so the keyframe
+  // can read both levels. `opacity-80`/`opacity-50` in the class list would also
+  // outrank the animation's own opacity depending on emission order, which is
+  // the same trap as every other competing-utility bug in this codebase.
+  const base = scrolled ? 0.8 : 0.5;
+  const peak = Math.min(1, base * 1.4);
   return (
     // pointer-events-auto lives here, not only on the capsule surface. The
     // header wrapper is pointer-events-none, and anything slotted in that is
@@ -37,9 +50,18 @@ export function GlowSlot({
         // competed with the page content underneath instead of just lifting the
         // capsule off it.
         className={cn(
-          "absolute -inset-x-3 -bottom-3 -top-2 -z-10 transition-opacity duration-700",
-          scrolled ? "opacity-80" : "opacity-50",
+          "absolute -inset-x-3 -bottom-3 -top-2 -z-10",
+          // Under reduced motion the animation class is never applied, so the
+          // inline opacity below is what holds: a still, resting glow.
+          pulse ? "motion-safe:animate-cta-attention" : "transition-opacity duration-700",
         )}
+        style={
+          {
+            opacity: base,
+            "--cta-glow": base,
+            "--cta-glow-peak": peak,
+          } as React.CSSProperties
+        }
       >
         <div
           className="absolute inset-x-[8%] top-[25%] h-[95%] rounded-full bg-brand-600/22 blur-[26px] motion-safe:animate-glow-morph"

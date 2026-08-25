@@ -122,6 +122,7 @@ export function Header({ overHero = false }: { overHero?: boolean }) {
               would immediately ask the same question. */}
           <GlowSlot
             scrolled={scrolled}
+            pulse
             className={cn(
               "transition-all duration-400 ease-[cubic-bezier(0.22,1,0.36,1)]",
               atFinalCta ? "pointer-events-none scale-95 opacity-0" : "scale-100 opacity-100",
@@ -129,6 +130,7 @@ export function Header({ overHero = false }: { overHero?: boolean }) {
           >
             <Link
               href="/"
+              data-start-cta
               onClick={backToHero}
               {...(atFinalCta ? { tabIndex: -1, "aria-hidden": true } : {})}
               className={cn(

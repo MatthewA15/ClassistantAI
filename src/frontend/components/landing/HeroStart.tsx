@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { joinWaitlist } from "@/app/onboarding/actions";
 import { useSchoolTheme } from "@/components/theme/SchoolTheme";
 import { LIVE_SCHOOLS, schoolInitials, type School } from "@/data/schools";
@@ -78,8 +78,41 @@ export function HeroStart() {
     return () => clearTimeout(done);
   }, [nudge]);
 
+  /**
+   * The same two beats, on a timer, for someone who is sitting on the hero
+   * without touching anything.
+   *
+   * Elsewhere on the page that job is done by a glow under the "Get set up"
+   * capsule. Here it would be pointing at the wrong thing: the button in the
+   * hero does not work yet, and lighting it up would be an invitation to click
+   * something inert. Naming the missing step is the honest version of the same
+   * prompt, and this is the sequence that already does that.
+   *
+   * Only while the picker is actually on screen, and never once a school is
+   * chosen, since at that point the button is live and there is nothing to
+   * explain.
+   */
+  const root = useRef<HTMLDivElement>(null);
+  const [onScreen, setOnScreen] = useState(false);
+
+  useEffect(() => {
+    const el = root.current;
+    if (!el) return;
+    const io = new IntersectionObserver(([e]) => setOnScreen(e.isIntersecting), {
+      threshold: 0.4,
+    });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (school || asking || !onScreen) return;
+    const id = window.setInterval(() => setNudge((n) => (n === 0 ? 1 : n)), 15_000);
+    return () => window.clearInterval(id);
+  }, [school, asking, onScreen]);
+
   return (
-    <div>
+    <div ref={root}>
       <p
         // Weight lives only in the branches. Putting font-semibold in the base
         // and font-extrabold in the branch lets Tailwind's own emission order
@@ -206,6 +239,7 @@ export function HeroStart() {
         ) : school ? (
           <Link
             href={`/onboarding?school=${school.id}`}
+            data-start-cta
             className={cn(COMPOSER, "ring-1 ring-line hover:ring-brand-400")}
           >
             <span className="flex-1 truncate font-medium text-ink-900">

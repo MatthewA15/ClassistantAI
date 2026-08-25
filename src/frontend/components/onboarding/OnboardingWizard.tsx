@@ -198,7 +198,7 @@ export function OnboardingWizard({ connected }: { connected: ConnectedAccount | 
             </div>
 
             <Field
-              label="Your school username"
+              label="Student email"
               htmlFor="username"
               error={connectState?.errors?.username}
             >
@@ -602,24 +602,46 @@ function Shell({
   children: React.ReactNode;
 }) {
   return (
-    <div className="grid gap-10 lg:grid-cols-[17rem_1fr] lg:gap-14">
-      <aside className="lg:sticky lg:top-28 lg:self-start">
-        <Link href="/" className="inline-flex items-center gap-2.5">
-          <LogoMark size={30} />
-          <span className="font-display text-[1.1rem] font-extrabold tracking-[-0.03em] text-ink-900">
-            Classistant
+    // One column. The 17rem rail that used to sit on the left held a logo and a
+    // school name, and once the numbered steps came out of it there was not
+    // enough left to justify a quarter of the viewport. Both survivors moved
+    // into the card's own top row, so the form gets the full width.
+    <div className="mx-auto w-full max-w-[58rem] rounded-[1.4rem] bg-white p-6 shadow-soft ring-1 ring-line sm:p-9">
+      {/* The wordmark used to sit here. It said where you were, which the
+          student already knows, and said nothing about whether to keep going.
+          Only the arrow navigates: making the whole row a link would mean the
+          line of encouragement is also the way out of the flow. */}
+      <div className="mb-7 flex items-center justify-between gap-4">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <Link
+            href="/"
+            aria-label="Back to the home page"
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-body-soft ring-1 ring-line transition-colors hover:bg-sky-50 hover:text-ink-900"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path
+                d="M9.75 3.5 5.25 8l4.5 4.5"
+                stroke="currentColor"
+                strokeWidth="1.9"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </Link>
+          <span className="truncate font-display text-[1.05rem] font-extrabold tracking-[-0.01em] text-ink-900">
+            You&rsquo;re almost done!
           </span>
-        </Link>
+        </div>
 
         {school ? (
-          <p className="mt-5 text-[0.88rem] font-semibold text-ink-900">{school.name}</p>
+          <span className="hidden truncate text-[0.85rem] font-semibold text-body-soft sm:block">
+            {school.name}
+          </span>
         ) : null}
-      </aside>
-
-      <div className="min-w-0 rounded-[1.4rem] bg-white p-6 shadow-soft ring-1 ring-line sm:p-9">
-        <Progress phase={phase} />
-        {children}
       </div>
+
+      <Progress phase={phase} />
+      {children}
     </div>
   );
 }
@@ -635,7 +657,13 @@ function Shell({
  * it, and only the finished screen would be full.
  */
 function Progress({ phase }: { phase: number }) {
-  const pct = (phase / PHASES.length) * 100;
+  // Fill to the middle of the phase you are in, not to the start of it. The
+  // labels are spread across the full width, so a bar that stopped at the start
+  // of "Log in" landed short of the word and read as not having got there yet.
+  // Half a phase in puts the end of the bar under the label it belongs to, and
+  // the flow feels quicker for it. It also never claims 100% before the last
+  // screen is done, which fill-the-whole-current-phase would.
+  const pct = ((phase + 0.5) / PHASES.length) * 100;
 
   return (
     <div className="mb-7">

@@ -95,7 +95,11 @@ export const SCHOOLS: School[] = [
     status: "live",
     source:
       "https://www.ualberta.ca/en/information-services-and-technology/initiatives/google-workspace-changes/index.html",
-    note: "Sign in with your CCID. Google access ends when your account moves to alumni status.",
+    // "Sign in with your CCID" was the first sentence here. The field it sits
+    // under now says "Student email" and prints @ualberta.ca beside the input,
+    // which answers what to type without the jargon. What is left is the part
+    // the form cannot show you.
+    note: "Google access ends when your account moves to alumni status.",
     brand: {
       primary: "#007C41",
       accent: "#FFDB05",

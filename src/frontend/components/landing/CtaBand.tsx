@@ -43,19 +43,29 @@ type Pair = {
    * These are tuned to the measured thread heights. Shorten the section or
    * lengthen an answer past two lines and the rows below it need re-spacing.
    */
-  left: string;
+  /**
+   * Which edge the thread hangs off. Not a percentage any more.
+   *
+   * The right column used to be positioned from the left at 72-74%, which is a
+   * measurement that only works at one width: a 17rem thread starting at 72% of
+   * 1280px begins at 922px, and the centred headline runs to 1024px, so the two
+   * overlapped on every screen at the low end of the range. Anchoring each
+   * column to its own edge puts the maximum possible air between them and the
+   * text, at every width, with no numbers to re-tune.
+   */
+  side: "left" | "right";
   top: string;
 };
 
 const PAIRS: Pair[] = [
-  { q: "Do I need to download anything?", a: "No. It lives in your Messages app.", left: "1%", top: "14.5%" },
-  { q: "Why do you need my portal password?", a: "Grades sit behind it. It checks overnight while you sleep.", left: "0%", top: "36%" },
-  { q: "Will it text me at 3am?", a: "Never. You set quiet hours.", left: "2%", top: "63.5%" },
-  { q: "What does it cost?", a: "Nothing during early access.", left: "1%", top: "85%" },
-  { q: "My school is not on the list?", a: "Not yet. Search it and we will tell you the day it goes live.", left: "72%", top: "14.5%" },
-  { q: "Will it do my assignments?", a: "No. It gets you to the desk on time.", left: "74%", top: "38%" },
-  { q: "Can I turn off the calls?", a: "Reply STOP CALLS. Texts keep working.", left: "73%", top: "58.5%" },
-  { q: "What happens when the term ends?", a: "It goes quiet. Reply DELETE to wipe everything.", left: "72%", top: "82%" },
+  { q: "Do I need to download anything?", a: "No. It lives in your Messages app.", side: "left", top: "14.5%" },
+  { q: "Why do you need my portal password?", a: "Grades sit behind it. It checks overnight while you sleep.", side: "left", top: "36%" },
+  { q: "Will it text me at 3am?", a: "Never. You set quiet hours.", side: "left", top: "63.5%" },
+  { q: "What does it cost?", a: "Nothing during early access.", side: "left", top: "85%" },
+  { q: "My school is not on the list?", a: "Not yet. Search it and we will tell you the day it goes live.", side: "right", top: "14.5%" },
+  { q: "Will it do my assignments?", a: "No. It gets you to the desk on time.", side: "right", top: "38%" },
+  { q: "Can I turn off the calls?", a: "Reply STOP CALLS. Texts keep working.", side: "right", top: "58.5%" },
+  { q: "What happens when the term ends?", a: "It goes quiet. Reply DELETE to wipe everything.", side: "right", top: "82%" },
 ];
 
 export function CtaBand() {
@@ -97,16 +107,33 @@ export function CtaBand() {
         <Reveal className="mx-auto max-w-3xl text-center">
           <LogoMark size={56} tone="white" animated className="mx-auto" />
           <h2 className="mt-7 text-[2.1rem] font-extrabold leading-[1.08] text-white sm:text-[2.85rem]">
-            Spend 4 minutes with us in exchange for 84 hours of your time back
-            <span aria-hidden="true">*</span>
+            4 mins setup = 84 hrs Saved pa<span aria-hidden="true">*</span>
           </h2>
           {/* One button, and a wide one. A secondary "see what it does" here
               pointed back up a page the reader has just finished, and split the
               attention of the only ask that matters. */}
+          {/* Same attention pulse as the header capsule: fifteen seconds of
+              rest, then about five brighter. White rather than brand, because
+              this one sits on the navy band and a blue glow on navy is invisible.
+              `isolate` keeps the z-indices local so the light sits under the
+              button without falling behind the section's own background. */}
           <div className="mt-9 flex justify-center">
-            <Button href="/#hero" variant="onInk" className="px-14 py-4 text-[1.02rem]">
-              Get set up
-            </Button>
+            <div className="relative isolate" data-start-cta>
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute -inset-x-8 -inset-y-5 z-0 rounded-full bg-white/70 blur-[30px] motion-safe:animate-cta-attention"
+                style={
+                  { "--cta-glow": "0.4", "--cta-glow-peak": "0.56" } as React.CSSProperties
+                }
+              />
+              <Button
+                href="/#hero"
+                variant="onInk"
+                className="relative z-10 px-14 py-4 text-[1.02rem]"
+              >
+                Get set up
+              </Button>
+            </div>
           </div>
         </Reveal>
       </Container>
@@ -120,9 +147,12 @@ function Thread({ pair, index }: { pair: Pair; index: number }) {
 
   return (
     <div
-      className="absolute w-[17rem] motion-safe:animate-float-slow"
+      // Narrower at the bottom of the xl range, where the gap between the
+      // headline and the edge is only about 250px, and full width again once
+      // there is room for it.
+      className="absolute w-[14.5rem] motion-safe:animate-float-slow 2xl:w-[17rem]"
       style={{
-        left: pair.left,
+        ...(pair.side === "left" ? { left: "0.5rem" } : { right: "0.5rem" }),
         top: pair.top,
         animationDelay: `${index * 0.7}s`,
         animationDuration: `${9 + (index % 3)}s`,
