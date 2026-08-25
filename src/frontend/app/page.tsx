@@ -5,6 +5,7 @@ import { HowItWorks } from "@/components/landing/HowItWorks";
 import { Showcase } from "@/components/landing/Showcase";
 import { Features } from "@/components/landing/Features";
 import { CtaBand } from "@/components/landing/CtaBand";
+import { StartNudge } from "@/components/landing/StartNudge";
 
 export default function HomePage() {
   return (
@@ -19,6 +20,9 @@ export default function HomePage() {
         <CtaBand />
       </main>
       <Footer />
+      {/* Waits 30 seconds, and only for someone who has not picked a school or
+          touched a start control in that time. Shows once per session. */}
+      <StartNudge />
     </>
   );
 }

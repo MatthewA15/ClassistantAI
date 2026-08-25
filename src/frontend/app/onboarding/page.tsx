@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
-import Link from "next/link";
 import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
+import { BuiltBy } from "@/components/site/BuiltBy";
 import { Container } from "@/components/ui/primitives";
+import { getSession } from "@/lib/authSession";
+import { getUserByAuthUid } from "@/lib/users";
 
 export const metadata: Metadata = {
   title: "Get set up",
@@ -11,7 +13,30 @@ export const metadata: Metadata = {
   robots: { index: false, follow: true },
 };
 
-export default function OnboardingPage() {
+// Reads the session cookie, so it cannot be statically rendered.
+export const dynamic = "force-dynamic";
+
+export default async function OnboardingPage() {
+  // The wizard is a client component and the session cookie is httpOnly, so
+  // what has been proven has to be handed down from here. A student returning
+  // from the Google consent screen lands on this page, not on a fresh one.
+  //
+  // Three states, not two, and the wizard opens on a different step for each:
+  // nobody here, a verified number with no access grant, or both. The document
+  // read is what distinguishes the last two, and it only exists once the grant
+  // has happened.
+  const session = await getSession();
+  const record = session ? await getUserByAuthUid(session.uid) : null;
+
+  const account = session
+    ? {
+        phone: session.phone,
+        email: record?.email ?? null,
+        schoolId: record?.schoolId ?? null,
+        granted: record?.googleConnected ?? false,
+      }
+    : null;
+
   return (
     <div className="relative min-h-dvh bg-paper">
       <div
@@ -25,22 +50,21 @@ export default function OnboardingPage() {
       <Container className="relative py-12 sm:py-16">
         {/* useSearchParams needs a boundary on a statically rendered route. */}
         <Suspense fallback={<div className="min-h-[26rem]" />}>
-          <OnboardingWizard />
+          <OnboardingWizard connected={account} />
         </Suspense>
 
-        <p className="mt-12 text-center text-[0.82rem] text-body-soft">
-          Trouble getting in? Email{" "}
-          {/* A real mailbox until classistant.ca is bought, so "trouble getting
-              in" does not bounce off an address nobody owns yet. */}
-          <a href="mailto:chim@wopara.com" className="font-semibold text-brand-600 hover:underline">
-            chim@wopara.com
-          </a>{" "}
-          or read the{" "}
-          <Link href="/privacy" className="font-semibold text-brand-600 hover:underline">
-            privacy policy
-          </Link>
-          .
-        </p>
+        {/* A "trouble getting in? email chim@wopara.com or read the privacy
+            policy" line used to sit here. The privacy policy and terms are
+            still linked from the consent step, which is the screen where they
+            actually matter. The support address is not on this page any more,
+            so a student who cannot get in has nowhere to write from here.
+
+            Everything above this is mechanism: fields, scopes, a progress bar.
+            Three faces at the bottom of the page that asks for a school login
+            is the cheapest way to say a person is behind it. */}
+        <div className="mt-12">
+          <BuiltBy />
+        </div>
       </Container>
     </div>
   );

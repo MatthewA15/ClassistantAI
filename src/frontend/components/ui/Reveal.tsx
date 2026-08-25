@@ -8,6 +8,11 @@ import { cn } from "@/lib/cn";
  * flips `data-shown` so any SVG line-draw animations inside start at the same
  * moment. Reveals never reverse, since content re-animating on scroll-up reads
  * as a glitch rather than a flourish.
+ *
+ * Below 768px the CSS opts out and children are always visible: `data-shown`
+ * still flips, but nothing fades. A phone shows one section at a time, so the
+ * next section peeking above the fold is what invites the scroll, and hiding
+ * that slice trades the tease for blank space. See `.reveal` in globals.css.
  */
 export function Reveal({
   as: Tag = "div" as ElementType,

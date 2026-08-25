@@ -15,6 +15,40 @@ at the sign-in hand-off and inherits the school's theme.
 | 3 | Check your details | Name and email come back from Google, so this is confirmation, not typing. Terms and marketing consent sit here. |
 | 4 | Where should it text you? | Behind the Finish button. |
 
+## Four screens, but three phases
+
+Those four screens were once shown as a numbered rail down the side, each with a
+title and a blurb, plus a "Step 1 of 4" label above the heading. Counting the
+school picker that came before them, the flow announced itself as five things to
+get through before anything happened, which is the opposite of what it is.
+
+It is now a progress bar over three milestones:
+
+| Phase | Screens |
+| --- | --- |
+| Pick your school | the hero picker |
+| Log in | connect, then the portal password |
+| Your details | confirm, then the phone number |
+
+The two sign-in screens are one job with a technical seam in the middle, and so
+are the last two. Grouping them is honest about the work rather than about the
+routing.
+
+Two things this fixed:
+
+- **The school picker now counts.** It was unnumbered, so a student who had
+  already chosen a school arrived at the next screen and was told they were at
+  step one of four. The bar fills by phases *finished*, so picking a school is
+  worth a third before the sign-in screen is drawn.
+- **The current phase is the loudest label.** Finished phases were brand green
+  and the current one was plain ink, and green beat black: on the sign-in screen
+  the eye landed on "Pick your school" and the page read as if that were still
+  where you were. Finished recedes to grey now, the bar carries the progress,
+  and only the current label is dark and bold.
+
+It follows that the last phase reads two thirds while you are working through
+it. Only a finished screen would be full.
+
 ## Landing the student on their own school's login page
 
 Two OAuth parameters do the work, and they drove the UI:

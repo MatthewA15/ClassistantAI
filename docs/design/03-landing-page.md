@@ -35,6 +35,42 @@ reader wants the product, the same content reads as candour.
 emotional peak of the page and the thing no competitor does. The tone shift is
 the point. `CtaBand` reuses navy so the page closes where its peak was.
 
+**The hero lists three claims, not six, and then gets out of the way.** Six ticks
+in two columns beside the phone is a specification sheet; the hero makes one
+promise. A "See more" link under the three scrolls to the feature wall, which is
+where the rest of the argument already lives. It is a plain `<a href="#features">`:
+`scroll-behavior: smooth` is global and drops under reduced motion, and `Section`
+carries `scroll-mt-24`, so it lands clear of the floating header with no script.
+
+The three that went are worth tracking rather than forgetting: *your portal
+password stays encrypted*, *revoke its Google access any time*, *one text turns
+it all off*. Those are access terms, not features, and they were in the hero
+because a "What we can see" section was once folded up into it, on the reasoning
+that answering them beside the pitch beat burying them a scroll away. They are
+now on neither, so they need a home: the feature wall, or the safety line in the
+closing CTA.
+
+## Never leave the page without a CTA
+
+The header hides its own "Get set up" while the closing CTA band is on screen,
+because two of the same button visible at once is the same ask twice. The test
+for "on screen" was one-sided:
+
+```js
+setAtFinalCta(cta.getBoundingClientRect().top < window.innerHeight * 0.72)
+```
+
+`top` keeps decreasing forever once the band is behind you, so that stayed true
+for the whole rest of the document. On a phone, where the footer runs longer
+than a viewport, the closing button scrolled away and the header button was
+still suppressed: a long stretch of page with no way to start.
+
+It needs both ends, `top < 72% of the viewport && bottom > 96`. The 96 rather
+than 0 hands over while the band is passing under the header rather than after
+it has gone, so there is never a frame with neither button on screen. Any future
+"hide this while that is visible" rule on a long page needs the same pair of
+bounds.
+
 **The four How it works cards are round objects with light under them.** Corners
 run ~2.5rem and drift on a 16s `card-morph` loop, and each card floats over its
 own blurred `--color-accent` blob, so the light picks up the school's colour once
