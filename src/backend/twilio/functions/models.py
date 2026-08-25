@@ -6,7 +6,7 @@ class ErrorResponse(BaseModel):
 
 
 class MethodNotAllowedResponse(ErrorResponse):
-    error: str = "Method not allowed. This endpoint only accepts GET and POST requests."
+    error: str = "Method not allowed."
 
 
 class ForbiddenResponse(ErrorResponse):
