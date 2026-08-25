@@ -64,7 +64,13 @@ const STEP_TITLES = [
  * unnumbered, so a student arriving at screen two had done a third of the work
  * and was told they were at step one of four.
  */
-const PHASES = ["Pick your school", "Log in", "Your details"];
+/**
+ * The last one is called "Welcome gift" rather than "Your details" because the
+ * screen it labels is where a student finds out Classistant is free for the
+ * whole beta. Naming the reward instead of the paperwork is the difference
+ * between a third step and a reason to finish.
+ */
+const PHASES = ["Pick your school", "Log in", "Welcome gift"];
 
 /** Screens 0 and 1 are both signing in; 2 and 3 are both details. */
 const phaseForStep = (step: number) => (step <= 1 ? 1 : 2);

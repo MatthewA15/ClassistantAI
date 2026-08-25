@@ -30,12 +30,6 @@ export function GlowSlot({
   pulse?: boolean;
   className?: string;
 }) {
-  // Opacity moved out of a Tailwind class and into a variable so the keyframe
-  // can read both levels. `opacity-80`/`opacity-50` in the class list would also
-  // outrank the animation's own opacity depending on emission order, which is
-  // the same trap as every other competing-utility bug in this codebase.
-  const base = scrolled ? 0.8 : 0.5;
-  const peak = Math.min(1, base * 1.4);
   return (
     // pointer-events-auto lives here, not only on the capsule surface. The
     // header wrapper is pointer-events-none, and anything slotted in that is
@@ -50,18 +44,9 @@ export function GlowSlot({
         // competed with the page content underneath instead of just lifting the
         // capsule off it.
         className={cn(
-          "absolute -inset-x-3 -bottom-3 -top-2 -z-10",
-          // Under reduced motion the animation class is never applied, so the
-          // inline opacity below is what holds: a still, resting glow.
-          pulse ? "motion-safe:animate-cta-attention" : "transition-opacity duration-700",
+          "absolute -inset-x-3 -bottom-3 -top-2 -z-10 transition-opacity duration-700",
+          scrolled ? "opacity-80" : "opacity-50",
         )}
-        style={
-          {
-            opacity: base,
-            "--cta-glow": base,
-            "--cta-glow-peak": peak,
-          } as React.CSSProperties
-        }
       >
         <div
           className="absolute inset-x-[8%] top-[25%] h-[95%] rounded-full bg-brand-600/22 blur-[26px] motion-safe:animate-glow-morph"
@@ -76,6 +61,33 @@ export function GlowSlot({
           style={{ animationDuration: "29s", animationDelay: "-11s" }}
         />
       </div>
+
+      {/* The attention pulse is its own layer, starting from nothing, rather
+          than a brightening of the glow above.
+
+          Brightening was the first attempt and it could not have worked. Those
+          blobs paint at 22-28% alpha inside a container held at 50-80%, so the
+          strongest colour actually reaching the page is about 0.28 x 0.8. The
+          requested 40% more opacity moves that by roughly four percentage
+          points of a blue wash on a near-white header, which is a handful of
+          RGB units. Multiplying something nearly invisible gives you something
+          nearly invisible, whatever the multiplier.
+
+          Zero to full on a dedicated blob is a change you can see, and the
+          resting glow stays exactly as designed.
+
+          Inline opacity 0 is the reduced-motion resting state: the animation
+          class is not applied there, so this stays hidden rather than being
+          stuck at full. */}
+      {pulse ? (
+        <div
+          aria-hidden="true"
+          style={{ opacity: 0 }}
+          className="pointer-events-none absolute -inset-x-7 -bottom-6 -top-5 -z-10 motion-safe:animate-cta-attention"
+        >
+          <div className="absolute inset-0 rounded-full bg-brand-600/38 blur-[30px]" />
+        </div>
+      ) : null}
 
       {children}
     </div>

@@ -83,17 +83,6 @@
   --animate-cta-attention: cta-attention 20s ease-in-out infinite;
 }
 
-/* Attention pulse for the light under "Get set up".
- *
- * Fifteen seconds of rest, then about five brighter, then back. The two levels
- * are passed in as custom properties rather than written here, because the glow
- * already sits at two different strengths depending on whether the page has
- * been scrolled, and a keyframe with hard-coded opacity would flatten that
- * distinction every time it ran.
- *
- * The scale is doing real work, not decoration. The resting glow is already at
- * 0.8 once scrolled, so 40% more opacity clips at 1 and barely reads; growing
- * the light slightly is what makes the pulse visible at the top end. */
 /* Scrim behind the start nudge. Its own keyframe rather than a transition,
    because the element mounts already in place and a transition from nothing has
    no first frame to animate from. */
@@ -106,20 +95,33 @@
   }
 }
 
+/* Attention pulse for the light under "Get set up". Fifteen seconds of rest,
+ * about five brighter, then back.
+ *
+ * This drives a layer of its own, starting from nothing, rather than scaling up
+ * the resting glow. Brightening the existing one was the first attempt and it
+ * could not have worked: those blobs paint at 22-28% alpha inside a container
+ * already held at 50-80%, so 40% more opacity moves the colour reaching the
+ * page by about four percentage points of a blue wash on a near-white header.
+ * Multiplying something nearly invisible gives you something nearly invisible.
+ *
+ * Zero to one on a dedicated blob is a change you can see, and it leaves the
+ * resting glow exactly as designed. The swell is what stops it reading as a
+ * light being switched on and off. */
 @keyframes cta-attention {
   0%,
-  75% {
-    opacity: var(--cta-glow);
-    transform: scale(1);
+  72% {
+    opacity: 0;
+    transform: scale(0.92);
   }
   80%,
-  95% {
-    opacity: var(--cta-glow-peak);
-    transform: scale(1.06);
+  92% {
+    opacity: 1;
+    transform: scale(1.12);
   }
   100% {
-    opacity: var(--cta-glow);
-    transform: scale(1);
+    opacity: 0;
+    transform: scale(0.92);
   }
 }
 

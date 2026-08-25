@@ -125,10 +125,8 @@ export function CtaBand() {
             <div className="relative isolate" data-start-cta>
               <span
                 aria-hidden="true"
-                className="pointer-events-none absolute -inset-x-8 -inset-y-5 z-0 rounded-full bg-white/70 blur-[30px] motion-safe:animate-cta-attention"
-                style={
-                  { "--cta-glow": "0.4", "--cta-glow-peak": "0.56" } as React.CSSProperties
-                }
+                style={{ opacity: 0 }}
+                className="pointer-events-none absolute -inset-x-10 -inset-y-7 z-0 rounded-full bg-white/80 blur-[32px] motion-safe:animate-cta-attention"
               />
               <Button
                 href="/#hero"

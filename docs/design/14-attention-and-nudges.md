@@ -20,21 +20,42 @@ So the cue depends on where the reader is.
 Fifteen seconds of rest, then about five brighter, then back. The header and the
 band share one keyframe, `cta-attention`.
 
-## Why the pulse is opacity *and* scale
+## The pulse is its own layer, not a brighter resting glow
 
-Forty percent more opacity sounds like enough until you notice the header glow
-already sits at 0.8 once the page has been scrolled. 0.8 × 1.4 clips at 1, which
-is a 25% rise, and at that strength it reads as nothing. Growing the light 6% at
-the same time is what makes the peak visible at the top of the range.
+The first version brightened the glow that is already there, by the 40% that was
+asked for. It was invisible, and the arithmetic says it always would have been.
 
-The two levels are passed in as `--cta-glow` and `--cta-glow-peak` rather than
-written into the keyframe, because the glow has two resting strengths depending
-on scroll and a hard-coded keyframe would flatten that distinction every time it
-ran. Setting opacity through a Tailwind class would also have raced the
-animation's own opacity depending on emission order, which is the same
-competing-utility trap as everything else in this codebase.
+The resting glow is three blobs at 22-28% alpha inside a container held at 50%,
+or 80% once scrolled. The strongest colour actually reaching the page is about
+`0.28 × 0.8`. Adding 40% to the container moves that by roughly four percentage
+points of a blue wash on a near-white header: a handful of RGB units. **A
+multiplier cannot rescue something that is already nearly invisible.**
 
-On the navy band the glow is white. A blue glow on navy is invisible.
+So the pulse is a separate blob that animates from nothing to full, with a swell
+in scale so it does not read as a light being switched on and off. The resting
+glow is untouched, which matters, because it was tuned to lift the capsule
+without competing with the page.
+
+On the navy band the same keyframe drives a white blob. A blue glow on navy is
+invisible for the same reason.
+
+### Verifying it
+
+**`--virtual-time-budget` does not advance the CSS animation clock.** Two
+headless screenshots at 3s and 17.5s of virtual time both render the animation
+at t≈0, so a diff between them is always about zero no matter what the animation
+does. That reads exactly like a broken animation and cost a full round of
+chasing the wrong thing.
+
+To see a specific frame, pin it with a negative `animation-delay` and take an
+ordinary screenshot:
+
+```
+style={{ animationDelay: "-17s" }}   // renders the 17s frame immediately
+```
+
+Diffed that way, rest against peak measures 97/255 at the strongest channel.
+Diffed with virtual time it measured 3/255, which was measuring nothing.
 
 ## The start nudge
 
