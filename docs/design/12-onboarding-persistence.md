@@ -9,6 +9,10 @@ actions are live now.
 
 | Where | Responsibility |
 | --- | --- |
+| `lib/firebaseClient.ts` | Phone sign-in and the SMS code. Identity only. See [15](15-firebase-auth.md). |
+| `app/api/auth/session/` | Trades a Firebase ID token for the session cookie. |
+| `lib/authSession.ts` | Verifies that cookie. Carries the Firebase uid and the number. |
+| `data/access.ts` | The switches over what may be touched, and the rule their labels follow. |
 | `lib/googleOAuth.ts` | Builds the consent URL. Holds the scope list. |
 | `app/onboarding/callback/route.ts` | Takes Google's redirect, hands the code to the connector. |
 | `connectors-api` on Cloud Run | Exchanges the code, writes the refresh token to Secret Manager. |
@@ -42,9 +46,22 @@ point back into the connector is the tidier end state.
 
 ## The flow
 
-1. Student picks a school and types their username. `connectGoogle` mints a
-   `state`, stores `{state, schoolId, username}` in a signed httpOnly cookie,
-   and returns the consent URL for the client to navigate to.
+> Since [15 Firebase Auth](15-firebase-auth.md), a step 0 sits in front of this:
+> the student verifies a **mobile number** with Firebase phone auth, which
+> establishes identity and mints the session. What follows is the *authorisation*
+> leg and it is plain Google OAuth, not Firebase. `connectGoogle` refuses to run
+> without a verified session.
+>
+> One consequence reaches into the collections below: the Google `sub` does not
+> exist until step 3, so **nothing is written before it**, and the user document
+> is created by `recordGoogleConnection` rather than existing beforehand. It
+> carries `auth_uid` and `phone_number` from the session, which is the only
+> bridge between the Firebase identity and the `sub` everything else is keyed by.
+
+1. Student picks a school and types their school address. `connectGoogle` checks
+   it against the school's domain, mints a `state`, stores
+   `{state, schoolId, email}` in a signed httpOnly cookie, and returns the
+   consent URL for the client to navigate to.
 2. Google returns to `/onboarding/callback`.
 3. The route checks `state`, then `GET`s the connector's `/auth/callback?code=`
    server-to-server. The connector exchanges the code and stores the refresh
@@ -89,7 +106,9 @@ untrue to the student besides.
 ```
 users/{google_sub}
   id, name, email, phone_number, school_id, service_email
+  auth_uid                             the Firebase uid behind the phone login
   consent: { terms, sms, marketing }   each { granted, at, ip, wording }
+  access:  { gmail_read, gmail_drafts, calendar, drive_read, docs }
   created_at, updated_at, google_connected_at, onboarding_complete
 
 credentials/{google_sub}
@@ -160,14 +179,14 @@ is encrypted and decrypted only inside an isolated session.
 
 ## Cookies
 
-`classistant_oauth` carries `{state, schoolId, username}` across the redirect,
-single use, 10 minute TTL. `classistant_session` carries `{userId, email,
-schoolId}` for 30 days.
+> **Superseded in part by [15 Firebase Auth](15-firebase-auth.md).** The session
+> cookie described below is gone: identity is a Firebase Auth session cookie
+> now, with revocation and rotation, and the sign-in happens one leg earlier
+> than this document describes. The OAuth cookie and everything else here still
+> stands.
 
-Both are HMAC signed with `SESSION_SECRET`. The session cookie holds the Google
-`sub`, and the connector is deployed `--allow-unauthenticated`, so a forged
-cookie is a read of someone else's mail. Signing does not fix the open API. It
-stops this app from being the thing that hands out the id.
+`classistant_oauth` carries `{state, schoolId}` across the redirect, single use,
+10 minute TTL, HMAC signed with `SESSION_SECRET`.
 
 `SameSite=Lax`, not `Strict`. The return from Google is a top-level cross-site
 GET; Lax sends cookies on exactly that and Strict does not, which would make the
@@ -184,8 +203,9 @@ someone else's id.
   read that student's mail, calendar, and Drive, and a Google `sub` is not a
   secret. Its README lists locking this down as post-Saturday work. This is the
   most serious open item here and it is not a frontend fix.
-- **The session cookie is bearer-only.** No revocation, no rotation, no device
-  binding. Firebase Auth session cookies are the natural upgrade.
+- ~~**The session cookie is bearer-only.**~~ Closed by
+  [15 Firebase Auth](15-firebase-auth.md). Sessions are Firebase Auth session
+  cookies now: revocable, rotated, and verified against Google's keys.
 - **The OAuth app is unverified**, so only accounts added as test users on the
   consent screen can complete a login.
 - **`joinWaitlist` still does not persist.** Out of scope for the two
