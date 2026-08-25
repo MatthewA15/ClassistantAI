@@ -469,106 +469,327 @@ function IconOutline() {
 /* ============================================ 2. the sealed password ====== */
 
 /**
- * The password goes into an envelope, is sealed, and is carried to the school
- * still sealed. Classistant handles it and never opens it.
+ * Three machines in a row, and a sealed envelope moving along them.
  *
- * A note on what this does and does not claim. The guarantee being dramatised
- * is "Classistant cannot read your password", which is true. The courier is a
- * metaphor for handling, not a diagram of the network: at this step a student
- * types their password into their school's own page and the browser goes there
- * directly. If this scene is ever reused on step two, where a portal password
- * really does travel through Classistant into Secret Manager, the metaphor
- * becomes the literal truth rather than a simplification of it.
+ * You -> Classistant -> School. The middle machine is the one making a promise,
+ * so it is the one wearing the "cannot see" tag.
+ *
+ * The scene runs in three phases, and the last two are the point of it:
+ *
+ *   1. the first sign-in   the password is typed, sealed, and passed along
+ *   2. the overnight run   the clock on your machine runs to 3:16 AM, and
+ *                          Classistant sends the same sealed envelope again
+ *   3. the next morning    10:26 AM, and it happens again
+ *
+ * Phases two and three exist because "we ask for this once" is the thing a
+ * student actually wants to know, and a scene that stops at the first sign-in
+ * implies the opposite: that they will be asked every time. Watching the clock
+ * skip past the middle of the night while the envelope goes out on its own is
+ * also the clearest statement of why the portal password is needed at all,
+ * which is the ask on step two.
+ *
+ * This replaced a courier robot standing between two monitors. A labelled row
+ * of machines is the actual path, and naming the middle one is what turns
+ * "Classistant never sees your password" into a statement about a specific
+ * thing rather than about a brand.
+ *
+ * A note on what this does and does not claim, and it matters more here than it
+ * did with the robot, because a labelled row of machines reads as a network
+ * diagram and phases two and three now assert a storage and reuse story on top
+ * of it. At step one a student types their password into their school's own
+ * page and the browser goes there directly, so nothing passes through
+ * Classistant and nothing is kept. The phases drawn here are step two's story:
+ * the portal password, held in Secret Manager and replayed against the school
+ * portal overnight. See docs/design/13-connect-scenes.md.
  */
 
-const CYCLE_B = 13000;
+const CYCLE_B = 27000;
 
-/** Storyboard beats, in ms. Named because the numbers are meaningless alone. */
+/**
+ * Storyboard beats, in ms, in three phases. Named because the numbers are
+ * meaningless alone, and grouped because re-cutting one phase should not mean
+ * recounting the others.
+ */
 const B = {
+  // phase one: the first sign-in
   typed: 2400,
   intoEnvelope: 3400,
   flapShut: 4400,
   sealed: 5400,
-  toCourier: 7000,
-  toSchool: 8600,
+  atClassistant: 7000,
+  atSchool: 8600,
   absorbed: 9400,
   refilled: 10800,
   submitted: 11600,
+  signedIn: 12300,
+
+  // phase two: the overnight run
+  nightFrom: 13200,
+  nightTo: 16000,
+  nightSend: 16400,
+  nightAtSchool: 17200,
+  nightAbsorbed: 18000,
+  nightRefilled: 19000,
+  nightSubmitted: 19400,
+  nightSignedIn: 20000,
+
+  // phase three: the next morning
+  morningFrom: 20800,
+  morningTo: 22400,
+  morningSend: 22800,
+  morningAtSchool: 23600,
+  morningAbsorbed: 24400,
+  morningRefilled: 25000,
+  morningSubmitted: 25300,
+  morningSignedIn: 25700,
 };
 
+/** Screen centres. The three monitors are 84 wide with 26 between them. */
+const M = { you: 8, classistant: 118, school: 228 };
+const MID = 42;
+
+const E_YOU = M.you + MID;
+const E_CLA = M.classistant + MID;
+const E_SCH = M.school + MID;
+
+/** The lane the envelope travels along, below the machines. */
+const LANE = 156;
+
+/** Where the envelope waits, level with the machines, so it drops out of one. */
+const IN_MACHINE = 118;
+
+/**
+ * Wall-clock minutes, counting past midnight so the run reads as one night
+ * rather than as the clock jumping backwards.
+ *
+ *   6:48 PM -> 3:16 AM -> 10:26 AM
+ */
+const T_EVENING = 18 * 60 + 48;
+const T_NIGHT = 24 * 60 + 3 * 60 + 16;
+const T_MORNING = 24 * 60 + 10 * 60 + 26;
+
+const lerp = (a: number, b: number, f: number) => a + (b - a) * clamp01(f);
+
+function clockLabel(mins: number) {
+  const m = ((Math.round(mins) % 1440) + 1440) % 1440;
+  const h24 = Math.floor(m / 60);
+  const h = h24 % 12 === 0 ? 12 : h24 % 12;
+  return `${h}:${String(m % 60).padStart(2, "0")} ${h24 < 12 ? "AM" : "PM"}`;
+}
+
+/** What the school's screen is doing during one sign-in attempt. */
+function runState(t: number, absorbed: number, refilled: number, submitted: number, done: number) {
+  const step = (refilled - absorbed) / 6;
+  return {
+    dots: Math.min(6, Math.max(0, Math.floor((t - absorbed) / step))),
+    submitting: t >= submitted && t < done,
+    signedIn: t >= done,
+  };
+}
+
 export function SealedPasswordScene({ school }: { school: School }) {
-  // Rests mid-carry, not on the signed-in frame at the end. Parked on the last
-  // beat this scene is a robot standing between two computers, which says
-  // nothing. Parked here it is a sealed envelope in the courier's hands under a
-  // "cannot see" tag, which is the whole claim in one still frame.
-  const t = useSceneClock(CYCLE_B, 7600, 120);
+  // Rests during the overnight run: envelope sealed on the Classistant machine,
+  // the clock on yours reading the middle of the night, the tag up. That single
+  // frame carries the whole scene. Parked on the last beat it would be three
+  // idle monitors, and parked on the first sign-in it would lose the reuse.
+  const t = useSceneClock(CYCLE_B, 16800, 80);
 
   const typedDots = Math.min(6, Math.max(0, Math.floor((t - 400) / 300)));
   const open = t < B.flapShut;
   const sealed = t >= B.sealed;
-  const carrying = t >= B.sealed && t < B.absorbed;
 
+  // Every window where the middle machine is holding something it cannot read.
+  const holding =
+    (t >= B.atClassistant && t < B.absorbed) ||
+    (t >= B.nightSend && t < B.nightAbsorbed) ||
+    (t >= B.morningSend && t < B.morningAbsorbed);
+
+  const showClock = t >= B.nightFrom;
+  const mins =
+    t < B.nightTo
+      ? lerp(T_EVENING, T_NIGHT, (t - B.nightFrom) / (B.nightTo - B.nightFrom))
+      : t < B.morningFrom
+        ? T_NIGHT
+        : t < B.morningTo
+          ? lerp(T_NIGHT, T_MORNING, (t - B.morningFrom) / (B.morningTo - B.morningFrom))
+          : T_MORNING;
+
+  // Phase one builds the envelope on your machine. After that it lives in the
+  // Classistant machine and drops out of it once per run, which is the reuse.
   const envelope =
-    t < B.intoEnvelope
-      ? { x: 54, y: 140, o: t >= B.typed ? 1 : 0 }
-      : t < B.toCourier
-        ? { x: 54, y: 140, o: 1 }
-        : t < B.toSchool
-          ? { x: 160, y: 130, o: 1 }
+    t < B.typed
+      ? { x: E_YOU, y: IN_MACHINE, o: 0 }
+      : t < B.atClassistant
+        ? { x: E_YOU, y: LANE, o: 1 }
+        : t < B.atSchool
+          ? { x: E_CLA, y: LANE, o: 1 }
           : t < B.absorbed
-            ? { x: 266, y: 140, o: 1 }
-            : { x: 266, y: 80, o: 0 };
+            ? { x: E_SCH, y: LANE, o: 1 }
+            : t < B.nightSend
+              ? { x: E_CLA, y: IN_MACHINE, o: 0 }
+              : t < B.nightAtSchool
+                ? { x: E_CLA, y: LANE, o: 1 }
+                : t < B.nightAbsorbed
+                  ? { x: E_SCH, y: LANE, o: 1 }
+                  : t < B.morningSend
+                    ? { x: E_CLA, y: IN_MACHINE, o: 0 }
+                    : t < B.morningAtSchool
+                      ? { x: E_CLA, y: LANE, o: 1 }
+                      : t < B.morningAbsorbed
+                        ? { x: E_SCH, y: LANE, o: 1 }
+                        : { x: E_YOU, y: IN_MACHINE, o: 0 };
 
-  const refilled = t >= B.refilled ? 6 : Math.max(0, Math.floor((t - B.absorbed) / 230));
-  const submitting = t >= B.submitted && t < B.submitted + 700;
-  const signedIn = t >= B.submitted + 700;
+  // The school resets to an empty box when a new envelope is sent, so each run
+  // is visibly a fresh sign-in rather than a screen that never changed.
+  const run =
+    t >= B.morningSend
+      ? runState(t, B.morningAbsorbed, B.morningRefilled, B.morningSubmitted, B.morningSignedIn)
+      : t >= B.nightSend
+        ? runState(t, B.nightAbsorbed, B.nightRefilled, B.nightSubmitted, B.nightSignedIn)
+        : runState(t, B.absorbed, B.refilled, B.submitted, B.signedIn);
 
   return (
     <svg viewBox="0 0 320 200" className="h-full w-full" aria-hidden="true" role="presentation">
-      {/* -------- the student's screen, on the school's own sign-in page */}
-      <Monitor x={10} label={school.emailDomain}>
-        <text x="22" y="68" fontSize="6.5" fill="var(--color-body-soft)">
+      {/* The lane, drawn first so the envelope rides over it. */}
+      <path
+        d={`M${E_YOU} ${LANE}H${E_SCH}`}
+        stroke="var(--color-line)"
+        strokeWidth="2"
+        strokeDasharray="4 5"
+        strokeLinecap="round"
+        fill="none"
+      />
+
+      {/* -------- you: the password, then the clock running while you sleep */}
+      <Monitor x={M.you} header={school.emailDomain} caption="You">
+        <g opacity={showClock ? 0 : 1} style={{ transition: "opacity 400ms linear" }}>
+          <text x={M.you + 12} y="62" fontSize="6.5" fill="var(--color-body-soft)">
+            Password
+          </text>
+          <rect
+            x={M.you + 12}
+            y="66"
+            width="60"
+            height="16"
+            rx="4"
+            fill="var(--color-paper)"
+            stroke="var(--color-line)"
+            strokeWidth="1.4"
+          />
+          {/* The dots leave the screen when they go into the envelope, which is
+              the moment the password stops being on this machine. */}
+          <g opacity={t >= B.typed ? 0 : 1} style={{ transition: "opacity 500ms linear" }}>
+            {Array.from({ length: typedDots }, (_, i) => (
+              <circle key={i} cx={M.you + 20 + i * 8} cy="74" r="2.4" fill="var(--color-ink-800)" />
+            ))}
+          </g>
+        </g>
+
+        {/* Monospace, or the whole line shifts every time a digit changes. */}
+        <g opacity={showClock ? 1 : 0} style={{ transition: "opacity 400ms linear" }}>
+          <text
+            x={E_YOU}
+            y="76"
+            textAnchor="middle"
+            fontSize="12"
+            fontWeight="700"
+            fontFamily={MONO}
+            fill="var(--color-ink-900)"
+          >
+            {clockLabel(mins)}
+          </text>
+        </g>
+      </Monitor>
+
+      {/* -------- classistant, which holds it shut and cannot open it */}
+      <Monitor x={M.classistant} header={null} caption={null}>
+        <text
+          x={E_CLA}
+          y="66"
+          textAnchor="middle"
+          fontSize="9"
+          fontWeight="600"
+          fill="var(--color-ink-900)"
+        >
+          Classistant
+        </text>
+        <g opacity={holding ? 1 : 0} style={{ transition: "opacity 320ms linear" }}>
+          {/* One word. The screen is 72 units wide and "sealed, not read" runs
+              past its right edge; the tag above the monitor says the rest. */}
+          <Padlock x={M.classistant + 25} y="76" />
+          <text x={M.classistant + 37} y="82.5" fontSize="7" fill="var(--color-body-soft)">
+            sealed
+          </text>
+        </g>
+      </Monitor>
+
+      {/* -------- the school, where the password is actually checked */}
+      <Monitor x={M.school} header={school.emailDomain} caption="School">
+        <text x={M.school + 12} y="62" fontSize="6.5" fill="var(--color-body-soft)">
           Password
         </text>
         <rect
-          x="22"
-          y="72"
-          width="64"
-          height="16"
+          x={M.school + 12}
+          y="66"
+          width="60"
+          height="14"
           rx="4"
           fill="var(--color-paper)"
           stroke="var(--color-line)"
           strokeWidth="1.4"
         />
-        {/* The dots leave the screen when they go into the envelope, which is
-            the moment the password stops being on this machine. */}
-        <g opacity={t >= B.typed ? 0 : 1} style={{ transition: "opacity 500ms linear" }}>
-          {Array.from({ length: typedDots }, (_, i) => (
-            <circle key={i} cx={30 + i * 8} cy="80" r="2.4" fill="var(--color-ink-800)" />
-          ))}
-        </g>
+        {Array.from({ length: run.dots }, (_, i) => (
+          <circle key={i} cx={M.school + 20 + i * 8} cy="73" r="2.4" fill="var(--color-ink-800)" />
+        ))}
+
+        {run.signedIn ? (
+          <g>
+            <path
+              d={`M${M.school + 13} 87l3.4 3.4 6.6-7`}
+              fill="none"
+              stroke="var(--color-ok)"
+              strokeWidth="2.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <text x={M.school + 27} y="90" fontSize="7.5" fontWeight="600" fill="var(--color-ok)">
+              Signed in
+            </text>
+          </g>
+        ) : (
+          <g
+            style={{
+              transform: run.submitting ? "translateY(1.5px)" : "none",
+              transition: `transform 140ms ${EASE}`,
+            }}
+          >
+            <rect
+              x={M.school + 12}
+              y="83"
+              width="38"
+              height="9"
+              rx="3"
+              fill={run.submitting ? "var(--color-brand-700)" : "var(--color-brand-600)"}
+            />
+            <text
+              x={M.school + 31}
+              y="89.6"
+              textAnchor="middle"
+              fontSize="6"
+              fontWeight="600"
+              fill="#fff"
+            >
+              Sign in
+            </text>
+          </g>
+        )}
       </Monitor>
 
-      {/* -------- the courier */}
-      <g>
-        <path d="M160 76v-10" {...ink} />
-        <circle cx="160" cy="62" r="3.6" fill="var(--color-brand-600)" />
-        <rect x="142" y="76" width="36" height="30" rx="9" {...inked("#fff")} />
-        <circle cx="152" cy="90" r="3" fill="var(--color-ink-800)" />
-        <circle cx="168" cy="90" r="3" fill="var(--color-ink-800)" />
-        <rect x="146" y="112" width="28" height="28" rx="6" {...inked("#fff")} />
-        {/* Arms come down and in, so the hands land just outside the carried
-            envelope's edges. Splayed outward they read as the envelope being
-            stuck to the torso rather than held. */}
-        <path d="M147 119l-6 11M173 119l6 11M152 140v12M168 140v12" {...ink} />
-      </g>
-
-      {/* "cannot see" chip. Sits above the antenna: to either side it would run
-          into a monitor, and the two are only 124 apart. */}
-      <g opacity={carrying ? 1 : 0} style={{ transition: "opacity 320ms linear" }}>
+      {/* The tag belongs to the middle machine, so it sits over that one. */}
+      <g opacity={holding ? 1 : 0} style={{ transition: "opacity 320ms linear" }}>
         <rect
-          x="126"
-          y="6"
+          x={M.classistant + 8}
+          y="4"
           width="68"
           height="20"
           rx="10"
@@ -577,70 +798,15 @@ export function SealedPasswordScene({ school }: { school: School }) {
           strokeWidth="1.6"
         />
         <g stroke="var(--color-ink-800)" strokeWidth="1.4" fill="none" strokeLinecap="round">
-          <path d="M135 16c2-2.6 5.4-2.6 7.4 0-2 2.6-5.4 2.6-7.4 0z" />
-          <path d="M134.4 19.4l8.6-6.8" />
+          <path d={`M${M.classistant + 17} 14c2-2.6 5.4-2.6 7.4 0-2 2.6-5.4 2.6-7.4 0z`} />
+          <path d={`M${M.classistant + 16.4} 17.4l8.6-6.8`} />
         </g>
-        <text x="148" y="18.6" fontSize="7" fill="var(--color-ink-800)">
+        <text x={M.classistant + 30} y="16.6" fontSize="7" fill="var(--color-ink-800)">
           cannot see
         </text>
       </g>
 
-      {/* -------- the school, where the password is actually checked */}
-      <Monitor x={222} label={school.emailDomain}>
-        <text x="234" y="68" fontSize="6.5" fill="var(--color-body-soft)">
-          Password
-        </text>
-        <rect
-          x="234"
-          y="72"
-          width="64"
-          height="14"
-          rx="4"
-          fill="var(--color-paper)"
-          stroke="var(--color-line)"
-          strokeWidth="1.4"
-        />
-        {Array.from({ length: refilled }, (_, i) => (
-          <circle key={i} cx={242 + i * 8} cy="79" r="2.4" fill="var(--color-ink-800)" />
-        ))}
-
-        {signedIn ? (
-          <g>
-            <path
-              d="M236 93l3.6 3.6 7-7.4"
-              fill="none"
-              stroke="var(--color-ok)"
-              strokeWidth="2.6"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            <text x="251" y="96" fontSize="7.5" fontWeight="600" fill="var(--color-ok)">
-              Signed in
-            </text>
-          </g>
-        ) : (
-          <g
-            style={{
-              transform: submitting ? "translateY(1.5px)" : "none",
-              transition: `transform 140ms ${EASE}`,
-            }}
-          >
-            <rect
-              x="234"
-              y="88"
-              width="40"
-              height="10"
-              rx="3.5"
-              fill={submitting ? "var(--color-brand-700)" : "var(--color-brand-600)"}
-            />
-            <text x="254" y="95.4" textAnchor="middle" fontSize="6.5" fontWeight="600" fill="#fff">
-              Sign in
-            </text>
-          </g>
-        )}
-      </Monitor>
-
-      {/* -------- the envelope, drawn last so it passes in front of the courier */}
+      {/* -------- the envelope, drawn last so it rides over everything */}
       <g
         style={{
           transform: `translate(${envelope.x}px, ${envelope.y}px)`,
@@ -677,33 +843,88 @@ export function SealedPasswordScene({ school }: { school: School }) {
   );
 }
 
-/**
- * One monitor, drawn from its left edge. Both machines in the scene are the
- * same object at different x, and the brand strip at the top of the screen is
- * what makes each one read as the school's page rather than as Classistant's.
- */
-function Monitor({ x, label, children }: { x: number; label: string; children: React.ReactNode }) {
+/** Small closed padlock, placed by its top-left. */
+function Padlock({ x, y }: { x: number; y: string | number }) {
+  const top = Number(y);
   return (
     <g>
-      <rect x={x} y="44" width="88" height="62" rx="6" {...inked("#fff")} />
-      <path d={`M${x + 44} 106v14M${x + 28} 120h32`} {...ink} />
-      <rect x={x + 6} y="50" width="76" height="50" fill="#fff" />
-      <path d={`M${x + 6} 50h76v8h-76z`} fill="var(--color-brand-600)" />
-      <text x={x + 10} y="56.5" fontSize="5" fill="#fff" fontFamily={MONO}>
-        {label}
-      </text>
+      <rect x={x} y={top + 3.4} width="8" height="6" rx="1.4" fill="var(--color-ink-700)" />
+      <path
+        d={`M${x + 1.8} ${top + 3.4}v-1.8a2.2 2.2 0 014.4 0v1.8`}
+        fill="none"
+        stroke="var(--color-ink-700)"
+        strokeWidth="1.3"
+      />
+    </g>
+  );
+}
+
+/**
+ * One machine: screen, stand, and a name under it.
+ *
+ * `header` is the domain strip across the top of the screen, which is what
+ * makes a screen read as the school's page. Classistant's own machine passes
+ * null: it is not pretending to be a web page, and a brand strip with no
+ * address on it reads as chrome rather than as a site.
+ *
+ * `caption` is the label under the stand. Classistant's is null because its
+ * screen says its name, and printing it twice under the same monitor reads as
+ * a mistake.
+ */
+function Monitor({
+  x,
+  header,
+  caption,
+  children,
+}: {
+  x: number;
+  header: string | null;
+  caption: string | null;
+  children: React.ReactNode;
+}) {
+  return (
+    <g>
+      <rect x={x} y="38" width="84" height="62" rx="6" {...inked("#fff")} />
+      <path d={`M${x + MID} 100v12M${x + 26} 112h32`} {...ink} />
+      <rect x={x + 6} y="44" width="72" height="50" fill="#fff" />
+
+      {header ? (
+        <>
+          <path d={`M${x + 6} 44h72v8h-72z`} fill="var(--color-brand-600)" />
+          <text x={x + 10} y="50.5" fontSize="5" fill="#fff" fontFamily={MONO}>
+            {header}
+          </text>
+        </>
+      ) : (
+        <path d={`M${x + 6} 44h72v8h-72z`} fill="var(--color-sky-200)" />
+      )}
+
       {children}
+
       {/* Redrawn over the children so the screen keeps a clean edge whatever
           they paint. */}
       <rect
         x={x + 6}
-        y="50"
-        width="76"
+        y="44"
+        width="72"
         height="50"
         fill="none"
         stroke="var(--color-line)"
         strokeWidth="1.2"
       />
+
+      {caption ? (
+        <text
+          x={x + MID}
+          y="128"
+          textAnchor="middle"
+          fontSize="9.5"
+          fontWeight="600"
+          fill="var(--color-ink-800)"
+        >
+          {caption}
+        </text>
+      ) : null}
     </g>
   );
 }

@@ -20,7 +20,7 @@ Two looping scenes replace them, in
 | Scene | Answers |
 | --- | --- |
 | `ConnectScene` | What do I type, and then what am I agreeing to? |
-| `SealedPasswordScene` | Why can you not read my password? |
+| `SealedPasswordScene` | Where does my password go, and why can you not read it? |
 
 They sit side by side in one grid row at the top of the step, above the field
 they describe. Both are drawn in a 320x200 box: two figures of different aspect
@@ -72,21 +72,75 @@ Deleting the component would have deleted the rule, so the rule moved to
 scopes on the page. Google's own consent screen remains the authoritative list,
 and the student sees it before anything is granted.
 
-## What the sealed envelope does and does not claim
+## Three machines, not a courier
 
-The password is typed as dots, drops into an envelope, the flap shuts, a wax
-seal stamps down, and the courier carries it to the school's machine without
-ever opening it.
+`SealedPasswordScene` is a row of three monitors, labelled **You**,
+**Classistant**, and **School**, with a dashed lane running under them. The
+password is typed as dots on your screen, drops into an envelope, the flap
+shuts, a wax seal stamps down, and the envelope travels the lane still shut.
 
-The guarantee being dramatised is "Classistant cannot read your password", which
-is true. **The courier is a metaphor for handling, not a diagram of the
-network.** At this step the student types their password into their school's own
-page and the browser goes there directly, so nothing is carried at all.
+The first version was a courier robot standing between two monitors. It was
+friendlier and said less. A labelled row of machines is the actual path, and
+naming the middle one is what turns "Classistant never sees your password" into
+a statement about a specific thing rather than about a brand. The "cannot see"
+tag moved onto that middle machine for the same reason: it belongs to the party
+making the promise.
 
-This is worth knowing before reusing the scene. On step two, where a portal
-password really does travel through Classistant into Secret Manager
-([12](12-onboarding-persistence.md)), the same drawing stops being a
-simplification and becomes literally what happens.
+Two small consequences of the swap:
+
+- **Classistant's monitor has no domain strip and no caption.** A brand strip
+  with no address reads as app chrome rather than as a web page, which is
+  correct, since it is not pretending to be one. Its screen says its name, so a
+  caption under the stand would print the same word twice.
+- **Its status line says "sealed", not "sealed, not read".** The screen is 72
+  units wide and the longer string overflows the right edge. The tag above the
+  monitor carries the rest.
+
+### Three phases, because "once" is the thing worth showing
+
+The scene does not stop at the first sign-in. It runs:
+
+1. **The first sign-in.** Typed, sealed, passed along, green check.
+2. **The overnight run.** The clock on your machine runs fast from 6:48 PM to
+   3:16 AM. Classistant sends the same sealed envelope again on its own. The
+   school fills, submits, green check.
+3. **The next morning.** 10:26 AM, and it happens again.
+
+Phases two and three are the point. A scene that ends at the first sign-in
+implies the opposite of what is true: that a student will be asked every time.
+Watching the clock skip past the middle of the night while the envelope goes out
+without anyone at the keyboard is also the clearest statement of *why* a portal
+password is wanted at all, which is the ask waiting on step two.
+
+The school's screen resets to an empty box when each new envelope is sent, so
+every run reads as a fresh sign-in rather than a screen that never changed.
+
+### What it does not claim
+
+The guarantee being dramatised is "Classistant cannot read your password". **The
+path is not literal, and phases two and three make that gap wider**, because a
+labelled row of machines reads as a network diagram and a reuse loop asserts a
+storage story on top of it.
+
+At step one, where this card actually sits, a student types their password into
+their school's own page and the browser goes there directly. Nothing passes
+through Classistant, nothing is stored, and there is no overnight anything: what
+Google hands back is a refresh token, not a password.
+
+**What is drawn here is step two's story**: the portal password, held in Secret
+Manager and replayed against the school portal overnight
+([12](12-onboarding-persistence.md)). On that step the drawing stops being a
+simplification and becomes very close to what happens.
+
+Two consequences worth weighing before this ships:
+
+- The scene may simply belong on step two, where it is accurate and where it
+  argues for the thing being asked for.
+- "Cannot see" is the strongest wording the sealed-envelope model can carry, and
+  it is doing more work in phase two than in phase one. A service that signs
+  into a portal on your behalf has to be able to present the password. Sealed in
+  transit and at rest is true and defensible. Never readable by anyone is not,
+  and the tag should not drift toward implying it.
 
 ## Rest beats are chosen, not defaulted
 
@@ -98,11 +152,11 @@ frame:
   Of the two acts that is the one asking the student to do something. A rest
   beat inside act two would park the card on a consent screen with no hint of
   what to type to reach it, so the caption carries what act two says instead.
-- **`SealedPasswordScene` rests mid-carry**, not on the signed-in frame at the
-  end. Parked on its last beat the scene is a robot standing between two
-  computers, which says nothing. Parked mid-carry it is a sealed envelope in the
-  courier's hands under a "cannot see" tag, which is the whole claim in one
-  still.
+- **`SealedPasswordScene` rests with the envelope on the Classistant machine**,
+  not on the signed-in frame at the end. Parked on its last beat the scene is
+  three idle monitors, which says nothing. Parked here it is a sealed envelope
+  sitting on the named machine under a "cannot see" tag, which is the whole
+  claim in one still.
 
 ## Two traps this cost
 

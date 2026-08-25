@@ -16,7 +16,7 @@ it loops fast enough to compete with reading.
 | `HowItWorks` | Dashed connector draws left to right | Turns four cards into one sequence. |
 | `Escalation` | Days tally off a calendar, cutting to a lockscreen a shade louder each time, then the handset rings | The pressure is a function of time running out, not of the agent getting impatient. See [11](11-phone-mockups.md). |
 | `ConnectScene` | Types the student's own school address, presses Continue with Google, cross-fades to the five permissions ticking | One sequence in two acts, because pressing the button is what produces the consent screen. See [13](13-connect-scenes.md). |
-| `SealedPasswordScene` | Password becomes dots, dots go in an envelope, the seal stamps, the courier carries it sealed | Answers "Classistant never sees your password" instead of asserting it. |
+| `SealedPasswordScene` | Sealed envelope travels You to Classistant to School, then the clock runs to 3:16 AM and 10:26 AM and it goes again on its own | Answers "Classistant never sees your password" instead of asserting it, and shows that it is asked for once. See [13](13-connect-scenes.md). |
 | `PlaceholderShot` | Chart path draws, calendar and inbox rows stagger in | Suggests real software populating rather than a static mock. |
 | `LogoMark` | Tassel swings | Arrival moments only. See [01](01-brand-and-logo.md). |
 | Step rail | Progress line grows by height transition | Cheapest possible sense of progress. |
