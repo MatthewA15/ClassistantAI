@@ -34,6 +34,12 @@ def twilio_webhook(req: https_fn.Request) -> https_fn.Response:
             mimetype="application/json",
         )
 
+    # phoneNumber = req.form.get("From")
+    # messageBody = req.form.get("Body")
+
+    # if not (phoneNumber or messageBody):
+    #     pass
+
     resp = MessagingResponse()
     resp.message("Message received!")
 
