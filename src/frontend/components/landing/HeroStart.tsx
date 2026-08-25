@@ -248,9 +248,13 @@ export function HeroStart() {
         </p>
       ) : school ? (
         <p className="mt-4 max-w-sm text-[0.82rem] leading-[1.55] text-body-soft">
+          {/* school.note used to be appended here. It is per-school joining
+              instructions ("sign in with your CCID"), which is advice for the
+              moment someone is actually signing in, not for the moment they
+              are choosing a school. It now sits under the Google button in the
+              wizard, where it applies. */}
           Continuing as a{" "}
           <span className="font-semibold text-ink-800">{school.name}</span> student.
-          {school.note ? ` ${school.note}` : ""}
         </p>
       ) : null}
     </div>

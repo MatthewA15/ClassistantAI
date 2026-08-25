@@ -127,6 +127,23 @@ password is wanted at all, which is the ask waiting on step two.
 The school's screen resets to an empty box when each new envelope is sent, so
 every run reads as a fresh sign-in rather than a screen that never changed.
 
+### The circuit is a rectangle, and that took a fix
+
+The envelope moves on right angles only: down out of a machine, along the lane,
+up into the next one, home at the height it left from.
+
+It used to cut the corner. Leaving the school it went straight to its parked
+spot above Classistant, which is up and left in a single move, and the fade runs
+380ms against a 900ms travel, so that diagonal was on screen for most of its
+length. Three visible legs with a hypotenuse: the circuit read as a triangle.
+The rise into the school and the trip home are separate legs now, and the trip
+home waits out the travel so it happens unseen.
+
+Worth knowing because the bug is invisible in the source. Each state is a plain
+`{x, y}`, and nothing about the list says two consecutive entries may not differ
+in both. The check that catches it is mechanical: walk the states in order,
+including the wrap back to the first, and assert each step changes one axis.
+
 ### What it does not claim
 
 The guarantee being dramatised is "Classistant cannot read your password". **The

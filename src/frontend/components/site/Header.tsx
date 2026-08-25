@@ -41,7 +41,22 @@ export function Header({ overHero = false }: { overHero?: boolean }) {
       setPastHero(hero ? hero.getBoundingClientRect().bottom <= 96 : true);
 
       const cta = document.getElementById("final-cta");
-      setAtFinalCta(cta ? cta.getBoundingClientRect().top < window.innerHeight * 0.72 : false);
+      if (cta) {
+        const r = cta.getBoundingClientRect();
+        // Two conditions, not one. "Far enough in to have arrived" was the only
+        // test, and `top` keeps decreasing forever once the band is behind you,
+        // so it stayed true for the whole rest of the document. On a phone,
+        // where the footer runs longer than a viewport, that left the closing
+        // button scrolled away and the header button still suppressed: a long
+        // stretch of page with no way to start.
+        //
+        // 96 rather than 0 so the handover happens while the band is passing
+        // under the header rather than after it has gone, which means there is
+        // never a frame with neither button on screen.
+        setAtFinalCta(r.top < window.innerHeight * 0.72 && r.bottom > 96);
+      } else {
+        setAtFinalCta(false);
+      }
     };
 
     onScroll();

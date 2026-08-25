@@ -599,6 +599,45 @@ function runState(t: number, absorbed: number, refilled: number, submitted: numb
   };
 }
 
+/**
+ * Where the envelope is, and whether it can be seen.
+ *
+ * Every leg is axis-aligned: down out of a machine, along the lane, up into the
+ * next one, and home again at the height it left from. The circuit is a
+ * rectangle.
+ *
+ * It used to cut the corner. Leaving the school it went straight to its parked
+ * spot above Classistant, which is up and left in one move, and because the
+ * fade runs 380ms against a 900ms travel that diagonal was on screen for most
+ * of its length. Three visible legs, one of them a hypotenuse: a triangle. The
+ * rise into the school and the trip home are separate legs now, and the trip
+ * home waits for the travel to finish so it happens unseen.
+ */
+const RISE = 900; // matches the transform transition, so the rise completes
+
+function envelopeAt(t: number) {
+  // Phase one: built on your machine, then handed along.
+  if (t < B.typed) return { x: E_YOU, y: IN_MACHINE, o: 0 };
+  if (t < B.atClassistant) return { x: E_YOU, y: LANE, o: 1 };
+  if (t < B.atSchool) return { x: E_CLA, y: LANE, o: 1 };
+  if (t < B.absorbed) return { x: E_SCH, y: LANE, o: 1 };
+  if (t < B.absorbed + RISE) return { x: E_SCH, y: IN_MACHINE, o: 0 };
+
+  // From here it lives in the Classistant machine and goes out once per run.
+  if (t < B.nightSend) return { x: E_CLA, y: IN_MACHINE, o: 0 };
+  if (t < B.nightAtSchool) return { x: E_CLA, y: LANE, o: 1 };
+  if (t < B.nightAbsorbed) return { x: E_SCH, y: LANE, o: 1 };
+  if (t < B.nightAbsorbed + RISE) return { x: E_SCH, y: IN_MACHINE, o: 0 };
+
+  if (t < B.morningSend) return { x: E_CLA, y: IN_MACHINE, o: 0 };
+  if (t < B.morningAtSchool) return { x: E_CLA, y: LANE, o: 1 };
+  if (t < B.morningAbsorbed) return { x: E_SCH, y: LANE, o: 1 };
+  if (t < B.morningAbsorbed + RISE) return { x: E_SCH, y: IN_MACHINE, o: 0 };
+
+  // Back to your machine for the top of the next cycle, level and unseen.
+  return { x: E_YOU, y: IN_MACHINE, o: 0 };
+}
+
 export function SealedPasswordScene({ school }: { school: School }) {
   // Rests during the overnight run: envelope sealed on the Classistant machine,
   // the clock on yours reading the middle of the night, the tag up. That single
@@ -626,30 +665,7 @@ export function SealedPasswordScene({ school }: { school: School }) {
           ? lerp(T_NIGHT, T_MORNING, (t - B.morningFrom) / (B.morningTo - B.morningFrom))
           : T_MORNING;
 
-  // Phase one builds the envelope on your machine. After that it lives in the
-  // Classistant machine and drops out of it once per run, which is the reuse.
-  const envelope =
-    t < B.typed
-      ? { x: E_YOU, y: IN_MACHINE, o: 0 }
-      : t < B.atClassistant
-        ? { x: E_YOU, y: LANE, o: 1 }
-        : t < B.atSchool
-          ? { x: E_CLA, y: LANE, o: 1 }
-          : t < B.absorbed
-            ? { x: E_SCH, y: LANE, o: 1 }
-            : t < B.nightSend
-              ? { x: E_CLA, y: IN_MACHINE, o: 0 }
-              : t < B.nightAtSchool
-                ? { x: E_CLA, y: LANE, o: 1 }
-                : t < B.nightAbsorbed
-                  ? { x: E_SCH, y: LANE, o: 1 }
-                  : t < B.morningSend
-                    ? { x: E_CLA, y: IN_MACHINE, o: 0 }
-                    : t < B.morningAtSchool
-                      ? { x: E_CLA, y: LANE, o: 1 }
-                      : t < B.morningAbsorbed
-                        ? { x: E_SCH, y: LANE, o: 1 }
-                        : { x: E_YOU, y: IN_MACHINE, o: 0 };
+  const envelope = envelopeAt(t);
 
   // The school resets to an empty box when a new envelope is sent, so each run
   // is visibly a fresh sign-in rather than a screen that never changed.

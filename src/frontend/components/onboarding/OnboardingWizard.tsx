@@ -42,12 +42,32 @@ import { cn } from "@/lib/cn";
  * for it early is what makes a form feel like a lead-capture page.
  */
 
-const STEPS = [
-  { title: "Connect your school account", blurb: "Sign in where you always do" },
-  { title: "Let it work while you sleep", blurb: "Portal login for overnight checks" },
-  { title: "Check your details", blurb: "Straight from your school account" },
-  { title: "Where should it text you?", blurb: "The number the agent uses" },
+/** The heading on each screen. Four screens, but see PHASES below. */
+const STEP_TITLES = [
+  "Connect your school account",
+  "Let it work while you sleep",
+  "Check your details",
+  "Where should it text you?",
 ];
+
+/**
+ * What the student is told they are doing, which is not the same as the number
+ * of screens.
+ *
+ * Four screens were shown as four numbered steps in a rail down the side, plus
+ * the school picker before them, so the flow announced itself as five things to
+ * get through before anything happened. It is three: pick a school, sign in,
+ * confirm your details. The two sign-in screens are one job with a technical
+ * seam in the middle, and the same is true of the last two.
+ *
+ * Counting this way also means the school picker is worth something. It was
+ * unnumbered, so a student arriving at screen two had done a third of the work
+ * and was told they were at step one of four.
+ */
+const PHASES = ["Pick your school", "Log in", "Your details"];
+
+/** Screens 0 and 1 are both signing in; 2 and 3 are both details. */
+const phaseForStep = (step: number) => (step <= 1 ? 1 : 2);
 
 /** Set once the student has come back from Google. Read from the signed session
  *  cookie by the page, because the cookie is httpOnly and this is a client
@@ -135,7 +155,7 @@ export function OnboardingWizard({ connected }: { connected: ConnectedAccount | 
 
   if (!school) {
     return (
-      <Shell step={0}>
+      <Shell phase={0}>
         <h1 className="text-[1.6rem] font-extrabold leading-tight text-ink-900">
           Which school are you at?
         </h1>
@@ -150,13 +170,10 @@ export function OnboardingWizard({ connected }: { connected: ConnectedAccount | 
   }
 
   return (
-    <Shell step={step} school={school}>
+    <Shell phase={phaseForStep(step)} school={school}>
       <form action={submitAction}>
-        <p className="text-[0.78rem] font-semibold uppercase tracking-[0.16em] text-brand-600">
-          Step {step + 1} of {STEPS.length}
-        </p>
-        <h1 className="mt-2 text-[1.6rem] font-extrabold leading-tight text-ink-900">
-          {STEPS[step].title}
+        <h1 className="text-[1.6rem] font-extrabold leading-tight text-ink-900">
+          {STEP_TITLES[step]}
         </h1>
 
         {/* -------------------------------------------------- 1. connect */}
@@ -215,17 +232,30 @@ export function OnboardingWizard({ connected }: { connected: ConnectedAccount | 
                 one thing the step is for, and a disabled one just sits there
                 looking broken. Rendered rather than hidden, so it does not
                 hold a gap open in the flex column while it is not wanted. */}
-            {username.trim() ? (
-              <button
-                type="submit"
-                formAction={connectAction}
-                disabled={connecting}
-                style={{ animation: "bubble-in .35s var(--ease-out-soft) both" }}
-                className="flex items-center justify-center gap-3 rounded-xl border border-line bg-white px-5 py-3.5 text-[0.95rem] font-semibold text-ink-900 transition-colors hover:bg-sky-50 disabled:opacity-60"
-              >
-                <GoogleGlyph />
-                {connecting ? "Opening your school sign-in..." : "Continue with Google"}
-              </button>
+            {/* The button and the school's own joining note are one unit, so
+                they sit in their own tighter stack rather than taking the
+                column's gap-5. The note is not gated on the button: it is this
+                school's instructions for what to type, which is most useful
+                before there is anything in the field. */}
+            {username.trim() || school.note ? (
+              <div className="flex flex-col gap-2.5">
+                {username.trim() ? (
+                  <button
+                    type="submit"
+                    formAction={connectAction}
+                    disabled={connecting}
+                    style={{ animation: "bubble-in .35s var(--ease-out-soft) both" }}
+                    className="flex items-center justify-center gap-3 rounded-xl border border-line bg-white px-5 py-3.5 text-[0.95rem] font-semibold text-ink-900 transition-colors hover:bg-sky-50 disabled:opacity-60"
+                  >
+                    <GoogleGlyph />
+                    {connecting ? "Opening your school sign-in..." : "Continue with Google"}
+                  </button>
+                ) : null}
+
+                {school.note ? (
+                  <p className="text-[0.82rem] leading-[1.55] text-body-soft">{school.note}</p>
+                ) : null}
+              </div>
             ) : null}
 
             {connectState && !connectState.ok ? (
@@ -562,11 +592,12 @@ function HiddenState({ step, values }: { step: number; values: Record<string, st
 }
 
 function Shell({
-  step,
+  phase,
   school,
   children,
 }: {
-  step: number;
+  /** Index into PHASES. Also the count of phases already finished. */
+  phase: number;
   school?: School;
   children: React.ReactNode;
 }) {
@@ -583,49 +614,73 @@ function Shell({
         {school ? (
           <p className="mt-5 text-[0.88rem] font-semibold text-ink-900">{school.name}</p>
         ) : null}
-
-        <ol className="mt-6 hidden flex-col gap-4 lg:flex">
-          {STEPS.map((s, i) => (
-            <li key={s.title} className="flex items-start gap-3">
-              <span
-                className={cn(
-                  "mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full text-[0.68rem] font-bold transition-colors",
-                  i < step
-                    ? "bg-brand-600 text-white"
-                    : i === step
-                      ? "bg-brand-600 text-white ring-4 ring-brand-500/20"
-                      : "bg-white text-body-soft ring-1 ring-line",
-                )}
-              >
-                {i < step ? "✓" : i + 1}
-              </span>
-              <span>
-                <span
-                  className={cn(
-                    "block text-[0.88rem] font-semibold",
-                    i <= step ? "text-ink-900" : "text-body-soft",
-                  )}
-                >
-                  {s.title}
-                </span>
-                <span className="mt-0.5 block text-[0.76rem] text-body-soft">{s.blurb}</span>
-              </span>
-            </li>
-          ))}
-        </ol>
-
-        <div className="mt-6 flex items-center gap-2 lg:hidden">
-          {STEPS.map((s, i) => (
-            <span
-              key={s.title}
-              className={cn("h-1.5 flex-1 rounded-full", i <= step ? "bg-brand-600" : "bg-line")}
-            />
-          ))}
-        </div>
       </aside>
 
       <div className="min-w-0 rounded-[1.4rem] bg-white p-6 shadow-soft ring-1 ring-line sm:p-9">
+        <Progress phase={phase} />
         {children}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Three milestones and a bar, in place of the numbered rail.
+ *
+ * The fill is phases *finished*, so picking a school is worth a third before
+ * the sign-in screen is even drawn. That is the honest reading and it is also
+ * the encouraging one: nobody arrives at the second screen having earned zero.
+ *
+ * It follows that the last phase shows two thirds while you are working through
+ * it, and only the finished screen would be full.
+ */
+function Progress({ phase }: { phase: number }) {
+  const pct = (phase / PHASES.length) * 100;
+
+  return (
+    <div className="mb-7">
+      <div className="flex items-baseline justify-between gap-3">
+        {PHASES.map((label, i) => (
+          <span
+            key={label}
+            className={cn(
+              "text-[0.68rem] uppercase tracking-[0.12em] transition-colors",
+              // The current phase has to be the loudest thing here. Finished
+              // phases were brand green, and green beat black: on the sign-in
+              // screen the eye landed on "Pick your school" and the page read
+              // as if that were where you still were. Done recedes to grey now
+              // and the bar carries the progress; only the current label is
+              // dark, and it is the only bold one.
+              //
+              // Competing utilities live in the branches only, never split
+              // between a base string and a branch: Tailwind resolves those by
+              // emission order, not by writing order.
+              i < phase
+                ? "font-semibold text-body-soft"
+                : i === phase
+                  ? "font-bold text-ink-900"
+                  : "font-semibold text-body-soft/55",
+            )}
+          >
+            {label}
+          </span>
+        ))}
+      </div>
+
+      <div
+        className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-line"
+        role="progressbar"
+        aria-valuenow={phase}
+        aria-valuemin={0}
+        aria-valuemax={PHASES.length}
+        aria-label={`Step ${phase + 1} of ${PHASES.length}: ${PHASES[phase]}`}
+      >
+        {/* max() keeps a visible nub at the start rather than an empty track,
+            without overstating how far along a fresh arrival actually is. */}
+        <div
+          className="h-full rounded-full bg-brand-600 transition-[width] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
+          style={{ width: `max(${pct}%, 0.4rem)` }}
+        />
       </div>
     </div>
   );

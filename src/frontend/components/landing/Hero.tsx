@@ -37,27 +37,59 @@ export function Hero() {
 
             <Reveal delay={240}>
               {/*
-                Two halves of one promise. The first three are what it does; the
-                last three are what that access means, which used to be a whole
-                "What we can see" section further down the page. Answering it
-                here, in the same breath as the pitch, is more honest than
-                putting the pitch up top and the access terms a scroll away.
+                Three claims, not six, and one column rather than two: a block
+                of six ticks beside the phone is a specification sheet, and the
+                hero is meant to make one promise and then get out of the way.
+                The rest of the argument is the feature wall, which is where
+                "See more" goes.
+
+                What was here and is not any more: "Your portal password stays
+                encrypted", "Revoke its Google access any time", and "One text
+                turns it all off". Those are access terms rather than features,
+                and they arrived here when a "What we can see" section further
+                down the page was folded into the hero, on the reasoning that
+                answering them in the same breath as the pitch was more honest
+                than putting them a scroll away. They are now on neither, so if
+                they matter they need a home: the feature wall or the safety
+                line in the closing CTA.
               */}
-              <ul className="mt-8 grid gap-x-6 gap-y-2.5 text-[0.88rem] text-body-soft sm:grid-cols-2">
-                {[
-                  "Full schedule in calendar",
-                  "Text and call reminders",
-                  "Auto emails classmates",
-                  "Your portal password stays encrypted",
-                  "Revoke its Google access any time",
-                  "One text turns it all off",
-                ].map((claim) => (
-                  <li key={claim} className="flex items-center gap-2">
-                    <CheckDot />
-                    {claim}
-                  </li>
-                ))}
+              <ul className="mt-8 flex flex-col gap-2.5 text-[0.88rem] text-body-soft">
+                {["Full schedule in calendar", "Text and call reminders", "Auto emails classmates"].map(
+                  (claim) => (
+                    <li key={claim} className="flex items-center gap-2">
+                      <CheckDot />
+                      {claim}
+                    </li>
+                  ),
+                )}
               </ul>
+
+              {/* A plain anchor. globals.css sets scroll-behavior: smooth and
+                  drops it under reduced motion, and Section carries scroll-mt-24
+                  so the heading lands clear of the floating header, so this
+                  needs no JavaScript to behave. */}
+              <a
+                href="#features"
+                className="mt-5 inline-flex items-center gap-1.5 text-[0.88rem] font-semibold text-brand-600 transition-colors hover:text-brand-700"
+              >
+                See more
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 14 14"
+                  fill="none"
+                  aria-hidden="true"
+                  className="mt-px"
+                >
+                  <path
+                    d="M3.5 5.25 7 8.75l3.5-3.5"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </a>
             </Reveal>
           </div>
 
