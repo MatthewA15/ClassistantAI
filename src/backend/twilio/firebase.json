@@ -11,8 +11,9 @@
       "codebase": "twilio-functions",
       "disallowLegacyRuntimeConfig": true,
       "ignore": [
+        "__pycache__",
         "venv",
-        ".git",
+        ".git*",
         "firebase-debug.log",
         "firebase-debug.*.log",
         "*.local"
