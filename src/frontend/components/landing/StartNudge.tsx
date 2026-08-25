@@ -44,8 +44,26 @@ function markSeen() {
 export function StartNudge() {
   const { school } = useSchoolTheme();
   const [open, setOpen] = useState(false);
+  /** Summoned by hand, so none of the cancels apply to it. */
+  const [forced, setForced] = useState(false);
   const dismissButton = useRef<HTMLButtonElement>(null);
   const returnFocusTo = useRef<Element | null>(null);
+
+  /**
+   * `/?nudge=1` opens the card immediately, ignoring the timer and the
+   * once-a-session flag. The card is otherwise deliberately hard to trigger,
+   * which makes it deliberately hard to look at while designing it.
+   *
+   * Read off `window` rather than through `useSearchParams`, which would need a
+   * Suspense boundary on this statically rendered route and would opt the whole
+   * landing page into dynamic rendering for the sake of a preview flag.
+   */
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("nudge") !== "1") return;
+    returnFocusTo.current = document.activeElement;
+    setForced(true);
+    setOpen(true);
+  }, []);
 
   const close = useCallback(() => {
     markSeen();
@@ -83,8 +101,8 @@ export function StartNudge() {
   // Picking a school after the card is already up answers it, so get out of
   // the way rather than making them dismiss a card about a thing they just did.
   useEffect(() => {
-    if (school && open) close();
-  }, [school, open, close]);
+    if (school && open && !forced) close();
+  }, [school, open, forced, close]);
 
   useEffect(() => {
     if (!open) return;
