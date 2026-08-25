@@ -30,10 +30,40 @@ env:
     value: https://classistant-connectors-945345983057.us-central1.run.app
     availability: [RUNTIME]
 
-  # HMAC key for the onboarding and session cookies (lib/onboardingSession.ts).
+  # HMAC key for the onboarding cookie (lib/onboardingSession.ts). No longer
+  # signs the session: that is a Firebase Auth session cookie now.
   - variable: SESSION_SECRET
     secret: session-secret
     availability: [RUNTIME]
+
+  # --------------------------------------------------------------- Firebase
+  # Web config for Firebase Auth in the browser (lib/firebaseClient.ts).
+  #
+  # All four are public. The API key is not a credential: every Firebase web app
+  # ships it to every browser, and access is controlled by Auth and IAM. There
+  # is nothing here that is not already visible in the page source.
+  #
+  # BUILD availability is not optional. Next inlines NEXT_PUBLIC_* at build
+  # time, so a value that only exists at RUNTIME compiles to `undefined` and
+  # sign-in fails in production while working perfectly on a dev machine that
+  # has a .env.local. Keep these in sync with src/frontend/.env.example.
+  - variable: NEXT_PUBLIC_FIREBASE_API_KEY
+    value: AIzaSyCA4XkNFqVLTq-GxKDppjw6WqamR4AUrKA
+    availability: [BUILD, RUNTIME]
+
+  - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+    value: classisstant.firebaseapp.com
+    availability: [BUILD, RUNTIME]
+
+  - variable: NEXT_PUBLIC_FIREBASE_APP_ID
+    value: 1:945345983057:web:fc8f467dc0474f2d21be70
+    availability: [BUILD, RUNTIME]
+
+  # Read by the client SDK and, as a fallback, by firebase-admin. The project id
+  # really is spelled with two s's; the product is not.
+  - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+    value: classisstant
+    availability: [BUILD, RUNTIME]
 
 runConfig:
   # A marketing site with bursty term-start traffic and long quiet stretches.

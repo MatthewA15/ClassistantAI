@@ -42,6 +42,16 @@ export type UserProfile = {
     sms: ConsentRecord;
     marketing: ConsentRecord;
   };
+  /**
+   * The student's own switches over what Classistant may touch, keyed by the
+   * Firestore field names in data/access.ts.
+   *
+   * These are enforcement on our side, not at Google. The grant is a single
+   * token covering the whole scope set, so a `false` here means Classistant
+   * does not use that access, and every reader of this document is expected to
+   * honour it. See the note at the top of data/access.ts.
+   */
+  access: Record<string, boolean>;
 };
 
 /**
@@ -87,22 +97,84 @@ export async function upsertUser(profile: UserProfile): Promise<void> {
     school_id: profile.schoolId,
     service_email: profile.serviceEmail,
     consent: profile.consent,
+    access: profile.access,
   });
 }
 
 /**
- * Marks a user as having connected Google, before the rest of the wizard is
- * filled in.
+ * What onboarding needs to know about a returning student.
  *
- * Called from the OAuth callback, where all we know is identity. The document
- * is created here so a student who abandons onboarding halfway still has a row
- * -- their refresh token is already in Secret Manager at that point, and a
- * token with no user record is an orphan nobody can find to delete.
+ * The school lives here rather than in the session because a Firebase session
+ * cookie carries only what Firebase put in it, and what Firebase put in it is a
+ * phone number. Everything else about a student is ours to store.
+ */
+export type UserRecord = {
+  /** The document id, which is the Google `sub`. */
+  userId: string;
+  schoolId: string | null;
+  email: string | null;
+  /** Whether the Gmail/Drive/Docs/Calendar grant has been completed. Distinct
+   *  from being signed in: identity is a phone number and arrives first. */
+  googleConnected: boolean;
+  onboardingComplete: boolean;
+};
+
+function toRecord(snap: FirebaseFirestore.DocumentSnapshot): UserRecord {
+  const data = snap.data() ?? {};
+  return {
+    userId: snap.id,
+    schoolId: typeof data.school_id === "string" ? data.school_id : null,
+    email: typeof data.email === "string" ? data.email : null,
+    googleConnected: Boolean(data.google_connected_at),
+    onboardingComplete: data.onboarding_complete === true,
+  };
+}
+
+/**
+ * Finds a student from their Firebase uid.
+ *
+ * This query is the seam created by verifying a phone before connecting Google.
+ * The session knows a Firebase uid; the documents are keyed by the Google `sub`,
+ * which does not exist until the grant completes. So there is no direct read
+ * available, and a signed-in student with no document at all is the normal
+ * state for the first half of onboarding rather than an error.
+ *
+ * Single-field equality, so Firestore's automatic index covers it and no
+ * composite index has to be deployed alongside this.
+ */
+export async function getUserByAuthUid(authUid: string): Promise<UserRecord | null> {
+  const found = await firestore()
+    .collection("users")
+    .where("auth_uid", "==", authUid)
+    .limit(1)
+    .get();
+
+  const snap = found.docs[0];
+  return snap ? toRecord(snap) : null;
+}
+
+/**
+ * Records the access grant. This is where the user document is born.
+ *
+ * Called from the OAuth callback, which is the first moment a Google `sub`
+ * exists at all: the student verified a phone before this, and a phone session
+ * carries no `sub` to key a document by. So nothing is written during the first
+ * half of onboarding, and this one write binds the two identities together.
+ *
+ * Creating it here also means a student who abandons the rest of the wizard
+ * still has a row. Their refresh token is already in Secret Manager by this
+ * point, and a token with no user record is an orphan nobody can find to delete.
+ *
+ * `phone_number` is carried in from the session rather than collected again. It
+ * was verified by an SMS round trip, which is a stronger claim than any field on
+ * a form, and re-asking would invite a student to type a different number.
  */
 export async function recordGoogleConnection(args: {
   userId: string;
   email: string;
   schoolId: string;
+  authUid: string;
+  phoneNumber: string;
 }): Promise<void> {
   await setStamped(
     "users",
@@ -111,6 +183,12 @@ export async function recordGoogleConnection(args: {
       id: args.userId,
       email: args.email,
       school_id: args.schoolId,
+      // The bridge between the two ids. Everything downstream is keyed by the
+      // Google `sub`, and this is the only way back to the Firebase Auth record
+      // that holds the phone -- which is what a support request or a deletion
+      // request will arrive holding.
+      auth_uid: args.authUid,
+      phone_number: args.phoneNumber,
       google_connected_at: FieldValue.serverTimestamp(),
     },
     // Insert-only: a student who reconnects Google after finishing should not

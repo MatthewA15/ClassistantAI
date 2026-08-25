@@ -3,7 +3,8 @@ import { Suspense } from "react";
 import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
 import { BuiltBy } from "@/components/site/BuiltBy";
 import { Container } from "@/components/ui/primitives";
-import { getSession } from "@/lib/onboardingSession";
+import { getSession } from "@/lib/authSession";
+import { getUserByAuthUid } from "@/lib/users";
 
 export const metadata: Metadata = {
   title: "Get set up",
@@ -16,10 +17,26 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function OnboardingPage() {
-  // The wizard is a client component and the session cookie is httpOnly, so the
-  // identity proven by the Google round trip has to be handed down from here.
-  // A student returning from consent lands on this page, not on a fresh one.
+  // The wizard is a client component and the session cookie is httpOnly, so
+  // what has been proven has to be handed down from here. A student returning
+  // from the Google consent screen lands on this page, not on a fresh one.
+  //
+  // Three states, not two, and the wizard opens on a different step for each:
+  // nobody here, a verified number with no access grant, or both. The document
+  // read is what distinguishes the last two, and it only exists once the grant
+  // has happened.
   const session = await getSession();
+  const record = session ? await getUserByAuthUid(session.uid) : null;
+
+  const account = session
+    ? {
+        phone: session.phone,
+        email: record?.email ?? null,
+        schoolId: record?.schoolId ?? null,
+        granted: record?.googleConnected ?? false,
+      }
+    : null;
+
   return (
     <div className="relative min-h-dvh bg-paper">
       <div
@@ -33,11 +50,7 @@ export default async function OnboardingPage() {
       <Container className="relative py-12 sm:py-16">
         {/* useSearchParams needs a boundary on a statically rendered route. */}
         <Suspense fallback={<div className="min-h-[26rem]" />}>
-          <OnboardingWizard
-            connected={
-              session ? { email: session.email, schoolId: session.schoolId } : null
-            }
-          />
+          <OnboardingWizard connected={account} />
         </Suspense>
 
         {/* A "trouble getting in? email chim@wopara.com or read the privacy

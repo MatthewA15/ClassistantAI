@@ -1,0 +1,196 @@
+"use client";
+
+import { getApp, getApps, initializeApp, type FirebaseApp } from "firebase/app";
+import {
+  RecaptchaVerifier,
+  getAuth,
+  inMemoryPersistence,
+  signInWithPhoneNumber,
+  type Auth,
+  type ConfirmationResult,
+} from "firebase/auth";
+
+/**
+ * Firebase Auth in the browser. Identity only, and identity is a phone number.
+ *
+ * This half proves WHO the student is. It is deliberately not Google. The
+ * Google account is what the agent needs *access to*, and making it the login
+ * as well would mean a student who revokes access also loses their account. A
+ * phone number is also the address this product delivers on, so verifying it
+ * first verifies the thing that actually has to work.
+ *
+ * The Gmail/Drive/Docs/Calendar grant is a separate leg through the connector,
+ * and has to be: Firebase never surfaces Google's refresh token, so offline
+ * access could not come from here even if the login were Google. See
+ * docs/design/15-firebase-auth.md.
+ *
+ * None of the config below is secret. `apiKey` in particular is not a
+ * credential, it is a project identifier that every Firebase web app ships to
+ * every browser; access is controlled by Auth rules and IAM, not by hiding it.
+ *
+ * NEXT_PUBLIC_* values are inlined at build time by Next, which only works on a
+ * literal `process.env.NEXT_PUBLIC_FOO` expression. Do not refactor these into a
+ * loop or a computed key: it builds cleanly and yields undefined at runtime.
+ */
+const firebaseConfig = {
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+};
+
+function app(): FirebaseApp {
+  if (!firebaseConfig.apiKey || !firebaseConfig.authDomain || !firebaseConfig.appId) {
+    throw new Error(
+      "Firebase web config is missing. Set NEXT_PUBLIC_FIREBASE_API_KEY, " +
+        "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN and NEXT_PUBLIC_FIREBASE_APP_ID.",
+    );
+  }
+  return getApps().length ? getApp() : initializeApp(firebaseConfig);
+}
+
+let cached: Auth | undefined;
+
+function clientAuth(): Auth {
+  if (!cached) {
+    cached = getAuth(app());
+    // Google's own screens and the SMS itself, in the student's language.
+    cached.useDeviceLanguage();
+  }
+  return cached;
+}
+
+/**
+ * The invisible reCAPTCHA that phone sign-in refuses to run without.
+ *
+ * Firebase requires an AppVerifier on every `signInWithPhoneNumber` call: it is
+ * what stands between this form and someone spending the project's SMS budget
+ * in a loop. Invisible size, so it only ever shows a challenge to traffic Google
+ * finds suspicious.
+ *
+ * Kept as a module-level singleton and reused. Constructing a second verifier
+ * against the same container throws, and re-rendering the wizard must not be
+ * able to cause that.
+ */
+let verifier: RecaptchaVerifier | undefined;
+
+function appVerifier(containerId: string): RecaptchaVerifier {
+  if (!verifier) {
+    verifier = new RecaptchaVerifier(clientAuth(), containerId, { size: "invisible" });
+  }
+  return verifier;
+}
+
+/**
+ * Throws the verifier away after a failure.
+ *
+ * A reCAPTCHA token is single use. Once a send attempt has failed the widget is
+ * spent, and reusing it produces `auth/captcha-check-failed` on every retry
+ * after the first, which looks exactly like the student's number being the
+ * problem when it is not.
+ */
+function resetVerifier(): void {
+  try {
+    verifier?.clear();
+  } catch {
+    // Already torn down. Nothing to do, and nothing that should stop a retry.
+  }
+  verifier = undefined;
+}
+
+/** What `sendVerificationCode` hands back, to be spent by `confirmCode`. */
+export type PendingVerification = ConfirmationResult;
+
+/**
+ * Texts a six digit code to a Canadian mobile number.
+ *
+ * `phone` is ten digits, unformatted. E.164 is assembled here rather than in the
+ * component, because Firebase silently fails on anything else and a stray space
+ * from a formatted input is the easiest way to produce that.
+ */
+export async function sendVerificationCode(
+  phone: string,
+  containerId: string,
+): Promise<PendingVerification> {
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length !== 10) throw new Error("invalid-phone");
+
+  try {
+    return await signInWithPhoneNumber(clientAuth(), `+1${digits}`, appVerifier(containerId));
+  } catch (err) {
+    resetVerifier();
+    throw err;
+  }
+}
+
+/**
+ * Spends the code. On success the student is signed in and holds an ID token,
+ * which /api/auth/session trades for the session cookie.
+ *
+ * Persistence is in-memory, deliberately: the httpOnly session cookie is the
+ * session, and Firebase's default localStorage persistence would keep a second,
+ * longer-lived client session that the server cannot see and
+ * revokeRefreshTokens cannot reach. This is what Firebase's own session-cookie
+ * guide recommends.
+ */
+export async function confirmCode(
+  pending: PendingVerification,
+  code: string,
+): Promise<string> {
+  await clientAuth().setPersistence(inMemoryPersistence);
+  const credential = await pending.confirm(code.replace(/\D/g, ""));
+  // Once the code is spent the widget is too. A student who signs out and back
+  // in during the same page life needs a fresh one.
+  resetVerifier();
+  return credential.user.getIdToken();
+}
+
+/** Drops the client-side user. The server session is cleared separately, by
+ *  DELETE /api/auth/session, which is the half that actually matters. */
+export async function signOutClient(): Promise<void> {
+  resetVerifier();
+  await clientAuth().signOut();
+}
+
+/**
+ * Maps Firebase's error codes onto something a student can act on.
+ *
+ * Every message here has to be true of a phone, not of a password. "Try again"
+ * is wrong for a wrong code and right for a network blip, and the difference is
+ * the whole value of this function.
+ */
+export function phoneErrorMessage(err: unknown): string {
+  const code = typeof err === "object" && err && "code" in err ? String(err.code) : "";
+
+  switch (code) {
+    case "auth/invalid-phone-number":
+    case "invalid-phone":
+      return "That does not look like a 10 digit Canadian mobile number.";
+    case "auth/invalid-verification-code":
+      return "That code was not right. Check the text and try again.";
+    case "auth/code-expired":
+      return "That code expired. Send yourself a new one.";
+    case "auth/too-many-requests":
+      // Firebase's own rate limit. Retrying immediately makes it worse.
+      return "Too many tries from here. Wait a few minutes and start again.";
+    case "auth/quota-exceeded":
+      return "We cannot send codes right now. Try again a little later.";
+    case "auth/captcha-check-failed":
+      return "That check did not pass. Try sending the code again.";
+    case "auth/network-request-failed":
+      return "We could not reach Google. Check your connection and try again.";
+
+    // The next three are our own setup, not the student's, and none can be
+    // fixed by trying again. Called out separately so a half-configured project
+    // fails loudly during setup instead of looking like an ordinary failure.
+    case "auth/unauthorized-domain":
+      return "This site is not an authorised domain for sign-in yet.";
+    case "auth/configuration-not-found":
+      return "Sign-in is not switched on yet. (Firebase Auth is not set up on the project.)";
+    case "auth/operation-not-allowed":
+      return "Phone sign-in is not enabled for this site yet.";
+
+    default:
+      return "We could not verify that number. Try again.";
+  }
+}

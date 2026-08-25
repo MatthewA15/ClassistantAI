@@ -4,30 +4,38 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 
 /**
- * Cookies that carry onboarding across the Google redirect.
+ * The cookie that carries the scope grant across the Google redirect.
  *
- * The wizard is a client component holding its state in React. Sending the
- * student to accounts.google.com destroys all of it, so the two things needed
- * to resume -- which school they picked, and who they turned out to be -- have
- * to survive the round trip somewhere else. These are those two cookies.
+ * This file used to hold two cookies. The session half is gone: identity is a
+ * Firebase Auth session cookie now, in lib/authSession.ts, which brings
+ * revocation and rotation that a self-signed blob never had.
  *
- * Both are signed. `classistant_session` carries the Google `sub`, and the
- * connector API is currently deployed with --allow-unauthenticated, so a
- * forged cookie is a read of somebody else's mail. Signing does not fix the
- * open API (that needs IAM or an API key on the connector, see docs/design/12)
- * but it does stop this app from being the thing that hands out the id.
+ * What is left is `classistant_oauth`, and it is deliberately still HMAC signed
+ * here rather than folded into Firebase. It is not identity. It is CSRF state
+ * plus the two things the wizard cannot keep across a trip to
+ * accounts.google.com -- which school was picked, and which address the student
+ * said they were about to use -- and Firebase has nowhere to put any of it.
+ *
+ * Nothing in it is trusted as proof of anything. The `state` is compared against
+ * what Google echoes back, and the school is re-checked against the *session's*
+ * verified email before a single write happens.
  *
  * SameSite=Lax, not Strict: the return from Google is a top-level cross-site
  * GET. Lax sends cookies on exactly that and Strict does not, which would make
- * the callback see nothing and fail every login.
+ * the callback see nothing and fail every grant.
  */
 
 const OAUTH_COOKIE = "classistant_oauth";
-const SESSION_COOKIE = "classistant_session";
 const OAUTH_TTL_SECONDS = 600; // 10 minutes to get through a consent screen
 
-export type PendingOAuth = { state: string; schoolId: string; username: string };
-export type OnboardingSession = { userId: string; email: string; schoolId: string };
+export type PendingOAuth = {
+  state: string;
+  schoolId: string;
+  /** The address the student typed on the school step. Checked against what
+   *  Google actually returns, so a claimed address and a proven one cannot
+   *  quietly differ. */
+  email: string;
+};
 
 function signingKey(): Buffer {
   const secret = process.env.SESSION_SECRET;
@@ -64,16 +72,12 @@ function unseal<T>(raw: string | undefined): T | null {
   }
 }
 
-const BASE_COOKIE = {
-  httpOnly: true,
-  sameSite: "lax" as const,
-  secure: process.env.NODE_ENV === "production",
-  path: "/",
-};
-
 export async function setPendingOAuth(pending: PendingOAuth): Promise<void> {
   (await cookies()).set(OAUTH_COOKIE, seal(pending), {
-    ...BASE_COOKIE,
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
     maxAge: OAUTH_TTL_SECONDS,
   });
 }
@@ -85,19 +89,4 @@ export async function takePendingOAuth(): Promise<PendingOAuth | null> {
   // live state waiting for it.
   jar.delete(OAUTH_COOKIE);
   return pending;
-}
-
-export async function setSession(session: OnboardingSession): Promise<void> {
-  (await cookies()).set(SESSION_COOKIE, seal(session), {
-    ...BASE_COOKIE,
-    maxAge: 60 * 60 * 24 * 30,
-  });
-}
-
-export async function getSession(): Promise<OnboardingSession | null> {
-  return unseal<OnboardingSession>((await cookies()).get(SESSION_COOKIE)?.value);
-}
-
-export async function clearSession(): Promise<void> {
-  (await cookies()).delete(SESSION_COOKIE);
 }

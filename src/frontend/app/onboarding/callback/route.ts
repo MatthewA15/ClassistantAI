@@ -1,12 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { getSchool } from "@/data/schools";
+import { getSession } from "@/lib/authSession";
 import { connectorBaseUrl } from "@/lib/googleOAuth";
-import { setSession, takePendingOAuth } from "@/lib/onboardingSession";
+import { takePendingOAuth } from "@/lib/onboardingSession";
 import { recordGoogleConnection } from "@/lib/users";
 
 /**
- * Where Google sends the student back.
+ * Where Google sends the student back from the scope grant.
  *
  * This route is the reason the frontend owns the OAuth entry point at all. The
  * connector's own /auth/callback returns JSON, so pointing Google straight at
@@ -17,6 +18,10 @@ import { recordGoogleConnection } from "@/lib/users";
  * The authorization code passes through this process and is never given to the
  * browser. The refresh token never reaches this process at all -- the connector
  * writes it straight to Secret Manager.
+ *
+ * This route no longer mints a session. Identity was settled by Firebase Auth
+ * before the grant started, so what arrives here is authorisation for an
+ * already known student, and the job is to check the two are the same person.
  */
 
 export const dynamic = "force-dynamic";
@@ -50,6 +55,12 @@ export async function GET(request: NextRequest) {
   // not with a state matching the signed cookie we set moments earlier.
   if (!pending || pending.state !== state) return back(request, { error: "state" });
 
+  // A grant with nobody signed in is not something to salvage. Before Firebase
+  // Auth this route had no prior identity to check against and simply believed
+  // whatever the connector returned.
+  const session = await getSession();
+  if (!session) return back(request, { error: "signin" });
+
   const school = getSchool(pending.schoolId);
   if (!school || school.status !== "live") return back(request, { error: "school" });
 
@@ -77,15 +88,41 @@ export async function GET(request: NextRequest) {
   const email = payload.email?.toLowerCase();
   if (!userId || !email) return back(request, { error: "exchange" });
 
-  // `hd` already pinned the consent screen to the school's domain, but that is a
-  // parameter on a URL the browser could have been talked into changing. This is
-  // the server-side check that actually enforces school eligibility.
+  /*
+   * School eligibility, and this is the check that actually enforces it.
+   *
+   * `hd` already pinned the consent screen to the school's domain, but `hd` is a
+   * parameter on a URL that lives in the browser, and the browser is the thing
+   * being checked. The address Google returns from the code exchange is the only
+   * address in this flow that is proven, so it is the only one worth testing.
+   */
   if (!email.endsWith(`@${school.emailDomain}`)) {
     return back(request, { error: "domain" });
   }
 
-  await recordGoogleConnection({ userId, email, schoolId: school.id });
-  await setSession({ userId, email, schoolId: school.id });
+  /*
+   * And it must be the address they said it would be.
+   *
+   * The student typed one on the school step; this is the one they actually
+   * signed in with. A difference is not necessarily an attack -- picking the
+   * wrong account from Google's chooser does it -- but it means the rest of
+   * onboarding would be about a different mailbox than the one they think, and
+   * silently adopting the second is the wrong way to resolve that.
+   */
+  if (pending.email && email !== pending.email) {
+    return back(request, { error: "mismatch" });
+  }
+
+  // The write that binds the phone identity to the Google one. Everything
+  // downstream is keyed by `sub`; the session's uid and number are what make it
+  // possible to get back here from a support or deletion request.
+  await recordGoogleConnection({
+    userId,
+    email,
+    schoolId: school.id,
+    authUid: session.uid,
+    phoneNumber: session.phone,
+  });
 
   return back(request, { connected: "1" });
 }

@@ -81,7 +81,10 @@ export function randomState(): string {
  */
 export function buildAuthUrl(opts: {
   emailDomain: string;
-  username: string;
+  /** The address to preselect. Since Firebase Auth now runs first, this is the
+   *  student's *verified* email rather than the username they typed, so Google
+   *  skips its chooser instead of merely narrowing it. */
+  loginHint: string;
   state: string;
 }): string {
   const params = new URLSearchParams({
@@ -99,8 +102,8 @@ export function buildAuthUrl(opts: {
 
   // A full address lets Google skip its own chooser and hand a federated school
   // straight to its IdP. `hd` alone still stops at Google's screen first.
-  if (opts.username) {
-    params.set("login_hint", `${opts.username}@${opts.emailDomain}`);
+  if (opts.loginHint) {
+    params.set("login_hint", opts.loginHint);
   }
 
   return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
