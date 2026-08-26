@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
-import { BuiltBy } from "@/components/site/BuiltBy";
-import { Container } from "@/components/ui/primitives";
+import { OnboardingFrame, WizardSkeleton } from "@/components/onboarding/shell";
 import { getSession } from "@/lib/authSession";
 import { getUserByAuthUid } from "@/lib/users";
 
@@ -16,7 +15,33 @@ export const metadata: Metadata = {
 // Reads the session cookie, so it cannot be statically rendered.
 export const dynamic = "force-dynamic";
 
-export default async function OnboardingPage() {
+/**
+ * The page itself is synchronous now, and that is the point.
+ *
+ * It used to await getSession() and getUserByAuthUid() in this function body,
+ * above the Suspense boundary. A boundary with nothing suspending under it
+ * streams nothing, so the browser held on the previous page until Firebase
+ * Admin had verified the session cookie -- a network call, because checkRevoked
+ * is on -- and Firestore had answered a query. Two round trips before the first
+ * byte, on a route the router could not prefetch either.
+ *
+ * With the reads moved into a child below the boundary, the frame and the card
+ * flush immediately and the wizard arrives when they finish. loading.tsx is the
+ * other half: it is what makes the route prefetchable at all.
+ * See docs/design/16-onboarding-entry-cost.md.
+ */
+export default function OnboardingPage() {
+  return (
+    <OnboardingFrame>
+      {/* Also the boundary useSearchParams needs inside the wizard. */}
+      <Suspense fallback={<WizardSkeleton />}>
+        <SignedInWizard />
+      </Suspense>
+    </OnboardingFrame>
+  );
+}
+
+async function SignedInWizard() {
   // The wizard is a client component and the session cookie is httpOnly, so
   // what has been proven has to be handed down from here. A student returning
   // from the Google consent screen lands on this page, not on a fresh one.
@@ -37,35 +62,5 @@ export default async function OnboardingPage() {
       }
     : null;
 
-  return (
-    <div className="relative min-h-dvh bg-paper">
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 top-0 h-[28rem] overflow-hidden"
-      >
-        <div className="grain-grid absolute inset-0 [mask-image:linear-gradient(to_bottom,black,transparent)]" />
-        <div className="absolute -left-24 -top-32 h-[26rem] w-[26rem] rounded-full bg-sky-200/50 blur-[110px]" />
-      </div>
-
-      <Container className="relative py-12 sm:py-16">
-        {/* useSearchParams needs a boundary on a statically rendered route. */}
-        <Suspense fallback={<div className="min-h-[26rem]" />}>
-          <OnboardingWizard connected={account} />
-        </Suspense>
-
-        {/* A "trouble getting in? email chim@wopara.com or read the privacy
-            policy" line used to sit here. The privacy policy and terms are
-            still linked from the consent step, which is the screen where they
-            actually matter. The support address is not on this page any more,
-            so a student who cannot get in has nowhere to write from here.
-
-            Everything above this is mechanism: fields, scopes, a progress bar.
-            Three faces at the bottom of the page that asks for a school login
-            is the cheapest way to say a person is behind it. */}
-        <div className="mt-12">
-          <BuiltBy />
-        </div>
-      </Container>
-    </div>
-  );
+  return <OnboardingWizard connected={account} />;
 }

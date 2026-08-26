@@ -22,6 +22,7 @@ Read these before changing something that looks arbitrary. Most of it is not.
 | [13 Connect step scenes](13-connect-scenes.md) | The two loops that replaced the scope list, and what the sealed envelope does not claim |
 | [14 Attention and nudges](14-attention-and-nudges.md) | The CTA pulse, why the hero gets a different cue, and the 30 second start card |
 | [15 Firebase Auth](15-firebase-auth.md) | Why the login is a phone number, the two ids and the seam between them, the access switches |
+| [16 Onboarding entry cost](16-onboarding-entry-cost.md) | The pause on the first press of Start, why the route could not be prefetched, and the rules that keep it fixed |
 
 ## Ground rules that apply everywhere
 

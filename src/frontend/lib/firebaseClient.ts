@@ -1,14 +1,10 @@
 "use client";
 
-import { getApp, getApps, initializeApp, type FirebaseApp } from "firebase/app";
-import {
-  RecaptchaVerifier,
-  getAuth,
-  inMemoryPersistence,
-  signInWithPhoneNumber,
-  type Auth,
-  type ConfirmationResult,
-} from "firebase/auth";
+// Types only, so none of this survives compilation. Every value from the SDK is
+// pulled in by the dynamic import in `sdk()` below -- see the note there for
+// why that is worth the asynchrony it costs.
+import type { FirebaseApp } from "firebase/app";
+import type { Auth, ConfirmationResult, RecaptchaVerifier } from "firebase/auth";
 
 /**
  * Firebase Auth in the browser. Identity only, and identity is a phone number.
@@ -39,21 +35,57 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-function app(): FirebaseApp {
+/**
+ * The SDK, fetched on demand rather than bundled into the page.
+ *
+ * firebase/app plus firebase/auth is around 40 kB gzipped, and it used to be a
+ * static import, which put all of it in the chunk the browser has to download
+ * and parse before /onboarding can hydrate. None of it is needed to draw the
+ * first screen or to type a phone number into it -- the earliest it does any
+ * work is the press of "Text me a code" -- so paying for it up front bought
+ * nothing and made the first arrival on the page visibly slower.
+ *
+ * `warmPhoneAuth` below starts this fetch as soon as the number screen mounts,
+ * so by the time a student has typed ten digits it has almost always landed and
+ * the press is no slower than it was. The import cache makes every later call
+ * free, and a failed fetch simply retries on the next one.
+ */
+async function sdk() {
+  const [{ getApp, getApps, initializeApp }, auth] = await Promise.all([
+    import("firebase/app"),
+    import("firebase/auth"),
+  ]);
+  return { getApp, getApps, initializeApp, ...auth };
+}
+
+/**
+ * Pulls the SDK down ahead of the first press, and swallows failures.
+ *
+ * Called from an effect, so it must never reject: a rejected floating promise
+ * here would be an unhandled rejection over a fetch that is only ever an
+ * optimisation. Whatever went wrong will surface properly, with a message a
+ * student can act on, when `sendVerificationCode` retries the same import.
+ */
+export function warmPhoneAuth(): void {
+  void sdk().catch(() => {});
+}
+
+function app(mod: Awaited<ReturnType<typeof sdk>>): FirebaseApp {
   if (!firebaseConfig.apiKey || !firebaseConfig.authDomain || !firebaseConfig.appId) {
     throw new Error(
       "Firebase web config is missing. Set NEXT_PUBLIC_FIREBASE_API_KEY, " +
         "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN and NEXT_PUBLIC_FIREBASE_APP_ID.",
     );
   }
-  return getApps().length ? getApp() : initializeApp(firebaseConfig);
+  return mod.getApps().length ? mod.getApp() : mod.initializeApp(firebaseConfig);
 }
 
 let cached: Auth | undefined;
 
-function clientAuth(): Auth {
+async function clientAuth(): Promise<Auth> {
+  const mod = await sdk();
   if (!cached) {
-    cached = getAuth(app());
+    cached = mod.getAuth(app(mod));
     // Google's own screens and the SMS itself, in the student's language.
     cached.useDeviceLanguage();
   }
@@ -74,9 +106,12 @@ function clientAuth(): Auth {
  */
 let verifier: RecaptchaVerifier | undefined;
 
-function appVerifier(containerId: string): RecaptchaVerifier {
+async function appVerifier(containerId: string): Promise<RecaptchaVerifier> {
   if (!verifier) {
-    verifier = new RecaptchaVerifier(clientAuth(), containerId, { size: "invisible" });
+    const mod = await sdk();
+    verifier = new mod.RecaptchaVerifier(await clientAuth(), containerId, {
+      size: "invisible",
+    });
   }
   return verifier;
 }
@@ -116,7 +151,12 @@ export async function sendVerificationCode(
   if (digits.length !== 10) throw new Error("invalid-phone");
 
   try {
-    return await signInWithPhoneNumber(clientAuth(), `+1${digits}`, appVerifier(containerId));
+    const mod = await sdk();
+    return await mod.signInWithPhoneNumber(
+      await clientAuth(),
+      `+1${digits}`,
+      await appVerifier(containerId),
+    );
   } catch (err) {
     resetVerifier();
     throw err;
@@ -137,7 +177,8 @@ export async function confirmCode(
   pending: PendingVerification,
   code: string,
 ): Promise<string> {
-  await clientAuth().setPersistence(inMemoryPersistence);
+  const mod = await sdk();
+  await (await clientAuth()).setPersistence(mod.inMemoryPersistence);
   const credential = await pending.confirm(code.replace(/\D/g, ""));
   // Once the code is spent the widget is too. A student who signs out and back
   // in during the same page life needs a fresh one.
@@ -149,7 +190,10 @@ export async function confirmCode(
  *  DELETE /api/auth/session, which is the half that actually matters. */
 export async function signOutClient(): Promise<void> {
   resetVerifier();
-  await clientAuth().signOut();
+  // Nothing to sign out of if the SDK was never loaded, and loading 40 kB in
+  // order to sign out of nothing would be the wrong trade.
+  if (!cached) return;
+  await cached.signOut();
 }
 
 /**

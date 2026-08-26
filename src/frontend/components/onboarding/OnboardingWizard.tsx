@@ -17,6 +17,7 @@ import {
 } from "@/components/onboarding/connectScenes";
 import { Choice, Field, TextInput, formatPhone } from "@/components/onboarding/fields";
 import { PhoneVerifyScene } from "@/components/onboarding/phoneScenes";
+import { Shell } from "@/components/onboarding/shell";
 import { LogoMark } from "@/components/brand/LogoMark";
 import { useSchoolTheme } from "@/components/theme/SchoolTheme";
 import { ACCESS_ITEMS, defaultAccess, type AccessKey } from "@/data/access";
@@ -28,6 +29,7 @@ import {
   phoneErrorMessage,
   sendVerificationCode,
   signOutClient,
+  warmPhoneAuth,
   type PendingVerification,
 } from "@/lib/firebaseClient";
 
@@ -62,7 +64,7 @@ import {
  * Google step says so in as many words before sending them.
  */
 
-/** The heading on each screen. Four screens, but see PHASES below. */
+/** The heading on each screen. Four screens, but three PHASES: see shell.tsx. */
 const STEP_TITLES = [
   "What is your number?",
   "Connect your school account",
@@ -70,29 +72,9 @@ const STEP_TITLES = [
   "Choose what it can touch",
 ];
 
-/**
- * What the student is told they are doing, which is not the same as the number
- * of screens.
- *
- * Four screens were shown as four numbered steps in a rail down the side, plus
- * the school picker before them, so the flow announced itself as five things to
- * get through before anything happened. It is three: pick a school, sign in,
- * confirm your details. The two sign-in screens are one job with a technical
- * seam in the middle, and the same is true of the last two.
- *
- * Counting this way also means the school picker is worth something. It was
- * unnumbered, so a student arriving at screen two had done a third of the work
- * and was told they were at step one of four.
- */
-/**
- * The last one is called "Welcome gift" rather than "Your details" because the
- * screen it labels is where a student finds out Classistant is free for the
- * whole beta. Naming the reward instead of the paperwork is the difference
- * between a third step and a reason to finish.
- */
-const PHASES = ["Pick your school", "Log in", "Welcome gift"];
-
-/** Screens 0 to 2 are all logging in; the last one is the reward. */
+/** Screens 0 to 2 are all logging in; the last one is the reward. The three
+ *  phases they map onto, and the card that draws them, live in
+ *  components/onboarding/shell.tsx so the loading boundary can render them too. */
 const phaseForStep = (step: number) => (step <= 2 ? 1 : 2);
 
 /**
@@ -145,6 +127,17 @@ export function OnboardingWizard({ connected }: { connected: ConnectedAccount | 
   useEffect(() => {
     if (school && themedSchool?.id !== school.id) setSchool(school.id);
   }, [school, themedSchool, setSchool]);
+
+  /*
+   * Start fetching the Firebase Auth SDK, which is no longer in this page's
+   * bundle (see lib/firebaseClient.ts for why it was taken out).
+   *
+   * In an effect rather than at module scope, so it begins after the page has
+   * painted and hydrated instead of competing with the chunks that do that. A
+   * student still has to read the screen and type ten digits before anything
+   * needs it, which is far longer than the fetch takes.
+   */
+  useEffect(warmPhoneAuth, []);
 
   /*
    * Where to open, from what the server already proved.
@@ -1065,129 +1058,6 @@ function HiddenState({ step, values }: { step: number; values: Record<string, st
           <input key={key} type="hidden" name={key} value={value} />
         ))}
     </>
-  );
-}
-
-function Shell({
-  phase,
-  school,
-  children,
-}: {
-  /** Index into PHASES. Also the count of phases already finished. */
-  phase: number;
-  school?: School;
-  children: React.ReactNode;
-}) {
-  return (
-    // One column. The 17rem rail that used to sit on the left held a logo and a
-    // school name, and once the numbered steps came out of it there was not
-    // enough left to justify a quarter of the viewport. Both survivors moved
-    // into the card's own top row, so the form gets the full width.
-    <div className="mx-auto w-full max-w-[58rem] rounded-[1.4rem] bg-white p-6 shadow-soft ring-1 ring-line sm:p-9">
-      {/* The wordmark used to sit here. It said where you were, which the
-          student already knows, and said nothing about whether to keep going.
-          Only the arrow navigates: making the whole row a link would mean the
-          line of encouragement is also the way out of the flow. */}
-      <div className="mb-7 flex items-center justify-between gap-4">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <Link
-            href="/"
-            aria-label="Back to the home page"
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-body-soft ring-1 ring-line transition-colors hover:bg-sky-50 hover:text-ink-900"
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-              <path
-                d="M9.75 3.5 5.25 8l4.5 4.5"
-                stroke="currentColor"
-                strokeWidth="1.9"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </Link>
-          <span className="truncate font-display text-[1.05rem] font-extrabold tracking-[-0.01em] text-ink-900">
-            You&rsquo;re almost done!
-          </span>
-        </div>
-
-        {school ? (
-          <span className="hidden truncate text-[0.85rem] font-semibold text-body-soft sm:block">
-            {school.name}
-          </span>
-        ) : null}
-      </div>
-
-      <Progress phase={phase} />
-      {children}
-    </div>
-  );
-}
-
-/**
- * Three milestones and a bar, in place of the numbered rail.
- *
- * The fill is phases *finished*, so picking a school is worth a third before
- * the sign-in screen is even drawn. That is the honest reading and it is also
- * the encouraging one: nobody arrives at the second screen having earned zero.
- *
- * It follows that the last phase shows two thirds while you are working through
- * it, and only the finished screen would be full.
- */
-function Progress({ phase }: { phase: number }) {
-  // Fill to the middle of the phase you are in, not to the start of it. The
-  // labels are spread across the full width, so a bar that stopped at the start
-  // of "Log in" landed short of the word and read as not having got there yet.
-  // Half a phase in puts the end of the bar under the label it belongs to, and
-  // the flow feels quicker for it. It also never claims 100% before the last
-  // screen is done, which fill-the-whole-current-phase would.
-  const pct = ((phase + 0.5) / PHASES.length) * 100;
-
-  return (
-    <div className="mb-7">
-      <div className="flex items-baseline justify-between gap-3">
-        {PHASES.map((label, i) => (
-          <span
-            key={label}
-            className={cn(
-              "text-[0.68rem] uppercase tracking-[0.12em] transition-colors",
-              // The current phase has to be the loudest thing here. Finished
-              // phases were brand green, and green beat black: on the sign-in
-              // screen the eye landed on "Pick your school" and the page read
-              // as if that were where you still were. Done recedes to grey now
-              // and the bar carries the progress; only the current label is
-              // dark, and it is the only bold one.
-              //
-              // Competing utilities live in the branches only, never split
-              // between a base string and a branch: Tailwind resolves those by
-              // emission order, not by writing order.
-              i < phase
-                ? "font-semibold text-body-soft"
-                : i === phase
-                  ? "font-bold text-ink-900"
-                  : "font-semibold text-body-soft/55",
-            )}
-          >
-            {label}
-          </span>
-        ))}
-      </div>
-
-      <div
-        className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-line"
-        role="progressbar"
-        aria-valuenow={phase}
-        aria-valuemin={0}
-        aria-valuemax={PHASES.length}
-        aria-label={`Step ${phase + 1} of ${PHASES.length}: ${PHASES[phase]}`}
-      >
-        {/* max() keeps a visible nub at the start rather than an empty track,
-            without overstating how far along a fresh arrival actually is. */}
-        <div
-          className="h-full rounded-full bg-brand-600 transition-[width] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
-          style={{ width: `max(${pct}%, 0.4rem)` }}
-        />
-      </div>
-    </div>
   );
 }
 
