@@ -45,17 +45,52 @@ export function adminAuth(): Auth {
   return auth;
 }
 
-let db: Firestore | undefined;
+/**
+ * Cached on `globalThis`, not in a module variable, and that is the fix.
+ *
+ * Next compiles this module into several independent server bundles -- one for
+ * the page, one for server actions, others for route handlers -- and each gets
+ * its own copy of every module-scope variable. `getFirestore()` does NOT: it
+ * returns one instance per app, shared across all of them.
+ *
+ * So a plain `let db` looks like a singleton and is not. The page renders,
+ * finds its `db` empty, and configures the instance. The student submits, the
+ * action runs in a different bundle, finds *its* `db` empty, asks for the same
+ * already-used instance, and calls `settings()` on it a second time -- which
+ * throws `Firestore has already been initialized`.
+ *
+ * That is not a degraded path, it is a total one: every server action that
+ * touched Firestore after a page render failed, so onboarding could never be
+ * completed by anybody. It cost an evening to find because the symptom is a
+ * digest on a generic error page and the stack points at whichever bundle lost
+ * the race, never at this file.
+ */
+const firestoreCache = globalThis as typeof globalThis & {
+  __classistantFirestore?: Firestore;
+};
 
 export function firestore(): Firestore {
-  if (db) return db;
+  if (firestoreCache.__classistantFirestore) {
+    return firestoreCache.__classistantFirestore;
+  }
 
-  db = getFirestore(adminApp());
+  const instance = getFirestore(adminApp());
+
   // Firestore rejects undefined values by default, which turns an optional
   // field the wizard did not collect into a runtime throw halfway through
   // onboarding. Dropping them is the behaviour every write here wants.
-  db.settings({ ignoreUndefinedProperties: true });
-  return db;
+  try {
+    instance.settings({ ignoreUndefinedProperties: true });
+  } catch {
+    // Already configured, by an earlier bundle that won the race. The settings
+    // it applied are these ones -- this is the only place that calls settings()
+    // -- so the instance is correct and there is nothing to repair. Swallowed
+    // rather than rethrown because the alternative is failing a request over a
+    // setting that is already in force.
+  }
+
+  firestoreCache.__classistantFirestore = instance;
+  return instance;
 }
 
 // Re-exported so callers do not each import from firebase-admin directly.
