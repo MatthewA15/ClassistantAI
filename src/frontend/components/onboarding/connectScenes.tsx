@@ -511,8 +511,9 @@ function IconOutline() {
  * of it. At step one a student types their password into their school's own
  * page and the browser goes there directly, so nothing passes through
  * Classistant and nothing is kept. The phases drawn here are step two's story:
- * the portal password, held in Secret Manager and replayed against the school
- * portal overnight. See docs/design/13-connect-scenes.md.
+ * the portal password, sealed under a Cloud KMS key this app cannot open and
+ * replayed against the school portal overnight. See
+ * docs/design/13-connect-scenes.md.
  */
 
 const CYCLE_B = 28400;
@@ -851,10 +852,13 @@ export function SealedPasswordScene({ school }: { school: School }) {
           On the wording: "government grade" is a marketing phrase, not a
           specification, and this repo's rule is that nothing factual ships
           unverified. The verifiable version of the claim is that the portal
-          password is held in Google Secret Manager, encrypted at rest with
-          AES-256 under Google-managed keys. If this line ever has to be
-          defended, that is the sentence to defend, and "AES-256 encryption" or
-          "Encrypted in Secret Manager" would say it without the puffery. */}
+          password is encrypted with AES-256-GCM under a data key wrapped by a
+          Cloud KMS key that this application can encrypt with and cannot
+          decrypt with. If this line ever has to be defended, that is the
+          sentence to defend, and "AES-256 encryption" would say it without the
+          puffery. The "cannot see" badge on the Classistant machine to the left
+          is the claim that is actually load bearing, and it is now true of the
+          storage as well as the transit. */}
       <g opacity={showEncryption ? 1 : 0} style={{ transition: "opacity 300ms linear" }}>
         <rect
           x="76"

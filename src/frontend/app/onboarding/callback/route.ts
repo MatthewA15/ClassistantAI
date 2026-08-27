@@ -22,8 +22,9 @@ import { recordGoogleConnection } from "@/lib/users";
  * connector over server-to-server HTTP, and redirect into the next step.
  *
  * The authorization code passes through this process and is never given to the
- * browser. The refresh token never reaches this process at all -- the connector
- * writes it straight to Secret Manager.
+ * browser. The refresh token does reach this process now that the exchange runs
+ * here, and it lives in memory only long enough to be sealed into Firestore --
+ * see the note on the exchange below.
  *
  * This route no longer mints a session. Identity was settled by Firebase Auth
  * before the grant started, so what arrives here is authorisation for an

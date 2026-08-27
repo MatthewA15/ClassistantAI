@@ -1,105 +1,63 @@
 import "server-only";
 
-import { SecretManagerServiceClient } from "@google-cloud/secret-manager";
+import { storeCredential } from "@/lib/credentials";
+import { recordSchoolUsername } from "@/lib/users";
 
 /**
- * School portal password storage.
+ * School portal credentials: the one place that knows where each half goes.
  *
  * This is *reversible encryption, not hashing*. The agent has to replay the
- * password into the school's LMS overnight, so a one-way hash is not an option
- * here the way it would be for a password we ourselves authenticate against.
+ * password into the school's LMS overnight, so a one-way hash is not available
+ * to us the way it would be for a password we authenticate against ourselves.
  * That constraint is the whole reason this file exists instead of a bcrypt call.
  *
- * Secret Manager rather than a ciphertext blob in Firestore, for three reasons
- * (docs/design/12):
- *  - it is already how the connector stores per-user refresh tokens (ADR-0002),
- *    so credentials have one storage model and one audit story, not two;
- *  - every individual read is audit logged, which is the only way to ever show
- *    that an unattended agent touched a credential only when it should have;
- *  - no key handling code of our own to get wrong.
+ * It used to write the password to Secret Manager, one secret per student, and
+ * keep a `secret_name` pointer in a top-level `credentials/{uid}` document.
+ * Both are gone. ENCRYPTION_CONTRACT.md §8 retires that path in favour of the
+ * envelope the Google refresh token already uses, and docs/design/19 records
+ * what changed the answer. The short version is that Secret Manager was chosen
+ * when it was the only credential store in the system, and it stopped being
+ * that: two stores meant two audit stories, two failure modes, and a password
+ * whose blast radius was a project-level IAM role rather than a single KMS key
+ * the connector deliberately cannot touch.
  *
- * The trade is cost and sprawl: one secret per user bills per active version per
- * month, which is nothing at current size and a real line item at tens of
- * thousands of students, and there is a per-project secret quota to check before
- * scaling. Envelope encryption under a single Cloud KMS key is flat-cost and is
- * where this should go if that day arrives -- which is why every caller goes
- * through the two functions below and nothing else knows where the bytes live.
+ * The two halves go to different places, and that is the point:
+ *
+ *   password -> users/{uid}/credentials/school_password   sealed, contract §2
+ *   username -> users/{uid}.school_username               a plain identifier
+ *
+ * There is no read path in this file and there cannot be one. This app holds
+ * `cryptoKeyEncrypter` on `classistant-password-key` and nothing else, so
+ * `getPortalPassword` -- which used to sit here and read the secret back -- is
+ * not a function that was removed for tidiness. It is a function this process
+ * has no permission to implement. Reading a school password is the agent's job,
+ * and the agent is the only principal in the project with decrypt on that key
+ * (contract §1). The connector cannot read it either, by the same mechanism.
  */
-
-let client: SecretManagerServiceClient | undefined;
-
-function secrets(): SecretManagerServiceClient {
-  client ??= new SecretManagerServiceClient();
-  return client;
-}
-
-function projectId(): string {
-  const id = process.env.GOOGLE_CLOUD_PROJECT ?? process.env.GCLOUD_PROJECT;
-  if (!id) throw new Error("GOOGLE_CLOUD_PROJECT is not set");
-  return id;
-}
-
-/** Matches the connector's convention in app/services/secrets.py. The Google
- *  `sub` is a stable numeric id, so it is safe in a secret name. */
-function secretId(userId: string): string {
-  return `user-${userId}-portal-password`;
-}
-
-/** The pointer we keep in Firestore. Never the password itself. */
-export function secretName(userId: string): string {
-  return `projects/${projectId()}/secrets/${secretId(userId)}`;
-}
 
 /**
- * Writes the password and returns the resource name to store as a reference.
+ * Seals the password, then records the username.
  *
- * Re-onboarding or a password change adds a new version rather than replacing
- * one, so a student who mistypes and retries does not destroy the working value
- * until the new one is confirmed.
+ * Order matters, and it is the same reasoning as before with the destinations
+ * swapped: the credential goes down first, so a failure between the two leaves
+ * a sealed password nobody is pointing at -- invisible, harmless, and rewritten
+ * on the next attempt -- rather than a user document announcing a portal login
+ * whose password was never stored, which the agent would discover at 3am with
+ * nothing naming the cause.
+ *
+ * `storeCredential` encrypts before it writes (contract §6), so a KMS or crypto
+ * failure gets this far and persists nothing at all.
  */
-export async function storePortalPassword(
-  userId: string,
-  password: string,
-): Promise<string> {
-  const parent = `projects/${projectId()}`;
-  const name = secretName(userId);
-
-  try {
-    await secrets().createSecret({
-      parent,
-      secretId: secretId(userId),
-      secret: { replication: { automatic: {} } },
-    });
-  } catch (err: unknown) {
-    // 6 = ALREADY_EXISTS. Expected on every re-onboard; anything else is real.
-    if ((err as { code?: number }).code !== 6) throw err;
-  }
-
-  await secrets().addSecretVersion({
-    parent: name,
-    payload: { data: Buffer.from(password, "utf8") },
+export async function savePortalCredentials(args: {
+  userId: string;
+  username: string;
+  password: string;
+}): Promise<void> {
+  await storeCredential({
+    uid: args.userId,
+    type: "school_password",
+    plaintext: args.password,
   });
 
-  return name;
-}
-
-/**
- * Reads the current password back. Returns null when nothing is stored, so the
- * caller can send the student through onboarding rather than crash.
- *
- * Nothing in the web app calls this today -- the agent does, and it is here so
- * the read path lives beside the write path and both change together.
- */
-export async function getPortalPassword(userId: string): Promise<string | null> {
-  try {
-    const [version] = await secrets().accessSecretVersion({
-      name: `${secretName(userId)}/versions/latest`,
-    });
-    const data = version.payload?.data;
-    if (!data) return null;
-    return Buffer.from(data as Uint8Array).toString("utf8");
-  } catch (err: unknown) {
-    if ((err as { code?: number }).code === 5) return null; // 5 = NOT_FOUND
-    throw err;
-  }
+  await recordSchoolUsername(args.userId, args.username);
 }
