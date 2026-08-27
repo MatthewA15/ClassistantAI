@@ -17,15 +17,31 @@ env:
     value: https://classistant--classisstant.us-central1.hosted.app
     availability: [BUILD, RUNTIME]
 
-  # Public half of the OAuth client. Safe to commit; the secret half is mounted
-  # into the connector service on Cloud Run and never reaches this app.
+  # Public half of the OAuth client. Safe to commit -- it is in the consent link
+  # every browser follows. The secret half is the entry below.
   - variable: NEXT_PUBLIC_GOOGLE_CLIENT_ID
     value: 945345983057-v45ksbfcu1epohvq1cb1asfqvfp3u9ek.apps.googleusercontent.com
     availability: [BUILD, RUNTIME]
 
-  # Server-to-server only. Deliberately not NEXT_PUBLIC_: the connector is
-  # currently deployed --allow-unauthenticated, so there is no reason to hand
-  # its address to every browser as well.
+  # The secret half, by name. Needed here because the authorization-code
+  # exchange runs on this server: Google requires client authentication on that
+  # call, and the connector no longer performs it.
+  #
+  # RUNTIME only, and never NEXT_PUBLIC_. Next inlines NEXT_PUBLIC_* into the
+  # client bundle at build time, so that prefix on this variable would publish
+  # the client secret to every visitor.
+  #
+  # `firebase-app-hosting-compute@` reads it via roles/secretmanager.admin held
+  # at project level. If that binding ever goes, this app stops booting rather
+  # than starting without it -- the same startup abort the connector hit on
+  # 2026-08-27, which surfaced as a generic Cloud Run 500.
+  - variable: GOOGLE_CLIENT_SECRET
+    secret: oauth-client-secret
+    availability: [RUNTIME]
+
+  # Server-to-server only, and deliberately not NEXT_PUBLIC_: the connector is a
+  # private Cloud Run service reached with an OIDC token (see the callback), so
+  # its address has no business in a browser.
   - variable: CONNECTORS_API_URL
     value: https://classistant-connectors-945345983057.us-central1.run.app
     availability: [RUNTIME]
