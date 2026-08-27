@@ -294,6 +294,52 @@ It is time-based, there is no API to clear it, and **every retry re-arms it**.
 The way through is a different number, or waiting. Worth knowing before spending
 an afternoon on the config, which is how this note came to exist.
 
+### `localhost` cannot send real SMS at all, by policy
+
+Google's auth backend **refuses `sendVerificationCode` for real numbers from
+`localhost`**, and the refusal is — again — `auth/invalid-app-credential`
+([firebase-js-sdk #8387](https://github.com/firebase/firebase-js-sdk/issues/8387),
+confirmed by the Auth team, not fixed, not going to be). No client change and no
+console setting clears it. Developing against it:
+
+- **The fictional test number** `+1 647 555-0134` / code `123456` signs in with
+  no SMS and skips every check below. This is Google's own recommendation, and
+  it is why a passing test-number run proves nothing about real numbers.
+- **`http://127.0.0.1:3000`** instead of `http://localhost:3000` for a real
+  number on a dev build. `127.0.0.1` is a different hostname to the policy and
+  is already in the project's authorized domains.
+- The deployed domain, for the test that actually counts.
+
+An evening was spent on exactly this (2026-08-26): every real-number send from
+`localhost` failed as `invalid-app-credential`, which read as a reCAPTCHA
+misconfiguration, was not one, and was reproducible with **provably genuine
+tokens** — three fresh reCAPTCHA Enterprise tokens that the Enterprise
+assessment API itself judged `valid: true` were still turned down.
+
+### reCAPTCHA Enterprise SMS defense is on, in AUDIT
+
+Since 2026-08-27 the project runs Identity Platform's SMS toll-fraud protection:
+`phoneEnforcementState: AUDIT`, `useSmsTollFraudProtection: true`, a managed
+rule of `BLOCK` above score `0.5` (higher = more likely fraud). What that means
+in practice, from Google's own docs and the SDK source:
+
+- **In AUDIT nothing is ever hard-blocked for SDK clients.** The SDK sends an
+  Enterprise token first; if the server turns it down
+  (`auth/invalid-app-credential` / `auth/missing-recaptcha-token`), the SDK
+  silently retries through the classic v2 verifier — the one this app mounts.
+  AUDIT exists to produce metrics, not protection.
+- **ENFORCE removes that fallback.** Do not flip it until the Firebase console's
+  reCAPTCHA metrics show real users passing, and raise the block threshold to
+  Google's recommended starting point of `0.8` when doing so — `0.5` was set
+  before any traffic existed to calibrate against.
+- **The fallback can hang the page.** If the v2 fallback raises a visible
+  challenge and the student dismisses it, the SDK's promise never settles —
+  neither resolve nor reject. `sendVerificationCode` races it against a 90s
+  timer for exactly this reason.
+- `initializeRecaptchaConfig` runs from `warmPhoneAuth` so the config fetch and
+  Google's behaviour observation start while the student types, which is worth
+  real score points to an honest visitor.
+
 ### reCAPTCHA is not optional
 
 Firebase refuses `signInWithPhoneNumber` without an `AppVerifier`. It is what

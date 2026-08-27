@@ -65,9 +65,19 @@ async function sdk() {
  * here would be an unhandled rejection over a fetch that is only ever an
  * optimisation. Whatever went wrong will surface properly, with a message a
  * student can act on, when `sendVerificationCode` retries the same import.
+ *
+ * It also asks the SDK for the project's reCAPTCHA config. The project runs
+ * reCAPTCHA Enterprise SMS defense (docs/design/15), and Google scores the
+ * send partly on how long it has been able to watch the visitor before the
+ * press. Fetching the config here starts that observation while the student is
+ * still typing, which both hides the fetch's latency and gives an honest
+ * student the best possible score — the difference between an SMS that just
+ * sends and one that makes them solve a picture puzzle first.
  */
 export function warmPhoneAuth(): void {
-  void sdk().catch(() => {});
+  void sdk()
+    .then(async (mod) => mod.initializeRecaptchaConfig(await clientAuth()))
+    .catch(() => {});
 }
 
 function app(mod: Awaited<ReturnType<typeof sdk>>): FirebaseApp {
@@ -143,6 +153,19 @@ export type PendingVerification = ConfirmationResult;
  * component, because Firebase silently fails on anything else and a stray space
  * from a formatted input is the easiest way to produce that.
  */
+/**
+ * How long a send may stay in flight before we give up on it.
+ *
+ * `signInWithPhoneNumber` can hang forever: when Google's first check rejects
+ * the send, the SDK falls back to a visible reCAPTCHA challenge, and the
+ * promise it returns settles only when that challenge is solved. A student who
+ * closes the puzzle instead of solving it gets no rejection — the SDK's verify
+ * promise simply never resolves — and without a limit the button reads
+ * "Sending..." until the page is reloaded. Generous, because a slow solve of a
+ * real challenge is a success we must not cut off.
+ */
+const SEND_TIMEOUT_MS = 90_000;
+
 export async function sendVerificationCode(
   phone: string,
   containerId: string,
@@ -150,16 +173,26 @@ export async function sendVerificationCode(
   const digits = phone.replace(/\D/g, "");
   if (digits.length !== 10) throw new Error("invalid-phone");
 
+  let expired: ReturnType<typeof setTimeout> | undefined;
   try {
     const mod = await sdk();
-    return await mod.signInWithPhoneNumber(
-      await clientAuth(),
-      `+1${digits}`,
-      await appVerifier(containerId),
-    );
+    return await Promise.race([
+      mod.signInWithPhoneNumber(
+        await clientAuth(),
+        `+1${digits}`,
+        await appVerifier(containerId),
+      ),
+      new Promise<never>((_, reject) => {
+        expired = setTimeout(() => reject(new Error("send-timeout")), SEND_TIMEOUT_MS);
+      }),
+    ]);
   } catch (err) {
     resetVerifier();
     throw err;
+  } finally {
+    // Either way the race is settled; a timer left running would fire into a
+    // completed flow.
+    clearTimeout(expired);
   }
 }
 
@@ -215,17 +248,27 @@ const STUDENT_ERROR = new Set([
 ]);
 
 export function phoneErrorMessage(err: unknown): string {
-  const code = typeof err === "object" && err && "code" in err ? String(err.code) : "";
+  // Firebase errors carry `code`; our own (`invalid-phone`, `send-timeout`)
+  // are plain Errors whose message *is* the code. Without the fallback those
+  // two fell through to the generic message and their cases below were dead.
+  const code =
+    typeof err === "object" && err && "code" in err
+      ? String(err.code)
+      : err instanceof Error
+        ? err.message
+        : "";
+
+  // `customData.serverResponse` is the half worth having: it carries Identity
+  // Toolkit's own message, which distinguishes causes the SDK flattens into a
+  // single code. `auth/invalid-app-credential` alone covers a rejected
+  // reCAPTCHA token, an unauthorised domain, and App Check enforcement.
+  const detail = err as {
+    message?: string;
+    customData?: { serverResponse?: unknown; appName?: string };
+  };
+  const raw = `${detail?.message ?? ""} ${JSON.stringify(detail?.customData?.serverResponse ?? "")}`;
 
   if (!STUDENT_ERROR.has(code)) {
-    // `customData.serverResponse` is the half worth having: it carries Identity
-    // Toolkit's own message, which distinguishes causes the SDK flattens into a
-    // single code. `auth/invalid-app-credential` alone covers a rejected
-    // reCAPTCHA token, an unauthorised domain, and App Check enforcement.
-    const detail = err as {
-      message?: string;
-      customData?: { serverResponse?: unknown; appName?: string };
-    };
     // `err` goes last and raw. `message` is non-enumerable on Error, so a
     // plain object literal loses it in any structured view -- including
     // Next's overlay, which renders the summary above as `{}` and reads like
@@ -234,6 +277,15 @@ export function phoneErrorMessage(err: unknown): string {
       message: detail?.message,
       serverResponse: detail?.customData?.serverResponse,
     }, err);
+  }
+
+  // Google's per-number abuse throttle hides behind `invalid-app-credential`:
+  // the server says TOO_MANY_ATTEMPTS_TRY_LATER but the SDK reports the same
+  // code as a rejected reCAPTCHA (docs/design/15). Telling a throttled student
+  // the *check* failed sends them into the retry loop that re-arms the
+  // throttle; telling them to wait is the only answer that ends it.
+  if (code === "auth/invalid-app-credential" && raw.includes("TOO_MANY_ATTEMPTS")) {
+    return "Too many tries with that number. Wait a few minutes and start again.";
   }
 
   switch (code) {
@@ -264,12 +316,22 @@ export function phoneErrorMessage(err: unknown): string {
     case "auth/operation-not-allowed":
       return "Phone sign-in is not enabled for this site yet.";
     case "auth/invalid-app-credential":
-      // Identity Toolkit rejected the reCAPTCHA token rather than the number.
-      // Distinct from `captcha-check-failed`, which is a spent widget and does
-      // clear on a retry: this one is project config and never will.
-      return "The sign-in check was rejected. (reCAPTCHA is not accepted for this project yet.)";
+      // Identity Toolkit rejected the reCAPTCHA leg rather than the number.
+      // This used to claim the project's reCAPTCHA config was unfinished, and
+      // that was wrong: with the config verified end-to-end it still fires,
+      // because Google also uses this code for sends it refuses on policy.
+      // The known causes, none of them visible from here (docs/design/15):
+      //   - a dev build on `localhost` — Google no longer verifies real
+      //     numbers from it at all; use 127.0.0.1 or the test number,
+      //   - the per-number throttle (caught above when the server says so),
+      //   - reCAPTCHA Enterprise SMS defense scoring the send as fraud.
+      // A retry is honest advice for the last one; the first two need the
+      // developer, and the console.error above is what serves them.
+      return "The sign-in check turned this send down. Try once more, and if it keeps happening wait a few minutes first.";
     case "auth/billing-not-enabled":
       return "SMS sign-in needs billing switched on for this project.";
+    case "send-timeout":
+      return "That check did not finish. Try sending the code again.";
 
     default:
       // Already logged above. Every code in this switch was learned by hitting
