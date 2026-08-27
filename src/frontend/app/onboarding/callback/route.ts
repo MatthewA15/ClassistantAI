@@ -2,7 +2,13 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { getSchool } from "@/data/schools";
 import { getSession } from "@/lib/authSession";
-import { appBaseUrl, connectorBaseUrl, connectorIdToken } from "@/lib/googleOAuth";
+import { storeCredential } from "@/lib/credentials";
+import {
+  GrantError,
+  appBaseUrl,
+  exchangeCode,
+  type GoogleGrant,
+} from "@/lib/googleOAuth";
 import { takePendingOAuth } from "@/lib/onboardingSession";
 import { recordGoogleConnection } from "@/lib/users";
 
@@ -88,45 +94,34 @@ export async function GET(request: NextRequest) {
   const school = getSchool(pending.schoolId);
   if (!school || school.status !== "live") return back({ error: "school" });
 
-  let payload: { user_id?: string; email?: string; status?: string };
+  /*
+   * The code exchange, which this route now performs itself.
+   *
+   * It used to be a call to the connector, which held the client secret and
+   * wrote the refresh token to Secret Manager. Both halves of that have moved:
+   * the secret is mounted here (apphosting.yaml) and the token is sealed into
+   * Firestore below. The connector's job is now reading credentials, not
+   * minting them -- docs/ENCRYPTION_CONTRACT.md §1.
+   *
+   * The authorization code still never reaches the browser, and the refresh
+   * token now never reaches it either: it exists in this process only long
+   * enough to be encrypted.
+   */
+  let grant: GoogleGrant;
   try {
-    // The connector is a private Cloud Run service, so this call carries an
-    // OIDC token for the runtime service account. Without it Cloud Run answers
-    // 403 with an HTML page before the request ever reaches the connector, and
-    // the student sees `error=exchange` for a failure that is not an exchange.
-    const idToken = await connectorIdToken();
-
-    // The connector exchanges the code using the client secret it holds and the
-    // same redirect_uri that started the flow, then stores the refresh token.
-    const res = await fetch(
-      `${connectorBaseUrl()}/auth/callback?code=${encodeURIComponent(code)}`,
-      {
-        cache: "no-store",
-        headers: idToken ? { Authorization: `Bearer ${idToken}` } : {},
-      },
-    );
-    if (!res.ok) {
-      // Body may carry a Google error; it is not safe to show a student and not
-      // useful to them either. Log it, show them something they can act on.
-      console.error("connector /auth/callback failed", res.status, await res.text());
-      // 401/403 is Cloud Run turning us away at the door, not Google turning
-      // down the code. Told apart so the logs name the thing that is wrong.
-      const denied = res.status === 401 || res.status === 403;
-      if (denied) console.error("connector call was not authorised", { hadToken: Boolean(idToken) });
-      return back({ error: denied ? "unreachable" : "exchange" }, school.id);
-    }
-    payload = await res.json();
+    grant = await exchangeCode(code);
   } catch (err) {
-    console.error("connector /auth/callback unreachable", err);
-    return back({ error: "unreachable" }, school.id);
+    // GrantError already carries a message naming which half failed. Nothing
+    // logged here contains a token: on every error path Google's response
+    // carries a reason and no credential.
+    const reason = err instanceof GrantError ? err.code : "exchange";
+    console.error("google code exchange failed", reason, (err as Error)?.message);
+    return back({ error: reason }, school.id);
   }
 
-  // The connector returns the Google `sub`. It is no longer our document key --
-  // see the header of lib/users.ts -- but it is still how the connector's own
-  // `/users/{user_id}/...` endpoints are addressed, so it is stored.
-  const googleSub = payload.user_id;
-  const email = payload.email?.toLowerCase();
-  if (!googleSub || !email) return back({ error: "exchange" }, school.id);
+  // `sub` is no longer our document key -- see the header of lib/users.ts --
+  // but it is still worth keeping on the user document.
+  const { sub: googleSub, email } = grant;
 
   /*
    * School eligibility, and this is the check that actually enforces it.
@@ -137,6 +132,7 @@ export async function GET(request: NextRequest) {
    * address in this flow that is proven, so it is the only one worth testing.
    */
   if (!email.endsWith(`@${school.emailDomain}`)) {
+    await discard(grant);
     return back({ error: "domain" }, school.id);
   }
 
@@ -150,7 +146,31 @@ export async function GET(request: NextRequest) {
    * silently adopting the second is the wrong way to resolve that.
    */
   if (pending.email && email !== pending.email) {
+    await discard(grant);
     return back({ error: "mismatch" }, school.id);
+  }
+
+  /*
+   * Seal the refresh token before anything else is written.
+   *
+   * This is the order the contract asks for (§6) and the order that fails
+   * safely: if encryption or the KMS wrap throws, nothing has been recorded and
+   * the student simply retries. The reverse -- marking the account connected
+   * and then failing to store the credential -- would leave a user document
+   * claiming access that the agent cannot actually exercise, and it would fail
+   * at 3am with nothing pointing at the cause.
+   */
+  try {
+    await storeCredential({
+      uid: session.uid,
+      type: "google_refresh_token",
+      plaintext: grant.refreshToken,
+    });
+  } catch (err) {
+    // Never log the error object raw here: it is the one code path where a
+    // token is in scope, and a stack trace can carry arguments with it.
+    console.error("could not store the refresh token", (err as Error)?.message);
+    return back({ error: "exchange" }, school.id);
   }
 
   // Adds what the grant proved to a document that already exists. It was
@@ -165,4 +185,31 @@ export async function GET(request: NextRequest) {
   });
 
   return back({ connected: "1" }, school.id);
+}
+
+/**
+ * Hands a rejected grant back to Google.
+ *
+ * Reached when the exchange succeeded but the account turned out to be one we
+ * will not serve -- the wrong domain, or a different address than the student
+ * said. Not storing the token is not sufficient on its own: the student granted
+ * Gmail and Drive access to this application at Google, and dropping our copy
+ * would leave that grant standing on their account with nothing to show for it.
+ * Revoking is the only way to actually give it back.
+ *
+ * Best effort by design. A failure here must not change what the student sees,
+ * because the reason they are being turned away is already the more useful
+ * message and there is nothing they could do about a revoke that did not land.
+ */
+async function discard(grant: GoogleGrant): Promise<void> {
+  try {
+    await fetch("https://oauth2.googleapis.com/revoke", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      cache: "no-store",
+      body: new URLSearchParams({ token: grant.refreshToken }),
+    });
+  } catch (err) {
+    console.error("could not revoke a rejected grant", (err as Error)?.message);
+  }
 }

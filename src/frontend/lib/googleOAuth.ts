@@ -104,6 +104,148 @@ export function clientId(): string {
   return id;
 }
 
+/**
+ * The secret half, which only ever exists on this side of the network.
+ *
+ * Read through a function rather than at module scope so a missing value fails
+ * on the request that needs it, naming itself, instead of at import time where
+ * it would take the whole route down with a stack trace that points at a bundle.
+ */
+function clientSecret(): string {
+  const secret = process.env.GOOGLE_CLIENT_SECRET;
+  if (!secret) throw new Error("GOOGLE_CLIENT_SECRET is not set");
+  return secret;
+}
+
+/** An error the callback can turn into one of the wizard's messages, rather
+ *  than a generic failure. `code` matches the keys in OAUTH_ERRORS. */
+export class GrantError extends Error {
+  constructor(
+    readonly code: "exchange" | "unreachable" | "incomplete",
+    message: string,
+  ) {
+    super(message);
+    this.name = "GrantError";
+  }
+}
+
+/** What the exchange proves. Nothing here is stored raw: the refresh token goes
+ *  straight into the envelope (lib/credentials.ts) and is never logged. */
+export type GoogleGrant = {
+  refreshToken: string;
+  /** Google's stable subject id. */
+  sub: string;
+  /** Lowercased, and the only address in this flow Google has actually
+   *  vouched for -- the one typed on the school step is just a claim. */
+  email: string;
+};
+
+/**
+ * Trades the authorization code for tokens. This is the step that used to
+ * happen in the connector.
+ *
+ * It moved here because the connector no longer runs sign-in at all: it reads
+ * credentials and calls Google APIs, and the code exchange is the one part of
+ * that which belongs to whoever started the flow. See docs/ENCRYPTION_CONTRACT.md
+ * §1, and docs/design/12 for why the frontend already owned the consent URL.
+ *
+ * `redirect_uri` is required by Google even though nothing is being redirected
+ * here: it must byte-match the one that started the flow, and is what stops a
+ * code stolen from one client being redeemed by another.
+ */
+export async function exchangeCode(code: string): Promise<GoogleGrant> {
+  let res: Response;
+  try {
+    res = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      cache: "no-store",
+      body: new URLSearchParams({
+        code,
+        client_id: clientId(),
+        client_secret: clientSecret(),
+        redirect_uri: redirectUri(),
+        grant_type: "authorization_code",
+      }),
+    });
+  } catch (err) {
+    throw new GrantError("unreachable", `token endpoint unreachable: ${err}`);
+  }
+
+  // Google returns its reason in the body, and it is worth having in the log:
+  // `invalid_grant` is a spent or expired code, `invalid_client` is our own
+  // credentials being wrong, and treating those two as one failure is what
+  // sends someone looking in the wrong place. The body carries no token on any
+  // error path, so it is safe to keep.
+  const payload = (await res.json().catch(() => ({}))) as {
+    refresh_token?: string;
+    id_token?: string;
+    error?: string;
+    error_description?: string;
+  };
+
+  if (!res.ok) {
+    throw new GrantError(
+      "exchange",
+      `google refused the code: ${payload.error ?? res.status} ${payload.error_description ?? ""}`,
+    );
+  }
+
+  if (!payload.id_token) {
+    throw new GrantError("incomplete", "no id_token in the token response");
+  }
+
+  /*
+   * No refresh token means the whole grant was pointless.
+   *
+   * Google only issues one when `access_type=offline` is on the consent URL,
+   * and only *re-issues* one on a repeat login when `prompt=consent` is too.
+   * Both are set in buildAuthUrl above and must stay: without a refresh token
+   * the agent cannot act overnight, which is the entire product. Failing loudly
+   * here beats writing a credential document with nothing useful in it.
+   */
+  if (!payload.refresh_token) {
+    throw new GrantError(
+      "incomplete",
+      "google returned no refresh_token (is prompt=consent still set?)",
+    );
+  }
+
+  const claims = decodeIdToken(payload.id_token);
+  if (!claims.sub || !claims.email) {
+    throw new GrantError("incomplete", "id_token carried no sub or email");
+  }
+
+  return {
+    refreshToken: payload.refresh_token,
+    sub: claims.sub,
+    email: claims.email.toLowerCase(),
+  };
+}
+
+/**
+ * Reads the claims out of an ID token without verifying its signature.
+ *
+ * That is deliberate and it is what the spec asks for here. OpenID Connect Core
+ * §3.1.3.7 allows TLS server validation to stand in for signature checking when
+ * the token came directly from the token endpoint, which is exactly this case:
+ * the response was fetched over TLS from accounts.google.com, in a request
+ * authenticated with our client secret, and nothing untrusted touched it in
+ * between. Verifying a signature against Google's JWKS would mean fetching and
+ * caching a key set to re-prove a fact TLS has already established.
+ *
+ * This must not be copied to anywhere that accepts an ID token *from a client*.
+ * There the signature is the only thing standing between you and a forged
+ * identity, and it has to be checked -- which is what firebase-admin's
+ * verifyIdToken does for the session route.
+ */
+function decodeIdToken(idToken: string): { sub?: string; email?: string } {
+  const payload = idToken.split(".")[1];
+  if (!payload) throw new GrantError("incomplete", "malformed id_token");
+  const json = Buffer.from(payload, "base64url").toString("utf8");
+  return JSON.parse(json) as { sub?: string; email?: string };
+}
+
 export function connectorBaseUrl(): string {
   const url = process.env.CONNECTORS_API_URL;
   if (!url) throw new Error("CONNECTORS_API_URL is not set");
