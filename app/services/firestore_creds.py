@@ -1,19 +1,35 @@
-"""Credential retrieval via Firestore + KMS envelope encryption (issue #12).
+"""Firestore + KMS envelope encryption for the google_refresh_token credential
+(issue #12; write path restored -- see docs/adr/0004 amendment).
 
-Replaces the Secret Manager module entirely (docs/adr/0004). Flow:
+This service performs BOTH halves of the envelope now: /auth/callback
+(app/auth/router.py) is the only thing holding the OAuth client secret, so
+it's also the only thing that can produce a refresh token to encrypt. Read
+and write flows:
 
-  1. Query `user_credentials` for (user_id, credential_type="google_refresh_token")
-  2. dkey        <- KMS.decrypt(encrypted_dkey)          [connector SA: decrypter only]
-  3. refresh_tok <- AES-256-GCM.decrypt(encrypted_credential, dkey, iv)
-  4. access_tok  <- OAuth token endpoint (refresh_token grant, needs client_id+secret)
-  5. Cache access token per user until expiry; then repeat from step 1.
+  Write (store_refresh_token, called from /auth/callback):
+    1. dkey, iv  <- os.urandom(32), os.urandom(12)
+    2. encrypted_credential <- AES-256-GCM.encrypt(refresh_token, dkey, iv)
+    3. encrypted_dkey       <- KMS.encrypt(base64_text(dkey))  [connector SA: encrypter]
+    4. Firestore doc write, keyed on the Firebase UID (never google_sub)
+
+  Read (get_access_token, called from google_creds.py per request):
+    1. Query `user_credentials` for (user_id, credential_type="google_refresh_token")
+    2. dkey        <- KMS.decrypt(encrypted_dkey)          [connector SA: decrypter]
+    3. refresh_tok <- AES-256-GCM.decrypt(encrypted_credential, dkey, iv)
+    4. access_tok  <- OAuth token endpoint (refresh_token grant, needs client_id+secret)
+    5. Cache access token per user until expiry; then repeat from step 1.
+
+_encrypt_envelope / _decrypt_refresh_token (+ _unwrap_dkey) and _aad_for are
+deliberately mirror images of each other -- see the comments on each for how
+that's kept true structurally, not just by convention.
 
 Notes:
-  - user_id == Firebase UID (this is what the agent sends us).
+  - user_id == Firebase UID (this is what the agent sends us). See the
+    TODO(matthew) on _fetch_credential_doc for a transitional exception.
   - One-to-many: each user has up to two docs in `user_credentials`;
     we filter by credential_type. We NEVER query "school_password" —
-    our SA must not even have decrypt rights on that key, by design
-    (see docs/adr/0004).
+    our SA must not even have decrypt (or encrypt) rights on that key,
+    by design (see docs/adr/0004).
 
 Still to confirm with the team (see TODO(matthew) comments in app/config.py
 and docs/MIGRATION.md):
@@ -22,6 +38,8 @@ and docs/MIGRATION.md):
 """
 
 import base64
+import logging
+import os
 import threading
 import time
 from dataclasses import dataclass
@@ -33,6 +51,8 @@ from google.cloud.firestore_v1.base_query import FieldFilter
 from google.oauth2.credentials import Credentials
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token"
 CREDENTIALS_COLLECTION = "user_credentials"
@@ -94,23 +114,55 @@ def _kms_key_name() -> str:
 # Step 1 — fetch the credential document
 # --------------------------------------------------------------------------
 
-def _fetch_credential_doc(user_id: str) -> dict:
+def _query_credential_doc(field: str, value: str) -> dict | None:
     query = (
         _firestore_client()
         .collection(CREDENTIALS_COLLECTION)
-        .where(filter=FieldFilter("user_id", "==", user_id))
+        .where(filter=FieldFilter(field, "==", value))
         .where(filter=FieldFilter("credential_type", "==", REFRESH_TOKEN_TYPE))
         .limit(1)
     )
     docs = list(query.stream())
-    if not docs:
-        raise CredentialNotFound(
-            f"No {REFRESH_TOKEN_TYPE} credential for user_id={user_id!r}. "
-            "Has the user completed Google onboarding?"
-        )
-    doc = docs[0].to_dict()
+    return docs[0].to_dict() if docs else None
 
-    missing = [f for f in ("encrypted_credential", "encrypted_dkey", "iv") if not doc.get(f)]
+
+def _fetch_credential_doc(user_id: str) -> dict:
+    doc = _query_credential_doc("user_id", user_id)
+    matched_field = "user_id"
+
+    if doc is None:
+        # TODO(matthew): transitional ID tolerance -- unresolved contradiction
+        # between the frontend's lib/users.ts (which addresses this service's
+        # /users/{user_id}/... endpoints by the Google `sub`, stored on the
+        # user doc as google_sub) and the team's verbal agreement that
+        # user_id means the Firebase UID, which is what this module and the
+        # write path (store_refresh_token) were built against. Until the
+        # team picks one identifier, fall back to a google_sub lookup before
+        # giving up. Remove this fallback once that's settled. The WRITE
+        # path is deliberately NOT tolerant -- it only ever keys on the
+        # Firebase UID.
+        doc = _query_credential_doc("google_sub", user_id)
+        matched_field = "google_sub"
+
+    if doc is None:
+        raise CredentialNotFound(
+            f"No {REFRESH_TOKEN_TYPE} credential for user_id={user_id!r} "
+            "(checked both user_id and google_sub). Has the user completed "
+            "Google onboarding?"
+        )
+
+    if matched_field == "google_sub":
+        logger.info(
+            "user_credentials lookup for %r matched on google_sub, not "
+            "user_id (transitional ID tolerance -- see TODO(matthew) in "
+            "firestore_creds.py)",
+            user_id,
+        )
+
+    missing = [
+        f for f in ("user_id", "encrypted_credential", "encrypted_dkey", "iv")
+        if not doc.get(f)
+    ]
     if missing:
         raise CredentialFormatError(
             f"user_credentials doc for {user_id!r} is missing fields: {missing}. "
@@ -120,19 +172,26 @@ def _fetch_credential_doc(user_id: str) -> dict:
 
 
 # --------------------------------------------------------------------------
-# Step 2 — unwrap dkey via KMS
+# Shared by both encrypt (store_refresh_token) and decrypt (_unwrap_dkey) —
+# same function, not two copies, so they cannot drift apart.
 # --------------------------------------------------------------------------
 
-def _aad_for(doc: dict, user_id: str) -> bytes | None:
-    """AAD must byte-match whatever the frontend passed at encrypt time.
+def _aad_for(iv_b64: str, uid: str) -> bytes | None:
+    """AAD must byte-match between the KMS encrypt call that wrapped a dkey
+    and the decrypt call that unwraps it, or KMS fails closed.
+
+    `uid` must always be the canonical Firebase UID -- on the read side that
+    means doc["user_id"], NEVER whatever value a query happened to match on
+    (the google_sub fallback above must not change what AAD is expected, or
+    decrypt would fail for exactly the users that fallback exists to help).
 
     settings.kms_aad_source: "none" (default until confirmed) | "iv" | "user_id"
     """
     source = settings.kms_aad_source
     if source == "iv":
-        return doc["iv"].encode("utf-8")
+        return iv_b64.encode("utf-8")
     if source == "user_id":
-        return user_id.encode("utf-8")
+        return uid.encode("utf-8")
     return None
 
 
@@ -143,14 +202,18 @@ def _b64(value: str, field: str) -> bytes:
         raise CredentialFormatError(f"Field {field!r} is not valid base64.") from exc
 
 
-def _unwrap_dkey(doc: dict, user_id: str) -> bytes:
+# --------------------------------------------------------------------------
+# Step 2 — unwrap dkey via KMS
+# --------------------------------------------------------------------------
+
+def _unwrap_dkey(doc: dict) -> bytes:
     response = _kms_client().decrypt(
         request={
             "name": _kms_key_name(),
             "ciphertext": _b64(doc["encrypted_dkey"], "encrypted_dkey"),
             **(
                 {"additional_authenticated_data": aad}
-                if (aad := _aad_for(doc, user_id))
+                if (aad := _aad_for(doc["iv"], doc["user_id"]))
                 else {}
             ),
         }
@@ -170,8 +233,9 @@ def _unwrap_dkey(doc: dict, user_id: str) -> bytes:
         return plaintext
     raise CredentialFormatError(
         "Unwrapped dkey is neither base64 text of an AES key nor raw AES key "
-        f"bytes (got {len(plaintext)} bytes). Sync the dkey encoding with the "
-        "frontend's encrypt code before proceeding."
+        f"bytes (got {len(plaintext)} bytes). This service writes this field "
+        "itself now (see store_refresh_token/_encrypt_envelope) -- a mismatch "
+        "here means the read and write paths have drifted, not a frontend bug."
     )
 
 
@@ -179,10 +243,9 @@ def _unwrap_dkey(doc: dict, user_id: str) -> bytes:
 # Step 3 — decrypt the refresh token
 # --------------------------------------------------------------------------
 
-def _decrypt_refresh_token(doc: dict, user_id: str) -> str:
-    dkey = _unwrap_dkey(doc, user_id)
+def _decrypt_refresh_token(doc: dict) -> str:
+    dkey = _unwrap_dkey(doc)
     iv = _b64(doc["iv"], "iv")
-    # WebCrypto's AES-GCM output is ciphertext||tag — exactly what AESGCM expects.
     ciphertext = _b64(doc["encrypted_credential"], "encrypted_credential")
     try:
         return AESGCM(dkey).decrypt(iv, ciphertext, None).decode("utf-8")
@@ -190,8 +253,82 @@ def _decrypt_refresh_token(doc: dict, user_id: str) -> str:
         raise CredentialFormatError(
             "AES-GCM decrypt of encrypted_credential failed. Usual causes: "
             "IV byte-encoding mismatch, tag not appended to ciphertext, or a "
-            "dkey encoding mismatch. Compare against the frontend's encrypt code."
+            "dkey encoding mismatch between _encrypt_envelope and here -- see "
+            "the round-trip test in tests/test_firestore_creds.py."
         ) from exc
+
+
+# --------------------------------------------------------------------------
+# Write path — envelope-encrypt a refresh token and store it
+# (app/auth/router.py calls this; it's the only thing that ever produces a
+# refresh token to encrypt, since it's the only thing holding the OAuth
+# client secret needed to get one out of Google in the first place.)
+# --------------------------------------------------------------------------
+
+def _encrypt_envelope(refresh_token: str, uid: str) -> dict:
+    """Mirror image of _unwrap_dkey + _decrypt_refresh_token: produces
+    exactly the three base64 fields those functions read back, using the
+    same _aad_for() so encrypt and decrypt can never disagree about what
+    they authenticated.
+    """
+    iv = os.urandom(12)  # 96-bit GCM IV, the standard/recommended size
+    dkey = os.urandom(32)  # AES-256
+    iv_b64 = base64.b64encode(iv).decode("utf-8")
+
+    # AESGCM.encrypt() appends the tag to the ciphertext -- exactly the
+    # ciphertext||tag shape _decrypt_refresh_token expects.
+    ciphertext = AESGCM(dkey).encrypt(iv, refresh_token.encode("utf-8"), None)
+
+    # Spec (issue #12): the plaintext sent to KMS is the base64 *text* of the
+    # raw key bytes -- the mirror of _unwrap_dkey's first (preferred) decode
+    # branch.
+    kms_request = {
+        "name": _kms_key_name(),
+        "plaintext": base64.b64encode(dkey),
+    }
+    if aad := _aad_for(iv_b64, uid):
+        kms_request["additional_authenticated_data"] = aad
+    wrapped = _kms_client().encrypt(request=kms_request)
+
+    return {
+        "encrypted_credential": base64.b64encode(ciphertext).decode("utf-8"),
+        "encrypted_dkey": base64.b64encode(wrapped.ciphertext).decode("utf-8"),
+        "iv": iv_b64,
+    }
+
+
+def store_refresh_token(uid: str, google_sub: str, refresh_token: str) -> None:
+    """Envelope-encrypts refresh_token and writes it to `user_credentials`,
+    in exactly the shape _fetch_credential_doc / _decrypt_refresh_token read
+    back. Deterministic doc id so re-onboarding updates rather than
+    duplicates; created_at is stamped only the first time.
+
+    Always keyed on the Firebase UID -- unlike the read path (see the
+    TODO(matthew) on _fetch_credential_doc), the write side has exactly one
+    identifier and is never tolerant of google_sub.
+    """
+    envelope = _encrypt_envelope(refresh_token, uid)
+    doc_ref = (
+        _firestore_client()
+        .collection(CREDENTIALS_COLLECTION)
+        .document(f"{uid}_{REFRESH_TOKEN_TYPE}")
+    )
+    is_new = not doc_ref.get().exists
+
+    data = {
+        "user_id": uid,
+        "google_sub": google_sub,
+        "credential_type": REFRESH_TOKEN_TYPE,
+        "updated_at": firestore.SERVER_TIMESTAMP,
+        **envelope,
+    }
+    if is_new:
+        data["created_at"] = firestore.SERVER_TIMESTAMP
+    doc_ref.set(data, merge=True)
+
+    # A fresh refresh token invalidates any cached access token from a prior
+    # connection for this user -- don't serve a stale one after re-onboarding.
+    clear_token_cache(uid)
 
 
 # --------------------------------------------------------------------------
@@ -230,7 +367,7 @@ def get_access_token(user_id: str) -> str:
             return cached.access_token
 
     doc = _fetch_credential_doc(user_id)
-    refresh_token = _decrypt_refresh_token(doc, user_id)
+    refresh_token = _decrypt_refresh_token(doc)
     try:
         fresh = _exchange(refresh_token)
     finally:
