@@ -11,3 +11,7 @@ class MethodNotAllowedResponse(ErrorResponse):
 
 class ForbiddenResponse(ErrorResponse):
     error: str = "Forbidden. The request could not be verified as originating from Twilio."
+
+
+class BadRequestResponse(ErrorResponse):
+    error: str = "Bad request. Missing required Twilio form fields."
