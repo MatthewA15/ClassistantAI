@@ -25,6 +25,7 @@ _TEST_ENV = {
     "GCP_PROJECT_ID": "test-project",
     "GOOGLE_CLIENT_ID": "test-client.apps.googleusercontent.com",
     "GOOGLE_CLIENT_SECRET": "test-client-secret",
+    "OAUTH_REDIRECT_URI": "http://localhost:3000/onboarding/callback",
     "KMS_LOCATION": "us-central1",
     "KMS_KEYRING": "test-keyring",
     "KMS_KEY": "test-key",
