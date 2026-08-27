@@ -139,6 +139,25 @@ A `gcloud run deploy` without `--allow-unauthenticated` silently resets the
 policy, so if the grant starts failing after a connector redeploy, re-check the
 binding before anything else.
 
+### What the connector's own service account needs
+
+`classistant-connector@classisstant.iam.gserviceaccount.com`. Every one of these
+was missing on 2026-08-27, and the symptom was **not** an IAM message: the
+container aborted at startup, Cloud Run served its own `500 Server Error` HTML
+page, and the wizard reported `error=exchange` as though Google had refused the
+code.
+
+| Grant | Scope | Why |
+|---|---|---|
+| `roles/secretmanager.secretAccessor` | on `oauth-client-secret` | Read `GOOGLE_CLIENT_SECRET` at **startup**. Without it the instance never boots. |
+| `projects/classisstant/roles/connectorSecretCreator` (custom) | project | `store_refresh_token` calls `create_secret`. There is no stock role for this short of `secretmanager.admin`, which also grants delete and read-everything, so a custom role holding only `secretmanager.secrets.create` is used instead. |
+| `roles/secretmanager.secretVersionAdder` | project | `add_secret_version`, the second half of storing a refresh token. |
+| `roles/secretmanager.secretAccessor` | project, **conditioned** on `resource.name.startsWith(".../secrets/user-")` | `get_refresh_token`, for the agent later. The condition is what keeps the connector out of `session-secret`, which signs the frontend's cookies — an unconditioned project-level accessor would let a compromised connector forge sessions. |
+
+`roles/datastore.viewer` is the only other role it holds, and read-only is
+correct: the connector writes nothing to Firestore. The refresh token goes to
+Secret Manager and the user document is written by the frontend.
+
 ### Redirects out of the callback must not be built from the request
 
 `back()` builds its URL from `appBaseUrl()` (`NEXT_PUBLIC_APP_URL`), never from
