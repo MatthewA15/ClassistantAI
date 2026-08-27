@@ -196,6 +196,29 @@ export function OnboardingWizard({ connected }: { connected: ConnectedAccount | 
   const [acceptMarketing, setAcceptMarketing] = useState(false);
   const [consentSms, setConsentSms] = useState(false);
 
+  /*
+   * The two consents that are not optional, and the button gates on both.
+   *
+   * `completeOnboarding` already rejects a submit missing either, so this is
+   * not the check that protects anything -- the server is, and it stays. What
+   * gating the button adds is *when* the student finds out: a required box that
+   * only announces itself after a failed submit is a worse version of the same
+   * rule, and marketing is the one genuinely free choice on this screen, so it
+   * must stay outside this.
+   *
+   * SMS consent is in here because the product is delivered by text. Accepting
+   * the terms while refusing the only channel would produce an account that
+   * cannot be served, and A2P registration expects the opt-in to be explicit
+   * and separate from the terms -- which is why it is a second box rather than
+   * a clause inside the first.
+   */
+  const consentsGiven = acceptTerms && consentSms;
+  const missingConsent = !acceptTerms
+    ? consentSms
+      ? "Accept the terms and privacy policy to finish."
+      : "Accept the terms, and agree to the texts, to finish."
+    : "Agree to receive the texts to finish.";
+
   const [busy, setBusy] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
 
@@ -242,6 +265,8 @@ export function OnboardingWizard({ connected }: { connected: ConnectedAccount | 
       const data = (await res.json().catch(() => ({}))) as {
         phone?: string;
         connected?: boolean;
+        schoolId?: string | null;
+        email?: string | null;
         error?: string;
       };
 
@@ -253,6 +278,26 @@ export function OnboardingWizard({ connected }: { connected: ConnectedAccount | 
 
       setVerifiedPhone(data.phone ?? null);
       setPending(null);
+
+      /*
+       * Take what the server just told us about this student.
+       *
+       * `connected` is a prop, read once when the page rendered. A student who
+       * arrives without a session -- an expired cookie, a new browser -- is
+       * rendered with it null, and it stays null for the life of the page no
+       * matter what they then prove. So a returning student who signed in here
+       * and skipped straight past the school step (because `connected` below
+       * sends them to step 2) reached the summary with no address to show, and
+       * "School email" rendered blank next to their verified number.
+       *
+       * The response has carried both fields all along; this is the code that
+       * was throwing them away.
+       */
+      if (data.email) setSchoolEmail(data.email);
+      if (data.schoolId && !school) {
+        setLocalSchool(getSchool(data.schoolId) ?? null);
+      }
+
       // Already granted on an earlier visit, so the consent screen has nothing
       // left to ask. Otherwise on to the school step.
       setStep(data.connected ? 2 : 1);
@@ -968,13 +1013,25 @@ export function OnboardingWizard({ connected }: { connected: ConnectedAccount | 
             // screen above it is the one where a student finds out the beta is
             // free, and "Send welcome gift" is the reward rather than the
             // paperwork. Same reasoning as the PHASES label.
-            <button
-              type="submit"
-              disabled={submitting}
-              className="rounded-xl bg-brand-600 px-8 py-4 text-[1rem] font-bold text-white shadow-[0_12px_28px_-12px_var(--color-brand-600)] transition-colors hover:bg-brand-700 disabled:opacity-70"
-            >
-              {submitting ? "Sending..." : "Send welcome gift"}
-            </button>
+            <div className="flex flex-col items-end gap-2">
+              <button
+                type="submit"
+                disabled={submitting || !consentsGiven}
+                className="rounded-xl bg-brand-600 px-8 py-4 text-[1rem] font-bold text-white shadow-[0_12px_28px_-12px_var(--color-brand-600)] transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-line disabled:text-body-soft disabled:shadow-none"
+              >
+                {submitting ? "Sending..." : "Send welcome gift"}
+              </button>
+
+              {/* Why the button is off, said before it is pressed rather than
+                  after. A disabled control with no stated reason is the trap
+                  the portal username field fell into: a student reads it as
+                  broken, because nothing on screen tells them otherwise. */}
+              {!consentsGiven && !submitting ? (
+                <p className="text-right text-[0.8rem] leading-[1.5] text-body-soft">
+                  {missingConsent}
+                </p>
+              ) : null}
+            </div>
           ) : null}
         </div>
       </form>
