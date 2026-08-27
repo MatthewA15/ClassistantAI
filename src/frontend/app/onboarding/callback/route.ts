@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { getSchool } from "@/data/schools";
 import { getSession } from "@/lib/authSession";
-import { connectorBaseUrl } from "@/lib/googleOAuth";
+import { appBaseUrl, connectorBaseUrl, connectorIdToken } from "@/lib/googleOAuth";
 import { takePendingOAuth } from "@/lib/onboardingSession";
 import { recordGoogleConnection } from "@/lib/users";
 
@@ -39,13 +39,17 @@ export const dynamic = "force-dynamic";
  * `pending` is gone by the time some of these fire, so it is optional and the
  * wizard still falls back to the school on the user document. One frame of the
  * wrong colour on a path that already failed is not worth more than this.
+ *
+ * The origin comes from `appBaseUrl()`, never from the request. It was
+ * `request.nextUrl.origin`, which is correct in development and wrong
+ * everywhere this actually runs: on Cloud Run the container is addressed as
+ * `0.0.0.0:8080` from inside, so every redirect out of this route -- the
+ * successful one included -- pointed at `https://0.0.0.0:8080/onboarding` and
+ * dead-ended the student on a browser error. Safari names it "restricted
+ * network port"; the cause is not the port.
  */
-function back(
-  request: NextRequest,
-  params: Record<string, string>,
-  schoolId?: string | null,
-) {
-  const url = new URL("/onboarding", request.nextUrl.origin);
+function back(params: Record<string, string>, schoolId?: string | null) {
+  const url = new URL("/onboarding", appBaseUrl());
   if (schoolId) url.searchParams.set("school", schoolId);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   return NextResponse.redirect(url);
@@ -62,7 +66,6 @@ export async function GET(request: NextRequest) {
   if (oauthError) {
     // access_denied is a student clicking Cancel, not a fault.
     return back(
-      request,
       { error: oauthError === "access_denied" ? "cancelled" : "google" },
       pending?.schoolId,
     );
@@ -70,39 +73,52 @@ export async function GET(request: NextRequest) {
 
   const code = query.get("code");
   const state = query.get("state");
-  if (!code || !state) return back(request, { error: "incomplete" }, pending?.schoolId);
+  if (!code || !state) return back({ error: "incomplete" }, pending?.schoolId);
 
   // CSRF. An attacker can make a browser hit this URL with their own code, but
   // not with a state matching the signed cookie we set moments earlier.
-  if (!pending || pending.state !== state) return back(request, { error: "state" });
+  if (!pending || pending.state !== state) return back({ error: "state" });
 
   // A grant with nobody signed in is not something to salvage. Before Firebase
   // Auth this route had no prior identity to check against and simply believed
   // whatever the connector returned.
   const session = await getSession();
-  if (!session) return back(request, { error: "signin" }, pending.schoolId);
+  if (!session) return back({ error: "signin" }, pending.schoolId);
 
   const school = getSchool(pending.schoolId);
-  if (!school || school.status !== "live") return back(request, { error: "school" });
+  if (!school || school.status !== "live") return back({ error: "school" });
 
   let payload: { user_id?: string; email?: string; status?: string };
   try {
+    // The connector is a private Cloud Run service, so this call carries an
+    // OIDC token for the runtime service account. Without it Cloud Run answers
+    // 403 with an HTML page before the request ever reaches the connector, and
+    // the student sees `error=exchange` for a failure that is not an exchange.
+    const idToken = await connectorIdToken();
+
     // The connector exchanges the code using the client secret it holds and the
     // same redirect_uri that started the flow, then stores the refresh token.
     const res = await fetch(
       `${connectorBaseUrl()}/auth/callback?code=${encodeURIComponent(code)}`,
-      { cache: "no-store" },
+      {
+        cache: "no-store",
+        headers: idToken ? { Authorization: `Bearer ${idToken}` } : {},
+      },
     );
     if (!res.ok) {
       // Body may carry a Google error; it is not safe to show a student and not
       // useful to them either. Log it, show them something they can act on.
       console.error("connector /auth/callback failed", res.status, await res.text());
-      return back(request, { error: "exchange" }, school.id);
+      // 401/403 is Cloud Run turning us away at the door, not Google turning
+      // down the code. Told apart so the logs name the thing that is wrong.
+      const denied = res.status === 401 || res.status === 403;
+      if (denied) console.error("connector call was not authorised", { hadToken: Boolean(idToken) });
+      return back({ error: denied ? "unreachable" : "exchange" }, school.id);
     }
     payload = await res.json();
   } catch (err) {
     console.error("connector /auth/callback unreachable", err);
-    return back(request, { error: "unreachable" }, school.id);
+    return back({ error: "unreachable" }, school.id);
   }
 
   // The connector returns the Google `sub`. It is no longer our document key --
@@ -110,7 +126,7 @@ export async function GET(request: NextRequest) {
   // `/users/{user_id}/...` endpoints are addressed, so it is stored.
   const googleSub = payload.user_id;
   const email = payload.email?.toLowerCase();
-  if (!googleSub || !email) return back(request, { error: "exchange" }, school.id);
+  if (!googleSub || !email) return back({ error: "exchange" }, school.id);
 
   /*
    * School eligibility, and this is the check that actually enforces it.
@@ -121,7 +137,7 @@ export async function GET(request: NextRequest) {
    * address in this flow that is proven, so it is the only one worth testing.
    */
   if (!email.endsWith(`@${school.emailDomain}`)) {
-    return back(request, { error: "domain" }, school.id);
+    return back({ error: "domain" }, school.id);
   }
 
   /*
@@ -134,7 +150,7 @@ export async function GET(request: NextRequest) {
    * silently adopting the second is the wrong way to resolve that.
    */
   if (pending.email && email !== pending.email) {
-    return back(request, { error: "mismatch" }, school.id);
+    return back({ error: "mismatch" }, school.id);
   }
 
   // Adds what the grant proved to a document that already exists. It was
@@ -148,5 +164,5 @@ export async function GET(request: NextRequest) {
     schoolId: school.id,
   });
 
-  return back(request, { connected: "1" }, school.id);
+  return back({ connected: "1" }, school.id);
 }
