@@ -1,24 +1,13 @@
 # Classistant AI Connector API — Contract v0.5 (handoff for ADK tools)
 
 Base URL: `https://<cloud-run-url>` (local: `http://localhost:8080`). All responses JSON.
-`{user_id}` in the paths below = **Firebase UID**. Endpoint names and shapes below are **frozen for the Aug 22 build** — build your ADK dummy tools against these; only response fields may be *added*.
-
-## ⚠️ `user_id` means two different things in this document
-- In every `/users/{user_id}/...` **path** below: the **Firebase UID**.
-- In the `/auth/callback` **response body**: the **Google `sub`** (kept under the `user_id` key for frontend backward compatibility — see below). It is NOT the same value as the Firebase UID and NOT what you should send as `{user_id}` in path params, even though the field is spelled identically.
-
-If you're building the ADK agent side: the frontend gives you the Firebase UID directly (it's the identity Firebase Auth already minted); don't try to derive it from this API.
+`{user_id}` in every path below is the **Firebase UID** — the same identifier the frontend's session already carries and the `users` collection is keyed by. There is no other identifier this service accepts; a Google `sub` is never a valid `{user_id}`.
 
 ## Auth
-| Method | Path | In | Out |
-|---|---|---|---|
-| GET | `/auth/callback?code=...&uid=...` | `code` (Google authorization code), `uid` (Firebase UID) | `{user_id, email, status:"connected", firebase_uid}` — see the warning above about `user_id` here vs. in path params |
 
-`/auth/login` is **removed** (v0.4, unchanged) — the frontend builds its own consent URL and never redirects here.
+This service has no auth endpoints. Login, the OAuth authorization-code exchange, and encrypting the resulting refresh token all happen in the frontend (see `docs/ENCRYPTION_CONTRACT.md`) — this service only ever reads and decrypts the credential the frontend already wrote to Firestore.
 
-`/auth/callback` is **restored** in v0.5. It was incorrectly removed in v0.4: the frontend never holds the OAuth client secret (only this service's env does), so it cannot exchange the authorization code itself — it calls this endpoint server-to-server instead. What changed from the pre-v0.4 version: the refresh token is now envelope-encrypted and written to Firestore (issue #12), not Secret Manager, and the endpoint now requires `uid` so the write can be keyed on the Firebase UID rather than the Google `sub`. A request missing `uid` gets `400`, not `422` — this is a required *query* param handled manually so callers get one consistent error shape from this router.
-
-`error` (Google's OAuth error param, e.g. `access_denied`) also produces `400`, and a missing/failed refresh token from Google produces `500` (unchanged from pre-v0.4 behavior).
+`/auth/login` and `/auth/callback` are both **removed**. (v0.5 briefly restored `/auth/callback` — that was a mistake, corrected before this version shipped; see `docs/adr/0004`'s second amendment. There was never a version of this API where either endpoint was the intended long-term shape.)
 
 ## Gmail
 | Method | Path | In | Out |
@@ -41,9 +30,12 @@ If you're building the ADK agent side: the frontend gives you the Firebase UID d
 | POST | `/users/{user_id}/docs` | `{title, content}` | `{doc_id, url, status:"created"}` |
 
 ## Errors
-- `404` `{detail}` — no `google_refresh_token` credential stored for this `user_id` in Firestore. The user hasn't completed onboarding, or the wrong `user_id` was sent. Not retryable without the user re-connecting Google via the frontend's onboarding flow. (Transitional: this service currently also retries the lookup against `google_sub` before returning `404` — see docs/adr/0004 and the `TODO(matthew)` in `app/services/firestore_creds.py` — but callers should still always send the Firebase UID; this is not a documented alternate identifier.)
-- `500` `{detail}` — either a stored `/users/{user_id}/...` credential doc doesn't match the encrypted-envelope format this service expects (bad base64, KMS/AES-GCM decrypt failure), or `/auth/callback` completed the Google exchange but got no refresh token back (rare; usually means consent was skipped — retry onboarding). `detail` names the specific failure.
-- `400` — validation errors (FastAPI standard shape), plus `/auth/callback`'s own `code`/`uid`/`error` handling (see Auth above).
+
+Every `/users/{user_id}/...` endpoint reads through `app/services/firestore_creds.py`. Two credential-specific error shapes on top of FastAPI's standard validation `422`:
+
+- **`404`** `{detail}` — `CredentialNotFound`. No `google_refresh_token` document at `users/{user_id}/credentials/google_refresh_token` in Firestore. Means either the user hasn't completed Google onboarding via the frontend, or the wrong `{user_id}` was sent (it must be the Firebase UID). Not retryable without the user reconnecting Google through the frontend's onboarding flow.
+- **`500`** `{detail}` — `CredentialFormatError`. The stored credential document doesn't match `docs/ENCRYPTION_CONTRACT.md`'s byte format: a missing field, invalid base64, a KMS decrypt failure (including an AAD mismatch), or an AES-GCM authentication failure. `detail` names which check failed but never includes any decrypted or intermediate plaintext — treat a `500` here as "the frontend's write and this service's read have drifted," not as a value to retry blindly.
+- **`400`** — FastAPI's standard validation error shape for malformed query/path params.
 
 ## Meta
 - `GET /health` → `{status:"ok"}` — use as the ADK tool liveness check.
@@ -52,4 +44,4 @@ If you're building the ADK agent side: the frontend gives you the Firebase UID d
 - v0.2: added GET /emails/{email_id}
 - v0.3: added Drive file download; drive.readonly scope added — re-consent required.
 - v0.4 (**breaking**): `/auth/login` and `/auth/callback` removed — login moved to the frontend (issue #12). `{user_id}` in path params is now a Firebase UID, not a Google `sub`. Credential storage moved from Secret Manager to Firestore + KMS envelope encryption; new `500` error semantics for malformed stored credentials (see Errors).
-- v0.5: `/auth/callback` **restored** — removing it in v0.4 was a mistake; the frontend cannot exchange the authorization code itself (no client secret) and depends on this endpoint. Now takes a required `uid` query param (Firebase UID) and writes the envelope-encrypted refresh token to Firestore itself, keyed on that UID. Response shape unchanged (`user_id` is still the Google `sub`, for frontend compatibility) plus one additive field, `firebase_uid`. `/auth/login` stays removed.
+- v0.5 (**breaking**): corrects a false start within this same version — `/auth/callback` was briefly restored (client secret handling was mistakenly believed to require it) and then removed again for good once `docs/ENCRYPTION_CONTRACT.md` settled the frontend as owning the full write side, encrypt included. This service now has **zero** auth endpoints, **zero** KMS encrypt capability, and no code path that can name or touch a `school_password` credential. The `google_sub` fallback lookup on the read path is also removed — `{user_id}` is the Firebase UID with no alternate-identifier tolerance, anywhere. Credential documents are now read from `users/{user_id}/credentials/google_refresh_token` (a direct document get) rather than a queried top-level `user_credentials` collection.

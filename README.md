@@ -25,7 +25,7 @@ Run tests: `pytest tests/` (mocks Firestore/KMS, no live GCP access needed — s
 2. Enable APIs: `gcloud services enable gmail.googleapis.com calendar-json.googleapis.com drive.googleapis.com docs.googleapis.com firestore.googleapis.com cloudkms.googleapis.com run.googleapis.com`
 3. **OAuth consent screen** (APIs & Services): External → app name Classistant AI → add all teammates as **test users** (unverified apps only allow test users — fine for the demo). The OAuth **client** itself now belongs to the frontend (Richard) — this service only needs its client_id/secret in `.env` to authenticate the refresh-token grant.
 4. **KMS**: create keyring `classistant-keyring` and key `classistant-key` (region: TODO(matthew) — not yet confirmed, see `.env.example`). Grant this service's SA `roles/cloudkms.cryptoKeyDecrypter` on the refresh-token key only — never on the school-password key.
-5. **Firestore**: `user_credentials` collection (frontend writes it during login). This service only needs read access.
+5. **Firestore**: `users/{uid}/credentials/{credential_type}` subcollection (frontend writes it during login/onboarding). This service only needs read access, and only ever reads the `google_refresh_token` document.
 
 ## Deploy to Cloud Run
 
