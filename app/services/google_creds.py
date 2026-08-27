@@ -1,35 +1,21 @@
-"""Rebuild live Google credentials for a user from their stored refresh token.
+"""Builds Google API clients for a user.
 
-The FastAPI layer is stateless: every request fetches the refresh token from
-Secret Manager and mints a short-lived access token. Plaintext tokens never
-touch a database or log line (ADR-0002).
+Post issue #12: credentials come from Firestore + KMS (firestore_creds),
+not Secret Manager. Endpoint code is unchanged — same service_for_user
+signature as before, so gmail.py / calendar.py / drive.py / docs.py
+don't need to be touched.
 """
-from fastapi import HTTPException
-from google.oauth2.credentials import Credentials
+
 from googleapiclient.discovery import build
 
-from app.config import settings
-from app.services import secrets
-
-TOKEN_URI = "https://oauth2.googleapis.com/token"
-
-
-def creds_for_user(user_id: str) -> Credentials:
-    refresh_token = secrets.get_refresh_token(settings.gcp_project_id, user_id)
-    if refresh_token is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No stored credentials for user {user_id}. Complete /auth/login first.",
-        )
-    return Credentials(
-        token=None,  # forces refresh on first use
-        refresh_token=refresh_token,
-        token_uri=TOKEN_URI,
-        client_id=settings.google_client_id,
-        client_secret=settings.google_client_secret,
-        scopes=settings.scopes,
-    )
+from app.services.firestore_creds import credentials_for_user
 
 
 def service_for_user(user_id: str, api: str, version: str):
-    return build(api, version, credentials=creds_for_user(user_id), cache_discovery=False)
+    """e.g. service_for_user(uid, "gmail", "v1") — exactly as before."""
+    return build(
+        api,
+        version,
+        credentials=credentials_for_user(user_id),
+        cache_discovery=False,
+    )

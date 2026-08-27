@@ -3,4 +3,11 @@ uvicorn[standard]==0.30.*
 pydantic-settings==2.*
 google-auth==2.*
 google-api-python-client==2.*
+google-cloud-firestore==2.*
+google-cloud-kms==2.*
+# google-cloud-kms's generated client still imports pkg_resources at import
+# time; setuptools>=81 dropped it, which breaks the app at boot. Pin until
+# google-cloud-kms drops the pkg_resources usage upstream.
+setuptools<81
+cryptography==43.*
 email-validator==2.*
