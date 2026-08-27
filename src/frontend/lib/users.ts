@@ -6,12 +6,27 @@ import { secretName, storePortalPassword } from "@/lib/portalCredentials";
 /**
  * The two onboarding collections.
  *
- *   users/{user_id}        profile + consent evidence
- *   credentials/{user_id}  school portal username + a pointer to the password
+ *   users/{uid}        profile + consent evidence
+ *   credentials/{uid}  school portal username + a pointer to the password
  *
- * Both are keyed by the Google `sub` returned from the connector's
- * /auth/callback, which is also what the ADK agent passes on every connector
- * call. One id end to end, so nothing has to join.
+ * `uid` is the **Firebase Auth uid**, minted by phone sign-in.
+ *
+ * It used to be the Google `sub`, mirroring
+ * src/backend/connectors-api/API_CONTRACT.md, which freezes `{user_id}` as the
+ * `sub` returned from the connector's /auth/callback. That cost more than it
+ * bought and issue #12 is rewriting the connector anyway:
+ *
+ *  - The `sub` does not exist until the access grant completes, so there was no
+ *    key to write under during the first half of onboarding, and a student who
+ *    abandoned between the SMS and the grant left nothing behind at all.
+ *  - The session carries a uid, never a `sub`, so every read needed an indexed
+ *    query purely to translate one into the other.
+ *  - Reconnecting a different Google account changes the `sub`, and with it the
+ *    document id. A uid is stable for the life of the account.
+ *
+ * The `sub` is still kept, as `google_sub`, because the connector's endpoints
+ * are addressed by it. It is a field now, not an identity. Anything calling
+ * `/users/{user_id}/...` must send `google_sub`, NOT the document id.
  *
  * There is no `password` field on `credentials`, deliberately. The password
  * lives in Secret Manager and the document holds only its resource name -- see
@@ -30,6 +45,7 @@ export type ConsentRecord = {
 };
 
 export type UserProfile = {
+  /** The Firebase Auth uid, which is also the document id. */
   id: string;
   email: string;
   name: string;
@@ -109,10 +125,13 @@ export async function upsertUser(profile: UserProfile): Promise<void> {
  * phone number. Everything else about a student is ours to store.
  */
 export type UserRecord = {
-  /** The document id, which is the Google `sub`. */
+  /** The document id, which is the Firebase Auth uid. */
   userId: string;
   schoolId: string | null;
   email: string | null;
+  /** The Google `sub`, once the grant has happened. This is the id the
+   *  connector's endpoints are addressed by, and the only thing it is for. */
+  googleSub: string | null;
   /** Whether the Gmail/Drive/Docs/Calendar grant has been completed. Distinct
    *  from being signed in: identity is a phone number and arrives first. */
   googleConnected: boolean;
@@ -125,76 +144,80 @@ function toRecord(snap: FirebaseFirestore.DocumentSnapshot): UserRecord {
     userId: snap.id,
     schoolId: typeof data.school_id === "string" ? data.school_id : null,
     email: typeof data.email === "string" ? data.email : null,
+    googleSub: typeof data.google_sub === "string" ? data.google_sub : null,
     googleConnected: Boolean(data.google_connected_at),
     onboardingComplete: data.onboarding_complete === true,
   };
 }
 
 /**
- * Finds a student from their Firebase uid.
+ * The signed-in student's document, or null if they have none yet.
  *
- * This query is the seam created by verifying a phone before connecting Google.
- * The session knows a Firebase uid; the documents are keyed by the Google `sub`,
- * which does not exist until the grant completes. So there is no direct read
- * available, and a signed-in student with no document at all is the normal
- * state for the first half of onboarding rather than an error.
- *
- * Single-field equality, so Firestore's automatic index covers it and no
- * composite index has to be deployed alongside this.
+ * A direct document read. This replaced `getUserByAuthUid`, which had to run an
+ * indexed equality query because the session's uid was not the document key.
+ * Now it is, so there is nothing to look up.
  */
-export async function getUserByAuthUid(authUid: string): Promise<UserRecord | null> {
-  const found = await firestore()
-    .collection("users")
-    .where("auth_uid", "==", authUid)
-    .limit(1)
-    .get();
-
-  const snap = found.docs[0];
-  return snap ? toRecord(snap) : null;
+export async function getUser(uid: string): Promise<UserRecord | null> {
+  const snap = await firestore().collection("users").doc(uid).get();
+  return snap.exists ? toRecord(snap) : null;
 }
 
 /**
- * Records the access grant. This is where the user document is born.
+ * Creates the user document the moment a number is verified.
  *
- * Called from the OAuth callback, which is the first moment a Google `sub`
- * exists at all: the student verified a phone before this, and a phone session
- * carries no `sub` to key a document by. So nothing is written during the first
- * half of onboarding, and this one write binds the two identities together.
+ * This is the write that keying by uid makes possible at all. Under the old
+ * `sub` key there was nothing to write under until the access grant completed,
+ * so a student who left between the SMS and the grant left no trace, and
+ * docs/design/15 had to carry that as a known gap.
  *
- * Creating it here also means a student who abandons the rest of the wizard
- * still has a row. Their refresh token is already in Secret Manager by this
- * point, and a token with no user record is an orphan nobody can find to delete.
- *
- * `phone_number` is carried in from the session rather than collected again. It
- * was verified by an SMS round trip, which is a stronger claim than any field on
- * a form, and re-asking would invite a student to type a different number.
+ * Everything here is insert-only. A returning student re-verifying their number
+ * must not have their school, consent, or grant reset by signing in again.
  */
-export async function recordGoogleConnection(args: {
-  userId: string;
-  email: string;
-  schoolId: string;
-  authUid: string;
+export async function ensureUser(args: {
+  uid: string;
   phoneNumber: string;
 }): Promise<void> {
   await setStamped(
     "users",
-    args.userId,
+    args.uid,
+    { id: args.uid, phone_number: args.phoneNumber },
+    // Written explicitly rather than left absent so
+    // `where("onboarding_complete", "==", false)` can actually find them --
+    // Firestore equality never matches a missing field.
+    { onboarding_complete: false },
+  );
+}
+
+/**
+ * Records the access grant against an already existing user document.
+ *
+ * Before the rekey this function created the document, because the Google `sub`
+ * it was keyed by did not exist any earlier. Now the document is already there
+ * from `ensureUser`, and this only adds what the grant proved: the school
+ * address, and the `sub` the connector addresses its endpoints by.
+ *
+ * `phone_number` is not rewritten here. It was verified by an SMS round trip
+ * and stored at sign-in, and re-asserting it from the session would only invite
+ * the two to drift.
+ */
+export async function recordGoogleConnection(args: {
+  uid: string;
+  googleSub: string;
+  email: string;
+  schoolId: string;
+}): Promise<void> {
+  await setStamped(
+    "users",
+    args.uid,
     {
-      id: args.userId,
+      id: args.uid,
       email: args.email,
       school_id: args.schoolId,
-      // The bridge between the two ids. Everything downstream is keyed by the
-      // Google `sub`, and this is the only way back to the Firebase Auth record
-      // that holds the phone -- which is what a support request or a deletion
-      // request will arrive holding.
-      auth_uid: args.authUid,
-      phone_number: args.phoneNumber,
+      // A field, not an identity. The connector's `/users/{user_id}/...`
+      // endpoints are addressed by this, never by the document id.
+      google_sub: args.googleSub,
       google_connected_at: FieldValue.serverTimestamp(),
     },
-    // Insert-only: a student who reconnects Google after finishing should not
-    // be dragged back to incomplete. Written explicitly rather than left absent
-    // so `where("onboarding_complete", "==", false)` can actually find them --
-    // Firestore equality never matches a missing field.
     { onboarding_complete: false },
   );
 }

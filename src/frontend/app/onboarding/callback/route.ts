@@ -105,9 +105,12 @@ export async function GET(request: NextRequest) {
     return back(request, { error: "unreachable" }, school.id);
   }
 
-  const userId = payload.user_id;
+  // The connector returns the Google `sub`. It is no longer our document key --
+  // see the header of lib/users.ts -- but it is still how the connector's own
+  // `/users/{user_id}/...` endpoints are addressed, so it is stored.
+  const googleSub = payload.user_id;
   const email = payload.email?.toLowerCase();
-  if (!userId || !email) return back(request, { error: "exchange" }, school.id);
+  if (!googleSub || !email) return back(request, { error: "exchange" }, school.id);
 
   /*
    * School eligibility, and this is the check that actually enforces it.
@@ -134,15 +137,15 @@ export async function GET(request: NextRequest) {
     return back(request, { error: "mismatch" }, school.id);
   }
 
-  // The write that binds the phone identity to the Google one. Everything
-  // downstream is keyed by `sub`; the session's uid and number are what make it
-  // possible to get back here from a support or deletion request.
+  // Adds what the grant proved to a document that already exists. It was
+  // created when the number was verified, so this no longer has to carry the
+  // phone number across to bind two identities together -- there is only one
+  // identity now, and the `sub` is one of its fields.
   await recordGoogleConnection({
-    userId,
+    uid: session.uid,
+    googleSub,
     email,
     schoolId: school.id,
-    authUid: session.uid,
-    phoneNumber: session.phone,
   });
 
   return back(request, { connected: "1" }, school.id);

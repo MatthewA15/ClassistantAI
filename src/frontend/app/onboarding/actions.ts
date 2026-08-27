@@ -10,7 +10,7 @@ import { FieldValue } from "@/lib/firebaseAdmin";
 import { buildAuthUrl, randomState } from "@/lib/googleOAuth";
 import { setPendingOAuth } from "@/lib/onboardingSession";
 import {
-  getUserByAuthUid,
+  getUser,
   markOnboardingComplete,
   savePortalCredentials,
   upsertUser,
@@ -133,8 +133,8 @@ export async function connectGoogle(
 /**
  * Final submit. Writes both onboarding collections.
  *
- *   users/{sub}        profile + consent evidence
- *   credentials/{sub}  portal username + a Secret Manager pointer
+ *   users/{uid}        profile + consent evidence
+ *   credentials/{uid}  portal username + a Secret Manager pointer
  *
  * Identity comes from the session cookie and the user document, never from the
  * form. The form is client-supplied, and the whole point of the SMS round trip
@@ -159,12 +159,13 @@ export async function completeOnboarding(
   }
 
   /*
-   * Everything identifying comes off the document, which only exists because
-   * the access grant completed. A student who verified a number but never got
-   * through Google has nothing to finish with, and that is the honest error
-   * rather than writing a half record under an id we would have to invent.
+   * Everything identifying comes off the document. It exists from the moment
+   * the number was verified, but the school address on it only arrives with the
+   * grant, so a student who never got through Google still has nothing to
+   * finish with -- `googleConnected` is the check that says so, not the
+   * presence of the document.
    */
-  const profile = await getUserByAuthUid(session.uid);
+  const profile = await getUser(session.uid);
   if (!profile || !profile.googleConnected || !profile.email) {
     return {
       ok: false,
