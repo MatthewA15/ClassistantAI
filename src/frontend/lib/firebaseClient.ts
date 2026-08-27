@@ -203,8 +203,38 @@ export async function signOutClient(): Promise<void> {
  * is wrong for a wrong code and right for a network blip, and the difference is
  * the whole value of this function.
  */
+/**
+ * The codes that mean the student mistyped. Everything else is ours, and gets
+ * logged. Kept module level so the set is not rebuilt on every failure.
+ */
+const STUDENT_ERROR = new Set([
+  "auth/invalid-phone-number",
+  "invalid-phone",
+  "auth/invalid-verification-code",
+  "auth/code-expired",
+]);
+
 export function phoneErrorMessage(err: unknown): string {
   const code = typeof err === "object" && err && "code" in err ? String(err.code) : "";
+
+  if (!STUDENT_ERROR.has(code)) {
+    // `customData.serverResponse` is the half worth having: it carries Identity
+    // Toolkit's own message, which distinguishes causes the SDK flattens into a
+    // single code. `auth/invalid-app-credential` alone covers a rejected
+    // reCAPTCHA token, an unauthorised domain, and App Check enforcement.
+    const detail = err as {
+      message?: string;
+      customData?: { serverResponse?: unknown; appName?: string };
+    };
+    // `err` goes last and raw. `message` is non-enumerable on Error, so a
+    // plain object literal loses it in any structured view -- including
+    // Next's overlay, which renders the summary above as `{}` and reads like
+    // the SDK returned nothing. Expand the raw error in DevTools instead.
+    console.error("[phone auth]", code || "(no code)", {
+      message: detail?.message,
+      serverResponse: detail?.customData?.serverResponse,
+    }, err);
+  }
 
   switch (code) {
     case "auth/invalid-phone-number":
@@ -224,7 +254,7 @@ export function phoneErrorMessage(err: unknown): string {
     case "auth/network-request-failed":
       return "We could not reach Google. Check your connection and try again.";
 
-    // The next three are our own setup, not the student's, and none can be
+    // The next five are our own setup, not the student's, and none can be
     // fixed by trying again. Called out separately so a half-configured project
     // fails loudly during setup instead of looking like an ordinary failure.
     case "auth/unauthorized-domain":
@@ -233,8 +263,18 @@ export function phoneErrorMessage(err: unknown): string {
       return "Sign-in is not switched on yet. (Firebase Auth is not set up on the project.)";
     case "auth/operation-not-allowed":
       return "Phone sign-in is not enabled for this site yet.";
+    case "auth/invalid-app-credential":
+      // Identity Toolkit rejected the reCAPTCHA token rather than the number.
+      // Distinct from `captcha-check-failed`, which is a spent widget and does
+      // clear on a retry: this one is project config and never will.
+      return "The sign-in check was rejected. (reCAPTCHA is not accepted for this project yet.)";
+    case "auth/billing-not-enabled":
+      return "SMS sign-in needs billing switched on for this project.";
 
     default:
+      // Already logged above. Every code in this switch was learned by hitting
+      // it blind through this branch, so the logging is what keeps the next
+      // unmapped one to a glance rather than a bisect.
       return "We could not verify that number. Try again.";
   }
 }

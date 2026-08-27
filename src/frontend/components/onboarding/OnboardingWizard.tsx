@@ -971,8 +971,25 @@ export function OnboardingWizard({ connected }: { connected: ConnectedAccount | 
 
         Outside the <form> on purpose: it injects an iframe and a hidden input,
         and neither belongs in a form whose action writes a student's account.
+
+        Deliberately unstyled, and that is load-bearing in both directions.
+
+        `hidden` (`display: none`) breaks it: grecaptcha cannot mint a token
+        from a container it cannot lay out, and it fails as
+        `auth/invalid-app-credential`, which reads exactly like a project
+        misconfiguration and is not one.
+
+        Sizing it to nothing (`h-0 w-0 overflow-hidden`) breaks it differently:
+        grecaptcha renders its anchor iframe INSIDE this element, and clipping
+        that to zero makes it read positions off a node with no box, which
+        throws "Cannot read properties of null (reading 'style')" from inside
+        recaptcha__en.js.
+
+        At `size: "invisible"` an empty div is already the whole answer. It
+        collapses to nothing on its own, and the floating badge is
+        `position: fixed` and never lived in here anyway.
       */}
-      <div id={RECAPTCHA_ID} className="hidden" />
+      <div id={RECAPTCHA_ID} />
     </Shell>
   );
 }
