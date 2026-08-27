@@ -1,6 +1,15 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { MANAGED, themeVars } from "@/components/theme/themeVars";
 import { getSchool, type School } from "@/data/schools";
 
 /**
@@ -27,51 +36,38 @@ export function useSchoolTheme() {
   return useContext(SchoolThemeContext);
 }
 
-/** Maps one brand colour onto the whole token set. */
-function themeVars(primary: string, accent?: string): Record<string, string> {
-  const mix = (pct: number, towards: string) => `color-mix(in oklab, ${primary} ${pct}%, ${towards})`;
-  return {
-    "--color-brand-700": mix(80, "black"),
-    "--color-brand-600": primary,
-    "--color-brand-500": mix(86, "white"),
-    "--color-brand-400": mix(64, "white"),
-
-    "--color-sky-500": mix(50, "white"),
-    "--color-sky-400": mix(36, "white"),
-    "--color-sky-300": mix(24, "white"),
-    "--color-sky-200": mix(15, "white"),
-    "--color-sky-100": mix(8, "white"),
-    "--color-sky-50": mix(4, "white"),
-
-    "--color-ink-950": mix(30, "black"),
-    "--color-ink-900": mix(38, "black"),
-    "--color-ink-800": mix(50, "black"),
-    "--color-ink-700": mix(62, "black"),
-    "--color-ink-600": mix(74, "black"),
-
-    "--color-paper": mix(3.5, "white"),
-    "--color-line": mix(14, "white"),
-    "--color-line-soft": mix(7, "white"),
-    "--color-body": `color-mix(in oklab, ${primary} 42%, #33445a)`,
-    "--color-body-soft": `color-mix(in oklab, ${primary} 26%, #6f8296)`,
-
-    "--color-accent": accent ?? mix(45, "white"),
-  };
-}
-
-const MANAGED = Object.keys(themeVars("#000"));
-
 export function SchoolThemeProvider({ children }: { children: React.ReactNode }) {
   const [schoolId, setSchoolId] = useState<string | null>(null);
   const school = useMemo(() => (schoolId ? getSchool(schoolId) ?? null : null), [schoolId]);
+
+  /*
+   * Whether this run is the mount rather than a real switch.
+   *
+   * On a page the server themed (see themeCss, and the <style> the onboarding
+   * frame renders), the colours on screen at mount are already the right ones
+   * and this effect changes none of them. Adding `theme-shift` anyway opened a
+   * 620ms window where every element on the page transitions its colours, for a
+   * switch that is not happening -- which is what turned the old default-blue
+   * flash into a visible fade rather than something you could miss.
+   *
+   * A ref, not state: flipping it must not re-render, and it must survive the
+   * effect it guards.
+   */
+  const mounted = useRef(false);
 
   useEffect(() => {
     const root = document.documentElement;
 
     // Colours cross-fade only while a switch is happening. A permanent global
     // colour transition would also animate every hover state on the page.
-    root.classList.add("theme-shift");
-    const done = window.setTimeout(() => root.classList.remove("theme-shift"), 620);
+    const switching = mounted.current;
+    mounted.current = true;
+
+    let done: number | undefined;
+    if (switching) {
+      root.classList.add("theme-shift");
+      done = window.setTimeout(() => root.classList.remove("theme-shift"), 620);
+    }
 
     if (school?.brand) {
       const vars = themeVars(school.brand.primary, school.brand.accent);
@@ -82,7 +78,9 @@ export function SchoolThemeProvider({ children }: { children: React.ReactNode })
       delete root.dataset.school;
     }
 
-    return () => window.clearTimeout(done);
+    return () => {
+      if (done !== undefined) window.clearTimeout(done);
+    };
   }, [school]);
 
   const setSchool = useCallback((id: string | null) => setSchoolId(id), []);

@@ -26,8 +26,27 @@ import { recordGoogleConnection } from "@/lib/users";
 
 export const dynamic = "force-dynamic";
 
-function back(request: NextRequest, params: Record<string, string>) {
+/**
+ * Back to the wizard, carrying the school.
+ *
+ * The school is not decoration on this URL. The onboarding page renders itself
+ * in the school's colours from `?school=`, and that is the only way it can know
+ * them before hydration -- the alternative source is the user document, which
+ * costs the two network calls the page deliberately does not make above its
+ * Suspense boundary. Without it the return leg from Google lands on a page
+ * painted in the default blue that repaints a moment later.
+ *
+ * `pending` is gone by the time some of these fire, so it is optional and the
+ * wizard still falls back to the school on the user document. One frame of the
+ * wrong colour on a path that already failed is not worth more than this.
+ */
+function back(
+  request: NextRequest,
+  params: Record<string, string>,
+  schoolId?: string | null,
+) {
   const url = new URL("/onboarding", request.nextUrl.origin);
+  if (schoolId) url.searchParams.set("school", schoolId);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   return NextResponse.redirect(url);
 }
@@ -42,14 +61,16 @@ export async function GET(request: NextRequest) {
   const oauthError = query.get("error");
   if (oauthError) {
     // access_denied is a student clicking Cancel, not a fault.
-    return back(request, {
-      error: oauthError === "access_denied" ? "cancelled" : "google",
-    });
+    return back(
+      request,
+      { error: oauthError === "access_denied" ? "cancelled" : "google" },
+      pending?.schoolId,
+    );
   }
 
   const code = query.get("code");
   const state = query.get("state");
-  if (!code || !state) return back(request, { error: "incomplete" });
+  if (!code || !state) return back(request, { error: "incomplete" }, pending?.schoolId);
 
   // CSRF. An attacker can make a browser hit this URL with their own code, but
   // not with a state matching the signed cookie we set moments earlier.
@@ -59,7 +80,7 @@ export async function GET(request: NextRequest) {
   // Auth this route had no prior identity to check against and simply believed
   // whatever the connector returned.
   const session = await getSession();
-  if (!session) return back(request, { error: "signin" });
+  if (!session) return back(request, { error: "signin" }, pending.schoolId);
 
   const school = getSchool(pending.schoolId);
   if (!school || school.status !== "live") return back(request, { error: "school" });
@@ -76,17 +97,17 @@ export async function GET(request: NextRequest) {
       // Body may carry a Google error; it is not safe to show a student and not
       // useful to them either. Log it, show them something they can act on.
       console.error("connector /auth/callback failed", res.status, await res.text());
-      return back(request, { error: "exchange" });
+      return back(request, { error: "exchange" }, school.id);
     }
     payload = await res.json();
   } catch (err) {
     console.error("connector /auth/callback unreachable", err);
-    return back(request, { error: "unreachable" });
+    return back(request, { error: "unreachable" }, school.id);
   }
 
   const userId = payload.user_id;
   const email = payload.email?.toLowerCase();
-  if (!userId || !email) return back(request, { error: "exchange" });
+  if (!userId || !email) return back(request, { error: "exchange" }, school.id);
 
   /*
    * School eligibility, and this is the check that actually enforces it.
@@ -97,7 +118,7 @@ export async function GET(request: NextRequest) {
    * address in this flow that is proven, so it is the only one worth testing.
    */
   if (!email.endsWith(`@${school.emailDomain}`)) {
-    return back(request, { error: "domain" });
+    return back(request, { error: "domain" }, school.id);
   }
 
   /*
@@ -110,7 +131,7 @@ export async function GET(request: NextRequest) {
    * silently adopting the second is the wrong way to resolve that.
    */
   if (pending.email && email !== pending.email) {
-    return back(request, { error: "mismatch" });
+    return back(request, { error: "mismatch" }, school.id);
   }
 
   // The write that binds the phone identity to the Google one. Everything
@@ -124,5 +145,5 @@ export async function GET(request: NextRequest) {
     phoneNumber: session.phone,
   });
 
-  return back(request, { connected: "1" });
+  return back(request, { connected: "1" }, school.id);
 }

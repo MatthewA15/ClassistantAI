@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
 import { OnboardingFrame, WizardSkeleton } from "@/components/onboarding/shell";
+import { getSchool } from "@/data/schools";
 import { getSession } from "@/lib/authSession";
 import { getUserByAuthUid } from "@/lib/users";
 
@@ -30,9 +31,24 @@ export const dynamic = "force-dynamic";
  * other half: it is what makes the route prefetchable at all.
  * See docs/design/16-onboarding-entry-cost.md.
  */
-export default function OnboardingPage() {
+export default async function OnboardingPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ school?: string }>;
+}) {
+  /*
+   * The only await left above the boundary, and it is free: searchParams is
+   * already in hand by the time this runs, so it resolves in a microtask. It is
+   * not a reason to move the session reads back up here -- those are two network
+   * calls, which is the whole reason they sit below.
+   *
+   * It buys the school, which the frame needs in order to render the page in
+   * that school's colours from the server rather than after hydration.
+   */
+  const { school } = await searchParams;
+
   return (
-    <OnboardingFrame>
+    <OnboardingFrame school={school ? getSchool(school) : null}>
       {/* Also the boundary useSearchParams needs inside the wizard. */}
       <Suspense fallback={<WizardSkeleton />}>
         <SignedInWizard />

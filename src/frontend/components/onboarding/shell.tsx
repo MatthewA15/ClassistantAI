@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { BuiltBy } from "@/components/site/BuiltBy";
 import { Container } from "@/components/ui/primitives";
+import { themeCss } from "@/components/theme/themeVars";
 import { cn } from "@/lib/cn";
 import type { School } from "@/data/schools";
 
@@ -54,10 +55,38 @@ export const PHASES = ["Pick your school", "Log in", "Welcome gift"];
  * Shared by page.tsx and loading.tsx so the two paint identically. If the
  * loading boundary drew its own approximation of this, arriving content would
  * shift the card, which is a worse artefact than the pause it replaced.
+ *
+ * `school` exists only to paint it in that school's colours from the server.
+ * The theme is otherwise applied by SchoolThemeProvider in an effect, which
+ * cannot run until React has hydrated, so a hard load of
+ * /onboarding?school=ualberta drew the whole page in the default blue and then
+ * repainted it green a moment later. Emitting the tokens as a stylesheet the
+ * server sends means the first paint is already right and the effect changes
+ * nothing when it arrives.
+ *
+ * Optional because loading.tsx has no way to know the school -- it is rendered
+ * for a prefetch, before the request that carries ?school= exists. That is
+ * fine: the loading card is only ever shown during a client-side navigation,
+ * and by then the provider has already themed the document.
  */
-export function OnboardingFrame({ children }: { children: React.ReactNode }) {
+export function OnboardingFrame({
+  school,
+  children,
+}: {
+  school?: School | null;
+  children: React.ReactNode;
+}) {
+  const css = school ? themeCss(school) : null;
+
   return (
     <div className="relative min-h-dvh bg-paper">
+      {/* Ahead of everything it themes, and rendered as a plain <style> with no
+          `precedence` so React leaves it here rather than hoisting it into the
+          head. It has to lose to the provider's inline properties, which are
+          what a student picking a different school updates, and beat Tailwind's
+          default `:root` block, which themeCss's doubled selector handles. */}
+      {css ? <style dangerouslySetInnerHTML={{ __html: css }} /> : null}
+
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-x-0 top-0 h-[28rem] overflow-hidden"
