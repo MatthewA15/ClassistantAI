@@ -1,7 +1,0 @@
-.env
-__pycache__/
-*.pyc
-.venv/
-client_secret*.json
-.DS_Store
-.claude/settings.local.json
