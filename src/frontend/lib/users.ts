@@ -79,16 +79,12 @@ export type UserProfile = {
  * the ordering that consent evidence depends on. The transaction is what makes
  * "insert or update" actually mean it.
  */
-async function setStamped(
-  collection: string,
-  id: string,
+export async function setStampedRef(
+  ref: FirebaseFirestore.DocumentReference,
   data: FirebaseFirestore.DocumentData,
   onInsert: FirebaseFirestore.DocumentData = {},
 ): Promise<void> {
-  const db = firestore();
-  const ref = db.collection(collection).doc(id);
-
-  await db.runTransaction(async (tx) => {
+  await firestore().runTransaction(async (tx) => {
     const snap = await tx.get(ref);
     tx.set(
       ref,
@@ -102,6 +98,18 @@ async function setStamped(
       { merge: true },
     );
   });
+}
+
+/** The same write, addressed the way every caller in this file wants it. The
+ *  ref-taking form above exists because credential documents live in a
+ *  subcollection, which a collection-and-id pair cannot name. */
+async function setStamped(
+  collection: string,
+  id: string,
+  data: FirebaseFirestore.DocumentData,
+  onInsert: FirebaseFirestore.DocumentData = {},
+): Promise<void> {
+  await setStampedRef(firestore().collection(collection).doc(id), data, onInsert);
 }
 
 export async function upsertUser(profile: UserProfile): Promise<void> {
