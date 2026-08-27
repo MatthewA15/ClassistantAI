@@ -1,13 +1,10 @@
-# Classistant AI Connector API — Contract v0.3 (handoff for ADK tools)
+# Classistant AI Connector API — Contract v0.4 (handoff for ADK tools)
 
 Base URL: `https://<cloud-run-url>` (local: `http://localhost:8080`). All responses JSON.
-`{user_id}` = Google `sub` returned by `/auth/callback`. Endpoint names and shapes below are **frozen for the Aug 22 build** — build your ADK dummy tools against these; only response fields may be *added*.
+`{user_id}` = **Firebase UID** (was the Google `sub` claim through v0.3 — see Changelog). Endpoint names and shapes below are **frozen for the Aug 22 build** — build your ADK dummy tools against these; only response fields may be *added*.
 
-## Auth (P0)
-| Method | Path | In | Out |
-|---|---|---|---|
-| GET | `/auth/login` | — | `{auth_url, state}` — redirect user to `auth_url` |
-| GET | `/auth/callback?code=...` | Google redirect | `{user_id, email, status:"connected"}` |
+## Auth — REMOVED in v0.4 (breaking)
+`/auth/login` and `/auth/callback` no longer exist on this service. Login now happens entirely in the Next.js frontend, which runs its own authorization-code exchange and writes the resulting refresh token to Firestore (envelope-encrypted with Cloud KMS) — this service never sees an authorization code. The frontend hands the agent the Firebase UID to use as `{user_id}` on every call below.
 
 ## Gmail
 | Method | Path | In | Out |
@@ -30,8 +27,9 @@ Base URL: `https://<cloud-run-url>` (local: `http://localhost:8080`). All respon
 | POST | `/users/{user_id}/docs` | `{title, content}` | `{doc_id, url, status:"created"}` |
 
 ## Errors
-- `404` `{detail}` — user has no stored credentials (send them through `/auth/login`)
-- `400` — bad OAuth callback / validation errors (FastAPI standard shape)
+- `404` `{detail}` — no `google_refresh_token` credential stored for this `user_id` in Firestore. The user hasn't completed onboarding in the frontend, or the wrong `user_id` was sent. Not retryable without the user re-connecting Google in the frontend.
+- `500` `{detail}` — a stored credential doc exists but doesn't match the encrypted-envelope format this service expects (bad base64, KMS decrypt/AES-GCM decrypt failure, unexpected dkey encoding). This means the frontend's encrypt path and this service's decrypt path have drifted — an integration bug, not a per-user problem. `detail` names the specific mismatch.
+- `400` — validation errors (FastAPI standard shape)
 
 ## Meta
 - `GET /health` → `{status:"ok"}` — use as the ADK tool liveness check.
@@ -39,3 +37,4 @@ Base URL: `https://<cloud-run-url>` (local: `http://localhost:8080`). All respon
 ## Changelog
 - v0.2: added GET /emails/{email_id}
 - v0.3: added Drive file download; drive.readonly scope added — re-consent required.
+- v0.4 (**breaking**): `/auth/login` and `/auth/callback` removed — login moved to the frontend (issue #12). `{user_id}` is now a Firebase UID, not a Google `sub`. Credential storage moved from Secret Manager to Firestore + KMS envelope encryption; new `500` error semantics for malformed stored credentials (see Errors).

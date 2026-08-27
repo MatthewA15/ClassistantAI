@@ -1,6 +1,6 @@
 # ADR-0002: OAuth refresh tokens in Google Secret Manager; no passwords stored
 
-- **Status:** accepted
+- **Status:** superseded by ADR-0004
 - **Date:** 2026-08-19
 - **Deciders:** Matthew, team
 
