@@ -2,7 +2,5 @@ fastapi==0.115.*
 uvicorn[standard]==0.30.*
 pydantic-settings==2.*
 google-auth==2.*
-google-auth-oauthlib==1.*
 google-api-python-client==2.*
-google-cloud-secret-manager==2.*
 email-validator==2.*
