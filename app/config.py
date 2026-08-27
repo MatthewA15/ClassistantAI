@@ -1,17 +1,22 @@
 """App configuration.
 
-Design note (see docs/adr/0004): the frontend builds the consent URL and
-owns login for the *student*, but it deliberately never holds the OAuth
-client secret -- this service does, and is the only thing that can exchange
-an authorization code (app/auth/router.py `/auth/callback`) or refresh a
-token later. google_client_id/secret must be the frontend's OAuth web-app
-client, since both the code exchange and the later refresh-token grant have
-to hit Google as the same client that started the flow.
+Design note (see docs/adr/0004 and docs/ENCRYPTION_CONTRACT.md): the
+frontend builds the consent URL, runs the OAuth code exchange, and
+envelope-encrypts the resulting refresh token itself -- this service never
+sees an authorization code and holds no KMS encrypt rights. It only decrypts
+the google_refresh_token credential the frontend already wrote to Firestore,
+and only ever refreshes it against Google's token endpoint.
+
+google_client_id/secret are still required here despite login having moved
+out: the `refresh_token` grant against Google's token endpoint requires
+client authentication for a web-application client, same as the
+authorization_code grant the frontend runs. Both sides must use the same
+OAuth client, or refresh fails with invalid_client (ENCRYPTION_CONTRACT.md
+#1's "client secret is a deliberate exception").
 
 Per-user credentials (refresh tokens) live in Firestore, envelope-encrypted
-with Cloud KMS -- this service now performs both the encrypt (at
-`/auth/callback`) and the decrypt (per API request) halves. See
-app/services/firestore_creds.py and docs/adr/0004.
+with Cloud KMS by the frontend; this service only performs the decrypt half.
+See app/services/firestore_creds.py.
 """
 from pydantic_settings import BaseSettings
 
@@ -24,12 +29,6 @@ class Settings(BaseSettings):
     # invalid_client.
     google_client_id: str
     google_client_secret: str
-    # Must byte-match the redirect_uri Google issued the code against -- i.e.
-    # the frontend's callback route, NOT this service's own URL (the
-    # frontend hands the code to this service server-to-server; the browser
-    # never lands here). See src/frontend/lib/googleOAuth.ts:redirectUri().
-    # Local dev: http://localhost:3000/onboarding/callback.
-    oauth_redirect_uri: str
 
     # TODO(matthew): confirm region with Obalua -- keyring/key location for
     # classistant-keyring/classistant-key isn't known yet. No default on
@@ -42,20 +41,20 @@ class Settings(BaseSettings):
     # item 3) -- this service must never gain decrypt rights on the
     # school_password key.
     kms_key: str = "classistant-key"
-    # TODO(matthew): confirm with Chim whether the frontend passes AAD on the
-    # KMS encrypt call, and which value. "none" is safe until confirmed --
-    # flipping this incorrectly makes KMS fail closed on every decrypt.
-    kms_aad_source: str = "none"
+    # "user_id" | "none" -- ENCRYPTION_CONTRACT.md #5 settles this as
+    # utf8_bytes(uid), which the frontend passes on every KMS encrypt call.
+    # Must byte-match what the frontend actually sends or KMS decrypt fails
+    # closed -- this default must never silently drift from the contract.
+    kms_aad_source: str = "user_id"
 
     # Requesting all scopes up front (including P2) so users don't have to
     # re-consent when we ship drafts/Drive/Docs later. See ADR-0002.
     #
     # MUST stay byte-identical (same nine scopes, doesn't need to be the same
     # order) to GOOGLE_SCOPES in the frontend's src/frontend/lib/googleOAuth.ts
-    # -- the frontend requests consent for its list, this service rebuilds a
-    # Credentials object against its own hardcoded copy during the code
-    # exchange, and Google validates the granted set matches during that
-    # exchange. When one changes, change both in the same change.
+    # -- the frontend requests consent for its list, and Google validates the
+    # granted set matches during its code exchange. When one changes, change
+    # both in the same change.
     scopes: list[str] = [
         "openid",
         "https://www.googleapis.com/auth/userinfo.email",

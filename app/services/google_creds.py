@@ -1,7 +1,8 @@
 """Builds Google API clients for a user.
 
-Post issue #12: credentials come from Firestore + KMS (firestore_creds),
-not Secret Manager. Endpoint code is unchanged — same service_for_user
+Post issue #12: credentials come from Firestore + KMS (firestore_creds) --
+this service reads and decrypts a refresh token the frontend already wrote,
+it never writes one. Endpoint code is unchanged — same service_for_user
 signature as before, so gmail.py / calendar.py / drive.py / docs.py
 don't need to be touched.
 """
