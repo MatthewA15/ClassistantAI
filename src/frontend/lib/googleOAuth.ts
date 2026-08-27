@@ -39,12 +39,63 @@ export const GOOGLE_SCOPES = [
   "https://www.googleapis.com/auth/drive.file",
 ] as const;
 
+/**
+ * This app's own public origin, with no trailing slash.
+ *
+ * Configured rather than derived, and that is the point. On Cloud Run the
+ * container is addressed as `0.0.0.0:8080` from inside, so anything built from
+ * the incoming request -- `request.nextUrl.origin`, the `Host` header -- yields
+ * that internal address and produces links no browser can follow. Only the
+ * deployment knows the public name, so only the deployment gets to say it.
+ */
+export function appBaseUrl(): string {
+  const base = process.env.NEXT_PUBLIC_APP_URL;
+  if (!base) throw new Error("NEXT_PUBLIC_APP_URL is not set");
+  return base.replace(/\/$/, "");
+}
+
 /** Where Google sends the student back. Must match the connector's
  *  OAUTH_REDIRECT_URI byte for byte, or the code exchange fails. */
 export function redirectUri(): string {
-  const base = process.env.NEXT_PUBLIC_APP_URL;
-  if (!base) throw new Error("NEXT_PUBLIC_APP_URL is not set");
-  return `${base.replace(/\/$/, "")}/onboarding/callback`;
+  return `${appBaseUrl()}/onboarding/callback`;
+}
+
+/**
+ * An identity token for calling the connector, or null when there is nobody to
+ * ask for one.
+ *
+ * The connector is a private Cloud Run service: it exchanges authorisation
+ * codes and writes refresh tokens to Secret Manager, so it is not something to
+ * leave open to the internet. Cloud Run authorises those calls with an OIDC
+ * token whose audience is the receiving service's URL, and on Cloud Run the
+ * metadata server mints one for the runtime service account for free -- no
+ * dependency, no key, nothing to rotate.
+ *
+ * Returns null off GCP, where there is no metadata server. That keeps local
+ * development running unauthenticated instead of crashing, and the connector's
+ * own 403 is a clearer report of that than a fetch error would be.
+ */
+export async function connectorIdToken(): Promise<string | null> {
+  const url =
+    "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity" +
+    `?audience=${encodeURIComponent(connectorBaseUrl())}`;
+  try {
+    const res = await fetch(url, {
+      headers: { "Metadata-Flavor": "Google" },
+      cache: "no-store",
+      // Off GCP this name does not resolve, but a hostile DNS wildcard could
+      // make it hang. The call is to a link-local address when it is real.
+      signal: AbortSignal.timeout(2_000),
+    });
+    if (!res.ok) {
+      console.error("metadata identity token failed", res.status);
+      return null;
+    }
+    return (await res.text()).trim() || null;
+  } catch {
+    // No metadata server: local development.
+    return null;
+  }
 }
 
 export function clientId(): string {

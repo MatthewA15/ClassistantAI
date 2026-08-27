@@ -101,6 +101,56 @@ consent copy in `ScopeList` was saying "send email you have approved" and has
 been corrected. Consent copy that overstates the grant fails app review and is
 untrue to the student besides.
 
+### The connector is private, and the call to it must be signed
+
+`classistant-connectors` is **not** `--allow-unauthenticated`. It exchanges
+authorisation codes and writes refresh tokens to Secret Manager, so an open
+endpoint would be the wrong posture regardless of what the contract says.
+
+That means the server-to-server call from `/onboarding/callback` has to carry an
+OIDC identity token, and two things must line up or Cloud Run answers **403 with
+an HTML error page before the connector runs at all**:
+
+1. **The token.** `connectorIdToken()` asks the Cloud Run metadata server for
+   one, with `audience` set to the connector's own base URL — the audience is
+   checked, so the connector's URL is the only value that works. No library and
+   no key: the metadata server mints it for whatever service account the app
+   runs as. Off GCP it returns `null`, which keeps local development running.
+2. **The binding.** That service account needs `roles/run.invoker` **on the
+   connector**:
+
+   ```
+   gcloud run services add-iam-policy-binding classistant-connectors \
+     --region=us-central1 --project=classisstant \
+     --member="serviceAccount:firebase-app-hosting-compute@classisstant.iam.gserviceaccount.com" \
+     --role="roles/run.invoker"
+   ```
+
+> [!WARNING]
+> The frontend runs as **`firebase-app-hosting-compute@`**, the runtime compute
+> account. It is *not* `service-<number>@gcp-sa-firebaseapphosting.iam...`,
+> which is App Hosting's build-and-deploy **service agent** and never makes
+> runtime requests. Granting invoker to the agent looks right in the console and
+> changes nothing — that exact mistake produced two hours of `error=exchange` on
+> 2026-08-27. Check with
+> `gcloud run services describe classistant --format='value(spec.template.spec.serviceAccountName)'`.
+
+A `gcloud run deploy` without `--allow-unauthenticated` silently resets the
+policy, so if the grant starts failing after a connector redeploy, re-check the
+binding before anything else.
+
+### Redirects out of the callback must not be built from the request
+
+`back()` builds its URL from `appBaseUrl()` (`NEXT_PUBLIC_APP_URL`), never from
+`request.nextUrl.origin`. On Cloud Run the container is addressed as
+`0.0.0.0:8080` from inside, so a request-derived origin sends the student to
+`https://0.0.0.0:8080/onboarding` — unreachable, and Safari reports it as
+"restricted network port", which names neither the cause nor the fix. It is
+correct in local development, which is the only reason it survived review.
+
+This hit the **success** redirect too, not only the error paths: a student who
+granted access perfectly still dead-ended on a browser error page.
+
 ## The two collections
 
 ```
