@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { SignInRejected, clearSession, createSession } from "@/lib/authSession";
-import { getUserByAuthUid } from "@/lib/users";
+import { ensureUser, getUser } from "@/lib/users";
 
 /**
  * Turns a Firebase ID token into a session cookie, and back again.
@@ -49,10 +49,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "We could not sign you in." }, { status: 500 });
   }
 
+  // The document is born here, at the first verified number, and this is the
+  // whole point of keying by uid: before the rekey there was no id to write
+  // under until the Google grant completed, so a student who stopped after the
+  // SMS left nothing behind. Insert-only, so a returning student keeps their
+  // school, consent, and grant.
+  await ensureUser({ uid: session.uid, phoneNumber: session.phone });
+
   // A returning student may already have finished the grant on a previous
-  // visit, in which case the consent screen is not shown again. Absent is the
-  // normal case: the document is not created until the grant completes.
-  const record = await getUserByAuthUid(session.uid);
+  // visit, in which case the consent screen is not shown again.
+  const record = await getUser(session.uid);
 
   return NextResponse.json({
     phone: session.phone,

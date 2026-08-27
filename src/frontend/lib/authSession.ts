@@ -44,12 +44,12 @@ const COOKIE_OPTIONS = {
 
 export type AuthSession = {
   /**
-   * The Firebase uid. This is who is signed in.
+   * The Firebase uid. This is who is signed in, and it is also the id every
+   * Firestore document is keyed by, so it is the only id the app has.
    *
-   * It is NOT the id the Firestore documents are keyed by. Those are keyed by
-   * the Google `sub`, which does not exist until the student completes the
-   * access grant, so a signed-in student may legitimately have no document yet.
-   * `getUserByAuthUid` is the way across once they do.
+   * It used to be neither: documents were keyed by the Google `sub` and this
+   * had to be translated through an indexed query on every read. See the header
+   * of lib/users.ts for why that was undone.
    */
   uid: string;
   /** E.164, verified by Google via the SMS. The reason to trust it is that a

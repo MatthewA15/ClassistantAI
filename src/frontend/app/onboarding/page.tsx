@@ -4,7 +4,7 @@ import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
 import { OnboardingFrame, WizardSkeleton } from "@/components/onboarding/shell";
 import { getSchool } from "@/data/schools";
 import { getSession } from "@/lib/authSession";
-import { getUserByAuthUid } from "@/lib/users";
+import { getUser } from "@/lib/users";
 
 export const metadata: Metadata = {
   title: "Get set up",
@@ -19,7 +19,7 @@ export const dynamic = "force-dynamic";
 /**
  * The page itself is synchronous now, and that is the point.
  *
- * It used to await getSession() and getUserByAuthUid() in this function body,
+ * It used to await getSession() and the user read in this function body,
  * above the Suspense boundary. A boundary with nothing suspending under it
  * streams nothing, so the browser held on the previous page until Firebase
  * Admin had verified the session cookie -- a network call, because checkRevoked
@@ -64,10 +64,10 @@ async function SignedInWizard() {
   //
   // Three states, not two, and the wizard opens on a different step for each:
   // nobody here, a verified number with no access grant, or both. The document
-  // read is what distinguishes the last two, and it only exists once the grant
-  // has happened.
+  // exists from the moment the number was verified, so what distinguishes the
+  // last two is `googleConnected` on it, not whether it is there at all.
   const session = await getSession();
-  const record = session ? await getUserByAuthUid(session.uid) : null;
+  const record = session ? await getUser(session.uid) : null;
 
   const account = session
     ? {
