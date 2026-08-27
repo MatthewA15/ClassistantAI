@@ -1,5 +1,9 @@
 """App configuration.
 
+(`docs/...` paths in this service are relative to the repo root, three
+levels above src/backend/connectors-api/, because the encryption contract
+and the ADRs are shared with the frontend rather than owned by this service.)
+
 Design note (see docs/adr/0004 and docs/ENCRYPTION_CONTRACT.md): the
 frontend builds the consent URL, runs the OAuth code exchange, and
 envelope-encrypts the resulting refresh token itself -- this service never

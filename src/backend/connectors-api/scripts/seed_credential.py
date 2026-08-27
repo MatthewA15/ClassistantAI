@@ -14,6 +14,10 @@ is imported by the service at runtime.
 
 Usage
 -----
+Run from the service root, src/backend/connectors-api/. Paths in this file
+are relative to it, except `docs/...`, which is relative to the repo root
+three levels further up.
+
     # 1. Get a refresh token for a real Google account (one-off, interactive)
     python scripts/seed_credential.py --get-token
 

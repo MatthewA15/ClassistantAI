@@ -3,6 +3,10 @@
 format below -- and docs/adr/0004's second amendment for why this module
 went back to decrypt-only after briefly doing both directions).
 
+(`docs/...` paths in this service are relative to the repo root, three levels
+above src/backend/connectors-api/, because those documents are shared with
+the frontend; `app/...` and `tests/...` are relative to this service.)
+
 This service is the READ side of the envelope only. The frontend (Next.js)
 runs the OAuth code exchange, encrypts the resulting refresh token, and
 writes the ciphertext to Firestore; this module never produces a credential,
@@ -30,6 +34,18 @@ Notes:
     ever reads the google_refresh_token one; it has no function, constant, or
     branch that names school_password, and no IAM grant to decrypt it either
     way.
+  - TODO(matthew): decide whether the read path should consult the `access`
+    map on the parent users/{uid} document. The frontend records the scopes
+    the student actually agreed to there (gmail_read, gmail_drafts, calendar,
+    drive_read, docs -> bool), but the Google grant is a single token covering
+    the whole scope set, so those switches are only real if we enforce them.
+    Right now nothing here or in the routers reads them: a student who
+    declined Drive still gets the Drive endpoints served, because the token
+    carries the scope regardless. Deliberately not implemented in this change
+    -- enforcement belongs at the router/dependency layer, not inside a
+    credential decoder, and the field-name mapping (endpoint -> access key)
+    is a product decision, not a mechanical one. See the README's "What the
+    frontend writes to Firestore" section.
 """
 
 import base64

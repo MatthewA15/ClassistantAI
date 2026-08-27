@@ -1,19 +1,30 @@
 """Unit tests for app/services/firestore_creds.py.
 
+(`docs/...` paths below are relative to the repo root, three levels above
+src/backend/connectors-api/; every other path is relative to this service.)
+
 This service is decrypt-only (docs/ENCRYPTION_CONTRACT.md, docs/adr/0004's
 second amendment) -- these tests cover the read path against Firestore/KMS
 mocks (never touch real GCP) plus a capability-absence test asserting the
 write/encrypt/school_password code that used to live here stays gone.
 
-The round-trip test builds its fixture with real AES-256-GCM via
-`cryptography`, byte-for-byte the way docs/ENCRYPTION_CONTRACT.md specifies
-the frontend must: 32-byte key, 12-byte IV, ciphertext||tag, base64
-everywhere, KMS plaintext = base64 *text* of the raw key. That fixture is
-the actual interoperability contract -- if the frontend's real output ever
-stops matching it, this test is what catches it, not a hand-wavy stub.
+Two tests carry the interoperability contract, and they are not
+interchangeable:
+
+  * the round-trip test builds its own fixture with real AES-256-GCM via
+    `cryptography`, byte-for-byte the way docs/ENCRYPTION_CONTRACT.md says
+    the frontend must: 32-byte key, 12-byte IV, ciphertext||tag, base64
+    everywhere, KMS plaintext = base64 *text* of the raw key. Because it
+    writes the bytes it then reads, it proves this service is self-consistent
+    with the written spec -- and nothing more.
+  * the frozen-fixture test decrypts a document the *frontend* actually
+    wrote, captured from the Firestore emulator. That is the one that fails
+    if the frontend's encrypter drifts. It skips until the fixture is
+    captured; see tests/fixtures/README.md.
 """
 import ast
 import base64
+import json
 import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -112,6 +123,70 @@ def test_decrypt_round_trip_against_contract_shaped_fixture(aad_source, monkeypa
         .assert_called_once_with(fc.CREDENTIALS_SUBCOLLECTION)
     firestore_client.collection.return_value.document.return_value.collection \
         .return_value.document.assert_called_once_with(fc.REFRESH_TOKEN_TYPE)
+
+
+# --------------------------------------------------------------------------
+# The same round trip, but against bytes this service did not produce.
+#
+# The test above proves the read path is self-consistent: it builds its own
+# ciphertext to the contract and reads it back. That cannot catch the failure
+# that actually matters -- the frontend's encrypter drifting from
+# docs/ENCRYPTION_CONTRACT.md. Only bytes captured from a real write can.
+#
+# TODO(matthew): capture tests/fixtures/google_refresh_token.json from a
+# credential document the frontend wrote into the Firestore emulator. Until
+# that file exists this test skips, so the suite stays green in the meantime.
+# See tests/fixtures/README.md for what to capture and, importantly, what not
+# to: the captured document must encrypt a throwaway string, never a live
+# refresh token, because the fixture has to carry the dkey to be decryptable
+# without KMS.
+# --------------------------------------------------------------------------
+
+FIXTURE_PATH = Path(__file__).resolve().parent / "fixtures" / "google_refresh_token.json"
+
+
+@pytest.mark.skipif(
+    not FIXTURE_PATH.exists(),
+    reason=f"{FIXTURE_PATH.name} not captured yet -- see tests/fixtures/README.md",
+)
+def test_decrypts_frozen_document_captured_from_the_emulator(monkeypatch):
+    """Decrypt a frozen real document, with only the KMS unwrap mocked.
+
+    Everything else is the production read path over production bytes. If the
+    frontend ever changes IV encoding, moves the GCM tag, or starts wrapping
+    the dkey as raw bytes instead of base64 text, this is the test that goes
+    red -- the hand-built round trip above would not notice.
+    """
+    fixture = json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
+    document = fixture["document"]
+    dkey = base64.b64decode(fixture["dkey_b64"], validate=True)
+    user_id = fixture["user_id"]
+
+    # The fixture is only meaningful if it really is contract-shaped.
+    assert len(dkey) == 32, "fixture dkey is not AES-256"
+    assert len(base64.b64decode(document["iv"], validate=True)) == 12, (
+        "fixture iv is not the 12 bytes contract #4 requires"
+    )
+
+    monkeypatch.setattr(fc.settings, "kms_aad_source", fixture.get("aad_source", "user_id"))
+
+    firestore_client = _mock_firestore(document)
+    # Contract #5: what KMS hands back is the base64 *text* of the raw dkey.
+    kms_client = _mock_kms(base64.b64encode(dkey))
+
+    with patch.object(fc, "_firestore_client", return_value=firestore_client), \
+         patch.object(fc, "_kms_client", return_value=kms_client):
+        fetched = fc._fetch_credential_doc(user_id)
+        credential = fc._decrypt_refresh_token(fetched, user_id)
+
+    assert credential == fixture["plaintext"]
+
+    # And the AAD this service replays must be what the frontend wrapped with.
+    sent_aad = kms_client.decrypt.call_args.kwargs["request"].get(
+        "additional_authenticated_data"
+    )
+    expected_aad = user_id.encode("utf-8") if fixture.get("aad_source", "user_id") == "user_id" else None
+    assert sent_aad == expected_aad
 
 
 def test_dkey_must_be_base64_text_not_raw_bytes():

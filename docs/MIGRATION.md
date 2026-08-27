@@ -3,6 +3,13 @@
 Branch suggestion: `matthew/firestore-creds`. Conventional commit:
 `feat(creds): replace secret manager with firestore + kms envelope decryption`
 
+> **Paths in this document are relative to `src/backend/connectors-api/`**, the
+> connector service's own root — so `app/config.py` here means
+> `src/backend/connectors-api/app/config.py` from the repo root. This is a
+> record of the migration brief as it was written, kept verbatim rather than
+> rewritten line by line; only this note was added when the service was moved
+> back under `src/backend/`.
+
 ## 1. Delete
 
 - `app/routers/oauth.py` (the `/login` + `/callback` router) — login now lives

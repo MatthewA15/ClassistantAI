@@ -164,10 +164,10 @@ insert, matching the `setStamped` helper already in `lib/users.ts`.
 ## 7. Scopes must stay in lockstep
 
 `GOOGLE_SCOPES` in `lib/googleOAuth.ts` must remain byte-identical to `scopes`
-in the connector's `app/config.py` — currently nine entries including
-`drive.readonly`. Google validates the granted set during the exchange; a
-mismatch either drops permissions the agent needs or throws outright. Change
-them in the same commit, both sides.
+in the connector's `src/backend/connectors-api/app/config.py` — currently
+nine entries including `drive.readonly`. Google validates the granted set
+during the exchange; a mismatch either drops permissions the agent needs or
+throws outright. Change them in the same commit, both sides.
 
 Keep `access_type=offline` and `prompt=consent` on the consent URL. Without
 the first there is no refresh token at all; without the second a returning
@@ -193,7 +193,8 @@ longer runs the exchange. The UID is what the session carries, what the
 `users` document is keyed by, and what the agent will send. One identifier
 end to end.
 
-`API_CONTRACT.md` will be updated to say so (v0.5, breaking).
+`src/backend/connectors-api/API_CONTRACT.md` will be updated to say so
+(v0.5, breaking).
 
 ---
 

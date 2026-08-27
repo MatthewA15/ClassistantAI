@@ -8,7 +8,7 @@
 The ADK agent and the connector layer are owned by different teammates on a 3-day timeline. Coupling both in one codebase would serialize work.
 
 ## Decision
-Connectors ship as their own FastAPI service on Cloud Run. The ADK agent calls it over HTTP; the teammate builds dummy tools against `API_CONTRACT.md` today and swaps in the live base URL when deployed. The contract is frozen for Aug 22 (additive changes only).
+Connectors ship as their own FastAPI service on Cloud Run. The ADK agent calls it over HTTP; the teammate builds dummy tools against `src/backend/connectors-api/API_CONTRACT.md` today and swaps in the live base URL when deployed. The contract is frozen for Aug 22 (additive changes only).
 
 ## Alternatives considered
 - **Single monorepo/service** — simpler deploy, but blocks parallel work and mixes agent and connector concerns.
