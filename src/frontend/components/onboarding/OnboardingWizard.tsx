@@ -686,13 +686,32 @@ export function OnboardingWizard({ connected }: { connected: ConnectedAccount | 
               </SceneCard>
             </div>
 
-            <Field label="Portal username or student number" htmlFor="portalUser" error={errors.portalUser}>
+            {/*
+              The placeholder is generic on purpose.
+
+              It used to be `localPart` -- the student's own name, taken from
+              the address they just connected. Rendered in placeholder grey it
+              reads exactly like a filled-in field, so a student who had typed
+              only the password saw two complete fields and a Continue button
+              that would not respond, with nothing on screen naming the empty
+              one. The suggestion is worth making, so it moved to the hint,
+              where it is offered rather than impersonated.
+            */}
+            <Field
+              label="Portal username or student number"
+              htmlFor="portalUser"
+              error={errors.portalUser}
+              hint={
+                localPart
+                  ? `Often the same as your school email name, ${localPart} — but some schools want your student number instead.`
+                  : "Some schools use a username here, others your student number."
+              }
+            >
               <TextInput
                 id="portalUser"
                 name="portalUser"
                 value={portalUser}
                 onChange={(e) => setPortalUser(e.target.value)}
-                placeholder={localPart || "yourname"}
                 autoComplete="off"
                 invalid={Boolean(errors.portalUser)}
               />
