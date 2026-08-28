@@ -24,6 +24,10 @@ import "server-only";
  * and Google validates the granted set during the code exchange. Request a
  * different set here and the exchange either drops permissions the agent needs
  * or throws outright. When config.py changes, change this in the same commit.
+ *
+ * Narrowing this list is safe for students who already consented: google-auth
+ * only raises on a scope it asked for and did not get, so an older, broader
+ * grant still refreshes. Widening it is the direction that needs re-consent.
  */
 export const GOOGLE_SCOPES = [
   "openid",
@@ -32,11 +36,37 @@ export const GOOGLE_SCOPES = [
   // Drafts only. There is deliberately no gmail.send anywhere in this product:
   // the agent proposes mail, a human sends it.
   "https://www.googleapis.com/auth/gmail.compose",
-  "https://www.googleapis.com/auth/calendar",
+  // Events only. Neither of these can delete a calendar, change its sharing, or
+  // touch anything that is not an event, which the full `calendar` scope this
+  // replaced could all do.
+  //
+  // They are also not equal, and the difference is worth knowing before editing
+  // either line. `calendar.events` is the superset: read and write events on any
+  // calendar the student can access. `calendar.events.owned` narrows the same
+  // powers to calendars they own, so it grants nothing the line above does not
+  // already grant, and is requested to state the intent rather than to add
+  // reach. Google renders the first as "View and edit events on all your
+  // calendars" and the second as "...and delete events on Google calendars you
+  // own"; the two describe the same API surface in different words, because
+  // Google publishes no events scope that can create without also being able to
+  // delete. What actually holds the line is the connector, which calls
+  // events().list and events().insert and owns no delete path at all.
+  "https://www.googleapis.com/auth/calendar.events",
+  "https://www.googleapis.com/auth/calendar.events.owned",
+  // Read only, and both of them: drive.py calls files().list, files().get,
+  // export_media and get_media, and nothing that writes.
+  //
+  // `drive.file` is deliberately absent and must not come back without an
+  // argument. It was the only scope in this set that could delete a file, and
+  // docs/design/17 records that it was buying nothing: documents.create makes
+  // the Doc by itself, and drive.readonly already covers reading one back.
   "https://www.googleapis.com/auth/drive.metadata.readonly",
   "https://www.googleapis.com/auth/drive.readonly",
+  // `documents`, NOT `documents.readonly`. The Docs API has no delete method,
+  // so the full scope destroys nothing, and the read-only variant cannot call
+  // documents().create -- which is the whole feature: "Start outlines in Docs"
+  // in data/access.ts is a promise to create a document.
   "https://www.googleapis.com/auth/documents",
-  "https://www.googleapis.com/auth/drive.file",
 ] as const;
 
 /**
