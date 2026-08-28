@@ -5,13 +5,13 @@ class ErrorResponse(BaseModel):
     error: str
 
 
-class MethodNotAllowedResponse(ErrorResponse):
-    error: str = "Method not allowed."
+class SendRequest(BaseModel):
+    user_id: str
+    message: str
 
 
-class ForbiddenResponse(ErrorResponse):
-    error: str = "Forbidden. The request could not be verified as originating from Twilio."
-
-
-class BadRequestResponse(ErrorResponse):
-    error: str = "Bad request. Missing required Twilio form fields."
+class SendResponse(BaseModel):
+    ok: bool = True
+    message_sid: str
+    to: str
+    body: str
