@@ -118,18 +118,31 @@ export function OnboardingFrame({
 export function Shell({
   phase,
   school,
+  showSignIn = false,
   children,
 }: {
   /** Index into PHASES. Also the count of phases already finished. */
   phase: number;
   school?: School;
+  /**
+   * Whether to offer the way back in to somebody who already has an account.
+   *
+   * A prop rather than something derived from `phase`, because the phases do
+   * not draw the line in the right place: phase 1 covers the number, the Google
+   * grant, and the portal password, and this belongs under the first of those
+   * three and nowhere near the other two. Offering "Sign in" to a student who
+   * has already verified their number two screens ago is offering to send them
+   * back to the beginning of what they are in the middle of.
+   */
+  showSignIn?: boolean;
   children: React.ReactNode;
 }) {
   return (
-    // One column. The 17rem rail that used to sit on the left held a logo and a
-    // school name, and once the numbered steps came out of it there was not
-    // enough left to justify a quarter of the viewport. Both survivors moved
-    // into the card's own top row, so the form gets the full width.
+    <>
+    {/* One column. The 17rem rail that used to sit on the left held a logo and
+        a school name, and once the numbered steps came out of it there was not
+        enough left to justify a quarter of the viewport. Both survivors moved
+        into the card's own top row, so the form gets the full width. */}
     <div className="mx-auto w-full max-w-[58rem] rounded-[1.4rem] bg-white p-6 shadow-soft ring-1 ring-line sm:p-9">
       {/* The wordmark used to sit here. It said where you were, which the
           student already knows, and said nothing about whether to keep going.
@@ -167,6 +180,32 @@ export function Shell({
       <Progress phase={phase} />
       {children}
     </div>
+
+    {/*
+      The door for somebody who is already set up.
+
+      Under the card rather than inside it, and quiet rather than a button. This
+      page has exactly one job, which is to get a new student through four
+      screens, and a prominent second call to action at the top of it is an
+      invitation to leave the flow. But a returning student who lands here -- and
+      they do, because /onboarding was the only door this site had until the
+      dashboard existed -- needs to be told there is a shorter way, rather than
+      being walked back through a wizard that will recognise them halfway.
+
+      It is not conditional on being signed out. It cannot be: this file has no
+      "use client" and no session, deliberately, so that app/onboarding/loading.tsx
+      can render the same card during a prefetch (docs/design/16). `showSignIn`
+      is decided by the caller, which does know.
+    */}
+    {showSignIn ? (
+      <p className="mx-auto mt-5 w-full max-w-[58rem] text-center text-[0.88rem] text-body sm:text-left">
+        Already set up?{" "}
+        <Link href="/signin" className="font-semibold text-brand-600 hover:underline">
+          Sign in with your number
+        </Link>
+      </p>
+    ) : null}
+    </>
   );
 }
 
@@ -258,7 +297,11 @@ function Progress({ phase }: { phase: number }) {
  */
 export function WizardSkeleton() {
   return (
-    <Shell phase={0}>
+    // showSignIn, because the skeleton stands in for the school picker or the
+    // number screen, and both of those offer it. Leaving it out here would make
+    // the line appear as the real card lands, which is a layout shift in the
+    // one place this file exists to prevent one.
+    <Shell phase={0} showSignIn>
       <div aria-hidden="true" className="min-h-[24rem] animate-pulse motion-reduce:animate-none">
         <div className="h-8 w-3/5 rounded-lg bg-line-soft" />
         <div className="mt-7 grid items-center gap-5 sm:grid-cols-2">

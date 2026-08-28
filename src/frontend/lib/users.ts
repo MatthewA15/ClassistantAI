@@ -1,5 +1,6 @@
 import "server-only";
 
+import { NOTIFICATIONS_FIELD } from "@/data/notifications";
 import { FieldValue, firestore } from "@/lib/firebaseAdmin";
 
 /**
@@ -262,4 +263,180 @@ export async function markOnboardingComplete(userId: string): Promise<void> {
     onboarding_complete: true,
     onboarding_completed_at: FieldValue.serverTimestamp(),
   });
+}
+
+/* -------------------------------------------------------------------------
+   The dashboard's half of this file.
+
+   `UserRecord` above is what onboarding needs in order to decide which step to
+   open on: four fields and two booleans. The dashboard needs everything a
+   student can see or change about their own account, which is a different and
+   much wider read, and collapsing the two into one type would mean the
+   onboarding page paying for fields it never looks at on a route that is
+   already fighting for its first byte (docs/design/16).
+
+   So there are two readers over one document, on purpose.
+   ------------------------------------------------------------------------- */
+
+/**
+ * Everything the signed-in area shows or edits.
+ *
+ * Deliberately a plain serialisable object with no Firestore types in it. It
+ * crosses from a server component into client components, so a `Timestamp` or a
+ * `DocumentSnapshot` anywhere in here would throw at the boundary.
+ */
+export type AccountRecord = {
+  userId: string;
+  /** The nickname, or whatever onboarding fell back to. Never null once
+   *  onboarding is complete, because upsertUser defaults it to the local part
+   *  of the address. */
+  name: string | null;
+  email: string | null;
+  phoneNumber: string | null;
+  schoolId: string | null;
+  /** The portal login name. Not a credential: it is an identifier the school
+   *  hands out, which is why it sits on this document. See recordSchoolUsername. */
+  schoolUsername: string | null;
+  googleSub: string | null;
+  googleConnected: boolean;
+  /** When the grant happened, in millis, or null. Shown so a student can tell
+   *  a fresh connection from one made last September. */
+  googleConnectedAt: number | null;
+  onboardingComplete: boolean;
+  createdAt: number | null;
+  /**
+   * The access switches, keyed by the Firestore field names in data/access.ts.
+   * Missing keys mean the student onboarded before that switch existed; the
+   * dashboard fills them from `defaultAccess()`, which is where the grant
+   * actually is.
+   */
+  access: Record<string, boolean>;
+  /** The raw notifications map. Parsed by readNotifications in
+   *  data/notifications.ts rather than here, so the defaulting rules live with
+   *  the field definitions instead of being split across two files. */
+  notifications: unknown;
+  /** Whether the student ticked the marketing box during onboarding. The only
+   *  one of the three consents that is a live preference: the other two are
+   *  evidence of something that happened and are not editable. */
+  marketingConsent: boolean;
+};
+
+/** Millis, or null. Firestore hands back a Timestamp, `null` while a
+ *  serverTimestamp write is still pending, or nothing at all on an old
+ *  document, and all three have to survive this. */
+function millis(value: unknown): number | null {
+  if (value && typeof value === "object" && "toMillis" in value) {
+    return (value as { toMillis: () => number }).toMillis();
+  }
+  return null;
+}
+
+export async function getAccount(uid: string): Promise<AccountRecord | null> {
+  const snap = await firestore().collection("users").doc(uid).get();
+  if (!snap.exists) return null;
+  const data = snap.data() ?? {};
+
+  const access: Record<string, boolean> = {};
+  if (data.access && typeof data.access === "object") {
+    for (const [key, value] of Object.entries(data.access as Record<string, unknown>)) {
+      if (typeof value === "boolean") access[key] = value;
+    }
+  }
+
+  return {
+    userId: snap.id,
+    name: typeof data.name === "string" ? data.name : null,
+    email: typeof data.email === "string" ? data.email : null,
+    phoneNumber: typeof data.phone_number === "string" ? data.phone_number : null,
+    schoolId: typeof data.school_id === "string" ? data.school_id : null,
+    schoolUsername: typeof data.school_username === "string" ? data.school_username : null,
+    googleSub: typeof data.google_sub === "string" ? data.google_sub : null,
+    googleConnected: Boolean(data.google_connected_at),
+    googleConnectedAt: millis(data.google_connected_at),
+    onboardingComplete: data.onboarding_complete === true,
+    createdAt: millis(data.created_at),
+    access,
+    notifications: data[NOTIFICATIONS_FIELD] ?? null,
+    marketingConsent:
+      typeof data.consent === "object" &&
+      data.consent !== null &&
+      (data.consent as Record<string, { granted?: unknown }>).marketing?.granted === true,
+  };
+}
+
+/**
+ * Rewrites the access switches, and only those.
+ *
+ * A whole-map `set` rather than a per-field merge, because absence is
+ * meaningful here in the same way it is in the onboarding form: a switch the
+ * caller did not include is one the student turned off, and merging would leave
+ * the old `true` in place. The caller is expected to send the complete set,
+ * which the dashboard does by rendering every ACCESS_ITEM.
+ *
+ * Note what this does NOT do. It changes nothing at Google. The grant is one
+ * token covering the whole scope set, so this is Classistant binding itself,
+ * and every screen that writes through here has to say so. See the note at the
+ * top of data/access.ts.
+ */
+export async function updateAccessSwitches(
+  uid: string,
+  access: Record<string, boolean>,
+): Promise<void> {
+  await setStamped("users", uid, { access });
+}
+
+/** Rewrites the notification preferences. Same whole-map reasoning as above:
+ *  the settings form submits every field, so a partial merge could only ever
+ *  preserve a value the student had just cleared. */
+export async function updateNotificationPrefs(
+  uid: string,
+  prefs: Record<string, unknown>,
+): Promise<void> {
+  await setStamped("users", uid, { [NOTIFICATIONS_FIELD]: prefs });
+}
+
+/**
+ * Changes what the agent calls the student.
+ *
+ * Only the display name. The address and the number are not editable through
+ * here and must not become so: each was proven by a round trip Google or
+ * Firebase ran, and a text field that overwrites either would let a student
+ * hand themselves an identity nobody verified. Changing the address means
+ * reconnecting at Google; changing the number means verifying a new one.
+ */
+export async function updateDisplayName(uid: string, name: string): Promise<void> {
+  await setStamped("users", uid, { name });
+}
+
+/** Records the student's current answer on marketing email. Written beside the
+ *  original consent rather than over it: `consent.marketing` is dated evidence
+ *  of what they agreed to at signup and stays as it is, while this is what they
+ *  want today. A CASL record that can be edited afterwards is not a record. */
+export async function updateMarketingPreference(
+  uid: string,
+  granted: boolean,
+): Promise<void> {
+  await setStamped("users", uid, {
+    marketing_opt_in: granted,
+    marketing_opt_in_at: FieldValue.serverTimestamp(),
+  });
+}
+
+/**
+ * Whether a sealed portal password exists for this student.
+ *
+ * A `.get()` on the document and a look at whether it is there. It cannot tell
+ * you anything about the password itself, and that is not a limitation of this
+ * function: this app holds encrypt on `classistant-password-key` and decrypt on
+ * nothing, so there is no version of this that could read one. See the header
+ * of lib/portalCredentials.ts.
+ */
+export async function hasPortalPassword(uid: string): Promise<boolean> {
+  const snap = await firestore()
+    .collection("users")
+    .doc(uid)
+    .collection("credentials")
+    .doc("school_password")
+    .get();
+  return snap.exists;
 }
