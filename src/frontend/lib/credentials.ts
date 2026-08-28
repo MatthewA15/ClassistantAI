@@ -34,8 +34,13 @@ import { setStampedRef } from "@/lib/users";
  * wrapped under `classistant-password-key` is unreadable to it no matter what
  * bug or compromise it suffers. Sending both through one key would collapse
  * that guarantee into a code review promise.
+ *
+ * Exported so the mapping itself can be asserted. It is the one part of this
+ * file with no observable failure: wrapping a password under the wrong key
+ * succeeds, writes a document that looks perfectly correct, and is only
+ * discovered when the connector turns out to be able to read it.
  */
-const KEY_FOR: Record<CredentialType, string> = {
+export const KEY_FOR: Record<CredentialType, string> = {
   google_refresh_token: "classistant-key",
   school_password: "classistant-password-key",
 };

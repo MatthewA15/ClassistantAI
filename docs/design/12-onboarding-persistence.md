@@ -218,6 +218,15 @@ stamps `created_at` only on insert.
 
 ## Why the portal password is in Secret Manager
 
+> **Superseded by [19 Portal password envelope](19-portal-password-envelope.md).**
+> The password is envelope-encrypted into
+> `users/{uid}/credentials/school_password` now, under `classistant-password-key`,
+> and Secret Manager is out of this path entirely. Two of the three reasons
+> below stopped being true when issue #12 moved refresh tokens out of Secret
+> Manager as well; 19 says which, and what replaced the third. The reasoning
+> below is kept because the trade it describes is still the right one to
+> understand, and because the conclusion changed for reasons outside it.
+
 This is **reversible encryption, not hashing**. The agent replays the password
 into the school's LMS overnight, so a one-way hash is not available to us the way
 it would be for a password we authenticate against ourselves.

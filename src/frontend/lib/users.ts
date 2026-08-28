@@ -1,13 +1,12 @@
 import "server-only";
 
 import { FieldValue, firestore } from "@/lib/firebaseAdmin";
-import { secretName, storePortalPassword } from "@/lib/portalCredentials";
 
 /**
- * The two onboarding collections.
+ * Where a student is written.
  *
- *   users/{uid}        profile + consent evidence
- *   credentials/{uid}  school portal username + a pointer to the password
+ *   users/{uid}                    profile, consent evidence, school identifiers
+ *   users/{uid}/credentials/{type} one sealed credential per type
  *
  * `uid` is the **Firebase Auth uid**, minted by phone sign-in.
  *
@@ -28,9 +27,14 @@ import { secretName, storePortalPassword } from "@/lib/portalCredentials";
  * are addressed by it. It is a field now, not an identity. Anything calling
  * `/users/{user_id}/...` must send `google_sub`, NOT the document id.
  *
- * There is no `password` field on `credentials`, deliberately. The password
- * lives in Secret Manager and the document holds only its resource name -- see
- * lib/portalCredentials.ts for why, and docs/design/12 for what was rejected.
+ * Nothing in this file writes a credential. There used to be a top-level
+ * `credentials/{uid}` document here holding a portal username and a Secret
+ * Manager pointer; ENCRYPTION_CONTRACT.md §8 retired it, and both of a
+ * student's credentials are now sealed documents in the subcollection above.
+ * lib/credentials.ts owns those, and it is the only module that can produce
+ * one. What is left here is the identifiers that are not secret, which is why
+ * `school_username` sits on the user document beside `school_id` and `email`.
+ * See docs/design/19-portal-password-envelope.md.
  */
 
 export type ConsentRecord = {
@@ -231,26 +235,26 @@ export async function recordGoogleConnection(args: {
 }
 
 /**
- * Writes the portal username to Firestore and the password to Secret Manager.
+ * The name the student signs in to their school portal with.
  *
- * Order matters: the secret is written first, so a failure leaves a stored
- * password with no document pointing at it (recoverable, and the name is
- * deterministic) rather than a document promising a credential that does not
- * exist (which the agent would fail on at 3am with no way to tell why).
+ * On the user document rather than in the credential envelope, because it is
+ * not a credential. It is an identifier the school hands out -- often the
+ * student number -- and it belongs with `school_id` and `email`, where anything
+ * holding `datastore.viewer` can read it without being able to open anything.
+ * Sealing it would also put a field in the credential document that
+ * ENCRYPTION_CONTRACT.md §3 does not list, and that document's shape is checked
+ * on the far side.
+ *
+ * Called by savePortalCredentials in lib/portalCredentials.ts, which owns the
+ * order the two halves are written in. Nothing else should call it: a username
+ * with no password behind it is a user document claiming a portal login that
+ * does not exist.
  */
-export async function savePortalCredentials(args: {
-  userId: string;
-  username: string;
-  password: string;
-}): Promise<void> {
-  await storePortalPassword(args.userId, args.password);
-
-  await setStamped("credentials", args.userId, {
-    user_id: args.userId,
-    username: args.username,
-    // A pointer, not a credential. Safe to read, log, and export.
-    secret_name: secretName(args.userId),
-  });
+export async function recordSchoolUsername(
+  userId: string,
+  username: string,
+): Promise<void> {
+  await setStamped("users", userId, { school_username: username });
 }
 
 export async function markOnboardingComplete(userId: string): Promise<void> {

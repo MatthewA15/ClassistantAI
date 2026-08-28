@@ -9,20 +9,16 @@ import { getSession } from "@/lib/authSession";
 import { FieldValue } from "@/lib/firebaseAdmin";
 import { buildAuthUrl, randomState } from "@/lib/googleOAuth";
 import { setPendingOAuth } from "@/lib/onboardingSession";
-import {
-  getUser,
-  markOnboardingComplete,
-  savePortalCredentials,
-  upsertUser,
-} from "@/lib/users";
+import { savePortalCredentials } from "@/lib/portalCredentials";
+import { getUser, markOnboardingComplete, upsertUser } from "@/lib/users";
 
 /**
  * Onboarding server actions.
  *
  * These are live now. `connectGoogle` starts the scope grant and
- * `completeOnboarding` writes to Firestore and Secret Manager. The pieces sit
- * in four places for a reason (docs/design/12-onboarding-persistence.md and
- * docs/design/15-firebase-auth.md):
+ * `completeOnboarding` writes the profile and seals the portal password. The
+ * pieces sit in four places for a reason (docs/design/12-onboarding-persistence.md
+ * and docs/design/15-firebase-auth.md):
  *
  *   /api/auth/session       Firebase Auth: who the student is
  *   this file               validation, and the two writes onboarding owns
@@ -131,10 +127,10 @@ export async function connectGoogle(
 }
 
 /**
- * Final submit. Writes both onboarding collections.
+ * Final submit. Writes the profile and the portal credential.
  *
- *   users/{uid}        profile + consent evidence
- *   credentials/{uid}  portal username + a Secret Manager pointer
+ *   users/{uid}                              profile, consent evidence, username
+ *   users/{uid}/credentials/school_password  the sealed password
  *
  * Identity comes from the session cookie and the user document, never from the
  * form. The form is client-supplied, and the whole point of the SMS round trip
@@ -193,10 +189,15 @@ export async function completeOnboarding(
   }
 
   // DELIBERATE, DO NOT REMOVE: the portal password is never logged, never
-  // echoed into a response, and never included in an error message. It now goes
-  // straight into Secret Manager via savePortalCredentials() below and nowhere
-  // else -- in particular it is never written to Firestore, because a document
-  // is readable by anything with datastore.user and a secret is not.
+  // echoed into a response, and never included in an error message. It goes
+  // straight into savePortalCredentials() below and nowhere else, and it exists
+  // in this process only long enough to be encrypted.
+  //
+  // It does reach Firestore now, which the previous version of this comment
+  // said it never would. What reaches Firestore is AES-256-GCM ciphertext under
+  // a data key wrapped by `classistant-password-key`, which this app can lock
+  // and cannot open -- so `datastore.user` on the document buys an attacker
+  // nothing. See lib/portalCredentials.ts and docs/design/19.
   //
   // It is stored reversibly, not hashed. The agent has to replay it into the
   // school portal overnight, so hashing is not an option here.
@@ -275,9 +276,9 @@ export async function completeOnboarding(
 
     await markOnboardingComplete(profile.userId);
   } catch (err) {
-    // Never let the error text reach the student: a Firestore or Secret Manager
-    // failure can echo back argument values, and one of the arguments here is a
-    // portal password.
+    // Never let the error text reach the student: a Firestore or KMS failure
+    // can echo back argument values, and one of the arguments here is a portal
+    // password.
     console.error("completeOnboarding failed", {
       userId: profile.userId,
       error: err instanceof Error ? err.message : "unknown",
