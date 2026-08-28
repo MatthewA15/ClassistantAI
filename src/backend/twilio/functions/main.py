@@ -12,6 +12,7 @@ from models import (
 from datetime import datetime, timezone
 from google.cloud import tasks_v2
 import json
+import uuid
 import logging
 
 logger = logging.getLogger(__name__)
@@ -19,11 +20,12 @@ logger = logging.getLogger(__name__)
 initialize_app()
 
 AGENT_URL = "https://us-east1-aiplatform.googleapis.com/v1/projects/classisstant/locations/us-east1/reasoningEngines/2528718414210400256"
-QUEUE_NAME = "classistant-messages-queue"
+AGENT_SERVICE_ACCOUNT_EMAIL = "classistant-agent@classisstant.iam.gserviceaccount.com"
 
 SERVICE_ACCOUNT_EMAIL = "classistant-twilio-webhook@classisstant.iam.gserviceaccount.com"
+QUEUE_NAME = "classistant-messages-queue"
 PROJECT_ID = environ.get("GOOGLE_CLOUD_PROJECT", "classisstant")
-PROJECT_LOCATION = environ.get("GOOGLE_CLOUD_LOCATION", "us-central")
+PROJECT_LOCATION = environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")
 
 
 def _get_validated_url(req: https_fn.Request) -> str:
@@ -33,7 +35,7 @@ def _get_validated_url(req: https_fn.Request) -> str:
     return urlunparse(parsed._replace(scheme="https"))
 
 
-@https_fn.on_request(max_instances=100)
+@https_fn.on_request(max_instances=100, service_account=SERVICE_ACCOUNT_EMAIL)
 def twilio_webhook(req: https_fn.Request) -> https_fn.Response:
     if req.method not in ["POST"]:
         return https_fn.Response(
@@ -61,7 +63,12 @@ def twilio_webhook(req: https_fn.Request) -> https_fn.Response:
             mimetype="application/json",
         )
 
-    session_id = datetime.now(timezone.utc).strftime("%Y-%b-%d")
+    # Deterministic session id per sender per calendar day: uuid5 (SHA-1) of
+    # ``phone_number:date`` under a fixed namespace yields a consistent UUID
+    # for the same sender+day, so all messages within a day share one session.
+    date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    session_id = str(uuid.uuid5(uuid.NAMESPACE_DNS,
+                     f"{phone_number}:{date_str}"))
 
     logger.debug(
         "User: %s, Session ID: %s, Message size: %d",
@@ -96,7 +103,7 @@ def twilio_webhook(req: https_fn.Request) -> https_fn.Response:
                     url=stream_url,
                     headers={"Content-type": "application/json"},
                     oauth_token=tasks_v2.OAuthToken(
-                        service_account_email=SERVICE_ACCOUNT_EMAIL
+                        service_account_email=AGENT_SERVICE_ACCOUNT_EMAIL
                     ),
                     body=json.dumps(payload).encode(),
                 ),
