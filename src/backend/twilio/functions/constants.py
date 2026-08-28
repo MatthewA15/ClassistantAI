@@ -15,7 +15,11 @@ PROJECT_LOCATION = environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")
 # Twilio REST credentials for outbound SMS.
 TWILIO_ACCOUNT_SID = environ.get("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN = environ.get("TWILIO_AUTH_TOKEN")
-TWILIO_FROM_NUMBER = environ.get("TWILIO_FROM_NUMBER")
+TWILIO_MESSAGING_SERVICE_SID = environ.get("TWILIO_MESSAGING_SERVICE_SID")
+
+# Bounds for the inter-message delay_s (seconds).
+TWILIO_MIN_DELAY_S = 0.05
+TWILIO_MAX_DELAY_S = 2
 
 # Generic, friendly nudges shown to unrecognised senders. One is picked at
 # random so repeat texts don't feel like a canned autoresponder.
