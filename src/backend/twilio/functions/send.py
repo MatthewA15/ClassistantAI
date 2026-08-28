@@ -9,9 +9,10 @@ from twilio.rest import Client as TwilioClient
 from models import ErrorResponse, SendRequest, SendResponse
 from db import db
 import logging
+from firebase_functions.options import IngressSetting
+
 
 from constants import (
-    SERVICE_ACCOUNT_EMAIL,
     TWILIO_ACCOUNT_SID,
     TWILIO_AUTH_TOKEN,
     TWILIO_FROM_NUMBER,
@@ -35,7 +36,8 @@ def _json_response(model, status: int) -> https_fn.Response:
     )
 
 
-@https_fn.on_request(max_instances=100, service_account=SERVICE_ACCOUNT_EMAIL)
+@https_fn.on_request(max_instances=100,
+                     service_account="classistant-message-sender@classisstant.iam.gserviceaccount.com")
 def send_message(req: https_fn.Request) -> https_fn.Response:
     """Send an outbound SMS to the phone number associated with a Firestore
     user document.

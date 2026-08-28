@@ -8,7 +8,6 @@ AGENT_URL = "https://us-east1-aiplatform.googleapis.com/v1/projects/classisstant
 
 AGENT_SERVICE_ACCOUNT_EMAIL = "classistant-agent@classisstant.iam.gserviceaccount.com"
 
-SERVICE_ACCOUNT_EMAIL = "classistant-twilio-webhook@classisstant.iam.gserviceaccount.com"
 QUEUE_NAME = "classistant-messages-queue"
 PROJECT_ID = environ.get("GOOGLE_CLOUD_PROJECT", "classisstant")
 PROJECT_LOCATION = environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")

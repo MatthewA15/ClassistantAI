@@ -24,7 +24,6 @@ from constants import (
     SITE_URL,
     AGENT_URL,
     AGENT_SERVICE_ACCOUNT_EMAIL,
-    SERVICE_ACCOUNT_EMAIL,
     QUEUE_NAME,
     PROJECT_ID,
     PROJECT_LOCATION,
@@ -41,7 +40,8 @@ def _get_validated_url(req: https_fn.Request) -> str:
     return urlunparse(parsed._replace(scheme="https"))
 
 
-@https_fn.on_request(max_instances=100, service_account=SERVICE_ACCOUNT_EMAIL)
+@https_fn.on_request(max_instances=100,
+                     service_account="classistant-twilio-webhook@classisstant.iam.gserviceaccount.com")
 def twilio_webhook(req: https_fn.Request) -> https_fn.Response:
     if req.method not in ["POST"]:
         return https_fn.Response(
