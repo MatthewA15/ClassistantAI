@@ -39,7 +39,7 @@ Send `markdown: true` to have `content` parsed as markdown and rendered with rea
 |---|---|
 | `#`, `##`, `###` | `HEADING_1`, `HEADING_2`, `HEADING_3` |
 | `**bold**`, `*italic*` | bold / italic text runs |
-| `[text](url)` | a clickable link on `text` |
+| `[text](url)` | a clickable link on `text`, styled Docs blue (#1155cc) and underlined |
 | `- item` | a disc-bulleted list |
 | `1. item` | a decimal-numbered list |
 

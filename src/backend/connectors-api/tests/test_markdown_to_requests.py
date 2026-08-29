@@ -19,6 +19,16 @@ from app.services.markdown_to_requests import (
 GRADUATION_CAP = "\U0001F393"  # non-BMP: 1 Python char, 2 UTF-16 code units
 INSERT_INDEX = 1  # a Docs body starts at index 1
 
+# A link is clickable AND looks like one: #1155cc + underline, all set in the
+# single updateTextStyle that carries the url.
+LINK_BLUE = {
+    "color": {"rgbColor": {"red": 17 / 255, "green": 85 / 255, "blue": 204 / 255}}
+}
+
+
+def link_style(url):
+    return {"link": {"url": url}, "foregroundColor": LINK_BLUE, "underline": True}
+
 
 # --------------------------------------------------------------------------
 # helpers
@@ -107,11 +117,44 @@ def test_link_carries_the_url_and_only_covers_the_label():
         {
             "updateTextStyle": {
                 "range": {"startIndex": 1, "endIndex": 9},
-                "textStyle": {"link": {"url": "https://example.com/s"}},
-                "fields": "link",
+                "textStyle": link_style("https://example.com/s"),
+                "fields": "link,foregroundColor,underline",
             }
         },
     ]
+
+
+def test_link_is_styled_blue_and_underlined_not_just_clickable():
+    # link.url alone leaves the text looking like body text, which reads to a
+    # student as "the links are broken". Docs applies no styling of its own.
+    (style,) = requests_of_kind(
+        markdown_to_requests("see [the notes](https://example.com/n)"), "updateTextStyle"
+    )
+
+    rgb = style["textStyle"]["foregroundColor"]["color"]["rgbColor"]
+    assert (round(rgb["red"], 4), round(rgb["green"], 4), round(rgb["blue"], 4)) == (
+        round(0x11 / 255, 4),
+        round(0x55 / 255, 4),
+        round(0xCC / 255, 4),
+    )
+    assert style["textStyle"]["underline"] is True
+    assert style["textStyle"]["link"] == {"url": "https://example.com/n"}
+
+
+def test_link_field_mask_names_every_property_it_sets():
+    # Docs silently ignores any property the mask does not mention, so a stale
+    # mask would leave the link black and un-underlined with no error at all.
+    (style,) = requests_of_kind(
+        markdown_to_requests("[x](https://example.com)"), "updateTextStyle"
+    )
+    assert set(style["fields"].split(",")) == set(style["textStyle"])
+
+
+def test_bold_and_italic_masks_stay_single_field():
+    for markdown, field in (("**b**", "bold"), ("*i*", "italic")):
+        (style,) = requests_of_kind(markdown_to_requests(markdown), "updateTextStyle")
+        assert style["fields"] == field
+        assert style["textStyle"] == {field: True}
 
 
 def test_unordered_list_is_one_bullet_range_over_both_paragraphs():
@@ -210,7 +253,7 @@ def test_combined_document_applies_the_expected_style_kinds():
     assert [r["textStyle"] for r in requests_of_kind(requests, "updateTextStyle")] == [
         {"bold": True},
         {"italic": True},
-        {"link": {"url": "https://example.com/s"}},
+        link_style("https://example.com/s"),
     ]
     assert [r["bulletPreset"]
             for r in requests_of_kind(requests, "createParagraphBullets")] == [

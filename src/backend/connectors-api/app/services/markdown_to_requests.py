@@ -37,7 +37,7 @@ body's own final newline terminates it and no trailing empty paragraph appears.
 """
 from __future__ import annotations
 
-from typing import Any, Iterable
+from typing import Iterable
 
 import mistune
 
@@ -47,6 +47,15 @@ import mistune
 # TODO(matthew): extending to HEADING_4..6 is a one-line change to this dict;
 # the index model does not care about heading depth.
 _HEADING_STYLES = {1: "HEADING_1", 2: "HEADING_2", 3: "HEADING_3"}
+
+# Setting `link.url` alone makes text clickable but leaves it looking like
+# body text, which in a study plan reads as "the links are broken". The Docs
+# UI pairs a link with blue + underline when you insert one by hand, so we do
+# the same explicitly -- the API applies no styling of its own.
+# #1155cc, Docs' default link blue. Colour components are 0..1 floats.
+_LINK_COLOR = {
+    "color": {"rgbColor": {"red": 17 / 255, "green": 85 / 255, "blue": 204 / 255}}
+}
 
 _BULLET_PRESET_UNORDERED = "BULLET_DISC_CIRCLE_SQUARE"
 _BULLET_PRESET_ORDERED = "NUMBERED_DECIMAL_ALPHA_ROMAN"
@@ -90,7 +99,7 @@ class _Builder:
         self._cursor = 0  # UTF-16 code units written so far
         self._pending_sep = False
         self._para_styles: list[tuple[int, int, str]] = []  # start, end, named style
-        self._text_styles: list[tuple[int, int, str, Any]] = []  # start, end, field, value
+        self._text_styles: list[tuple[int, int, dict]] = []  # start, end, textStyle
         self._bullets: list[tuple[int, int, str]] = []  # start, end, preset
 
     # -- text accumulation -------------------------------------------------
@@ -261,16 +270,25 @@ class _Builder:
             return
 
         if ntype == "strong":
-            self._styled_run(node, "bold", True)
+            self._styled_run(node, {"bold": True})
             return
 
         if ntype == "emphasis":
-            self._styled_run(node, "italic", True)
+            self._styled_run(node, {"italic": True})
             return
 
         if ntype == "link":
             url = (node.get("attrs") or {}).get("url")
-            self._styled_run(node, "link", {"url": url} if url else None)
+            self._styled_run(
+                node,
+                {
+                    "link": {"url": url},
+                    "foregroundColor": _LINK_COLOR,
+                    "underline": True,
+                }
+                if url
+                else None,
+            )
             return
 
         if ntype == "image":
@@ -294,11 +312,11 @@ class _Builder:
         elif node.get("raw"):
             self._write(node["raw"])
 
-    def _styled_run(self, node: dict, field: str, value: Any) -> None:
+    def _styled_run(self, node: dict, style: dict | None) -> None:
         start = self._cursor
         self.walk_inline(node.get("children") or [])
-        if value is not None and self._cursor > start:
-            self._text_styles.append((start, self._cursor, field, value))
+        if style and self._cursor > start:
+            self._text_styles.append((start, self._cursor, style))
 
     # -- emission ----------------------------------------------------------
 
@@ -323,12 +341,14 @@ class _Builder:
                 }
             })
 
-        for start, end, field, value in self._text_styles:
+        for start, end, style in self._text_styles:
             requests.append({
                 "updateTextStyle": {
                     "range": rng(start, end),
-                    "textStyle": {field: value},
-                    "fields": field,
+                    "textStyle": style,
+                    # The mask must name every property being set, or Docs
+                    # silently ignores the ones it does not hear about.
+                    "fields": ",".join(style),
                 }
             })
 
