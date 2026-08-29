@@ -15,6 +15,8 @@ it loops fast enough to compete with reading.
 | Floating cards | Slow 9s vertical drift, offset delays | Separates them from the static phone so they read as system output. |
 | `HowItWorks` | Dashed connector draws left to right | Turns four cards into one sequence. |
 | `Escalation` | Days tally off a calendar, cutting to a lockscreen a shade louder each time, then the handset rings | The pressure is a function of time running out, not of the agent getting impatient. See [11](11-phone-mockups.md). |
+| `ConnectScene` | Types the student's own school address, presses Continue with Google, cross-fades to the five permissions ticking | One sequence in two acts, because pressing the button is what produces the consent screen. See [13](13-connect-scenes.md). |
+| `SealedPasswordScene` | Sealed envelope travels You to Classistant to School, then the clock runs to 3:16 AM and 10:26 AM and it goes again on its own | Answers "Classistant never sees your password" instead of asserting it, and shows that it is asked for once. See [13](13-connect-scenes.md). |
 | `PlaceholderShot` | Chart path draws, calendar and inbox rows stagger in | Suggests real software populating rather than a static mock. |
 | `LogoMark` | Tassel swings | Arrival moments only. See [01](01-brand-and-logo.md). |
 | Step rail | Progress line grows by height transition | Cheapest possible sense of progress. |
@@ -91,17 +93,38 @@ section.** A clipped blur is a visible seam, not a soft fade.
 [`Reveal`](../../src/frontend/components/ui/Reveal.tsx) is a client component
 using `IntersectionObserver`.
 
-Two decisions in it:
+Three decisions in it:
 
 1. **Reveals never reverse.** Once shown, the observer disconnects. Content that
    re-animates when you scroll back up reads as a bug.
 2. **Elements already on screen at mount skip the observer entirely.** Above-the-fold
    content shows immediately rather than waiting for an intersection callback,
    which otherwise produces a visible flash on load.
+3. **Phones do not reveal at all.** The hiding rule is gated on `min-width: 768px`.
 
 Line-draw animations key off the same `data-shown` attribute that `Reveal` sets,
 so an SVG inside a revealing block draws at the moment the block appears rather
 than on some independent timer.
+
+### Why phones are excluded
+
+The reveal is an attention cue, and it only works where there is competition for
+attention. On desktop two or three sections share the screen and the fade says
+"read this one". On a phone there is only ever one section on screen, so the
+fade has nothing to direct you away from and everything to take away from you:
+
+- **It eats the tease.** The top slice of the next section, sitting just above
+  the fold, is the thing that says keep scrolling. Held at `opacity: 0` until it
+  intersects, that slice is blank, and the page looks like it ends there.
+- **It fires constantly.** Every section is a full-screen intersection event, so
+  a scroll down the page is an unbroken run of fades rather than a few accents.
+
+So `.reveal` hides content only at `min-width: 768px`. Nothing else changes:
+phones get the same markup, the observer still runs, `data-shown` still flips
+for anything keyed to it. The content simply starts visible.
+
+Test it at 390px wide with the fold parked mid-section — the next heading must
+be readable in the sliver above the fold, at full opacity, before you scroll.
 
 ## The no-JavaScript contract
 
@@ -109,7 +132,7 @@ Scroll-reveal hides content, which means a JavaScript failure could leave a blan
 page. So the hiding rule only applies where scripting actually exists:
 
 ```css
-@media (scripting: enabled) {
+@media (scripting: enabled) and (min-width: 768px) {
   .reveal { opacity: 0; ... }
 }
 ```

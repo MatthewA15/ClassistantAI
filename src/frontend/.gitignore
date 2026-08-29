@@ -4,6 +4,17 @@ node_modules
 out
 .env
 .env.local
+
+# Emulator overrides. Same plaintext secrets as .env.local, and a copy that
+# reached a build would override the real ones.
+apphosting.local.yaml
+
+# Emulator run logs. Written into the backend root on every `emulators:start`,
+# and already in firebase.json's deploy ignore list; this keeps them out of the
+# repository as well.
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
 .DS_Store
 *.tsbuildinfo
 next-env.d.ts

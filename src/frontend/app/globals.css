@@ -80,6 +80,49 @@
   --animate-swing: swing 4.5s ease-in-out infinite;
   --animate-blink: blink 1.4s steps(2, start) infinite;
   --animate-marquee: marquee 42s linear infinite;
+  --animate-cta-attention: cta-attention 20s ease-in-out infinite;
+}
+
+/* Scrim behind the start nudge. Its own keyframe rather than a transition,
+   because the element mounts already in place and a transition from nothing has
+   no first frame to animate from. */
+@keyframes nudge-scrim {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Attention pulse for the light under "Get set up". Fifteen seconds of rest,
+ * about five brighter, then back.
+ *
+ * This drives a layer of its own, starting from nothing, rather than scaling up
+ * the resting glow. Brightening the existing one was the first attempt and it
+ * could not have worked: those blobs paint at 22-28% alpha inside a container
+ * already held at 50-80%, so 40% more opacity moves the colour reaching the
+ * page by about four percentage points of a blue wash on a near-white header.
+ * Multiplying something nearly invisible gives you something nearly invisible.
+ *
+ * Zero to one on a dedicated blob is a change you can see, and it leaves the
+ * resting glow exactly as designed. The swell is what stops it reading as a
+ * light being switched on and off. */
+@keyframes cta-attention {
+  0%,
+  72% {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  80%,
+  92% {
+    opacity: 1;
+    transform: scale(1.12);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.92);
+  }
 }
 
 /* Slow blob morph for the light behind the floating header. The radii never
@@ -452,8 +495,16 @@
      `scripting` media feature does this without an inline script mutating
      <html>, which would trip React's hydration attribute check. Browsers too
      old to know the feature simply skip the block and show everything at once,
-     which is the correct degradation. */
-  @media (scripting: enabled) {
+     which is the correct degradation.
+
+     Phones opt out (< 768px). A narrow viewport shows only one section at a
+     time, so the tease of the next one — its top edge sitting just above the
+     fold, inviting the scroll — is the whole navigation cue. Hiding that slice
+     until it intersects replaces the tease with blank space and fires an
+     animation in the reader's face on every single swipe. On desktop the
+     reveal still works, because several sections share the screen and the fade
+     directs attention rather than withholding it. */
+  @media (scripting: enabled) and (min-width: 768px) {
     .reveal {
       opacity: 0;
       transform: translateY(18px);

@@ -1,13 +1,13 @@
-# Classistant AI Connector API — Contract v0.3 (handoff for ADK tools)
+# Classistant AI Connector API — Contract v0.5 (handoff for ADK tools)
 
 Base URL: `https://<cloud-run-url>` (local: `http://localhost:8080`). All responses JSON.
-`{user_id}` = Google `sub` returned by `/auth/callback`. Endpoint names and shapes below are **frozen for the Aug 22 build** — build your ADK dummy tools against these; only response fields may be *added*.
+`{user_id}` in every path below is the **Firebase UID** — the same identifier the frontend's session already carries and the `users` collection is keyed by. There is no other identifier this service accepts; a Google `sub` is never a valid `{user_id}`.
 
-## Auth (P0)
-| Method | Path | In | Out |
-|---|---|---|---|
-| GET | `/auth/login` | — | `{auth_url, state}` — redirect user to `auth_url` |
-| GET | `/auth/callback?code=...` | Google redirect | `{user_id, email, status:"connected"}` |
+## Auth
+
+This service has no auth endpoints. Login, the OAuth authorization-code exchange, and encrypting the resulting refresh token all happen in the frontend (see [`docs/ENCRYPTION_CONTRACT.md`](../../../docs/ENCRYPTION_CONTRACT.md)) — this service only ever reads and decrypts the credential the frontend already wrote to Firestore.
+
+`/auth/login` and `/auth/callback` are both **removed**. (v0.5 briefly restored `/auth/callback` — that was a mistake, corrected before this version shipped; see [`docs/adr/0004`](../../../docs/adr/0004-firestore-kms-credentials-and-frontend-login.md)'s second amendment. There was never a version of this API where either endpoint was the intended long-term shape.)
 
 ## Gmail
 | Method | Path | In | Out |
@@ -30,8 +30,12 @@ Base URL: `https://<cloud-run-url>` (local: `http://localhost:8080`). All respon
 | POST | `/users/{user_id}/docs` | `{title, content}` | `{doc_id, url, status:"created"}` |
 
 ## Errors
-- `404` `{detail}` — user has no stored credentials (send them through `/auth/login`)
-- `400` — bad OAuth callback / validation errors (FastAPI standard shape)
+
+Every `/users/{user_id}/...` endpoint reads through `app/services/firestore_creds.py`. Two credential-specific error shapes on top of FastAPI's standard validation `422`:
+
+- **`404`** `{detail}` — `CredentialNotFound`. No `google_refresh_token` document at `users/{user_id}/credentials/google_refresh_token` in Firestore. Means either the user hasn't completed Google onboarding via the frontend, or the wrong `{user_id}` was sent (it must be the Firebase UID). Not retryable without the user reconnecting Google through the frontend's onboarding flow.
+- **`500`** `{detail}` — `CredentialFormatError`. The stored credential document doesn't match [`docs/ENCRYPTION_CONTRACT.md`](../../../docs/ENCRYPTION_CONTRACT.md)'s byte format: a missing field, invalid base64, a KMS decrypt failure (including an AAD mismatch), or an AES-GCM authentication failure. `detail` names which check failed but never includes any decrypted or intermediate plaintext — treat a `500` here as "the frontend's write and this service's read have drifted," not as a value to retry blindly.
+- **`400`** — FastAPI's standard validation error shape for malformed query/path params.
 
 ## Meta
 - `GET /health` → `{status:"ok"}` — use as the ADK tool liveness check.
@@ -39,3 +43,5 @@ Base URL: `https://<cloud-run-url>` (local: `http://localhost:8080`). All respon
 ## Changelog
 - v0.2: added GET /emails/{email_id}
 - v0.3: added Drive file download; drive.readonly scope added — re-consent required.
+- v0.4 (**breaking**): `/auth/login` and `/auth/callback` removed — login moved to the frontend (issue #12). `{user_id}` in path params is now a Firebase UID, not a Google `sub`. Credential storage moved from Secret Manager to Firestore + KMS envelope encryption; new `500` error semantics for malformed stored credentials (see Errors).
+- v0.5 (**breaking**): corrects a false start within this same version — `/auth/callback` was briefly restored (client secret handling was mistakenly believed to require it) and then removed again for good once [`docs/ENCRYPTION_CONTRACT.md`](../../../docs/ENCRYPTION_CONTRACT.md) settled the frontend as owning the full write side, encrypt included. This service now has **zero** auth endpoints, **zero** KMS encrypt capability, and no code path that can name or touch a `school_password` credential. The `google_sub` fallback lookup on the read path is also removed — `{user_id}` is the Firebase UID with no alternate-identifier tolerance, anywhere. Credential documents are now read from `users/{user_id}/credentials/google_refresh_token` (a direct document get) rather than a queried top-level `user_credentials` collection.

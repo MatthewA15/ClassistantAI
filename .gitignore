@@ -1,2 +1,14 @@
-.DS_Store
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Env / secrets
+.env
+client_secret*.json
+
+# IDE
 .claude/settings.local.json
+
+# OS
+.DS_Store

@@ -4,11 +4,82 @@
 # rootDir is src/frontend. App Hosting looks for this file at the root it was
 # given, not at the top of the repository.
 #
-# No `env:` block yet. Every server action in app/onboarding/actions.ts is still
-# a stub, so the app reads no API keys, no database, and no secrets. When the
-# backend lands, secrets go in through `firebase apphosting:secrets:set` and are
-# referenced here by name, never pasted in as literal values: this file is
-# committed to a repository.
+# Secrets are referenced by NAME, never pasted in as literal values: this file
+# is committed to a repository. Plain `value:` entries below are all public by
+# nature -- a URL, and the OAuth client id, which is shipped to every browser in
+# the consent link anyway.
+
+env:
+  # Where Google sends students back. Must match the connector's
+  # OAUTH_REDIRECT_URI byte for byte, and must be listed as an authorised
+  # redirect URI on the OAuth client, or the exchange fails.
+  - variable: NEXT_PUBLIC_APP_URL
+    value: https://classistant--classisstant.us-central1.hosted.app
+    availability: [BUILD, RUNTIME]
+
+  # Public half of the OAuth client. Safe to commit -- it is in the consent link
+  # every browser follows. The secret half is the entry below.
+  - variable: NEXT_PUBLIC_GOOGLE_CLIENT_ID
+    value: 945345983057-v45ksbfcu1epohvq1cb1asfqvfp3u9ek.apps.googleusercontent.com
+    availability: [BUILD, RUNTIME]
+
+  # The secret half, by name. Needed here because the authorization-code
+  # exchange runs on this server: Google requires client authentication on that
+  # call, and the connector no longer performs it.
+  #
+  # RUNTIME only, and never NEXT_PUBLIC_. Next inlines NEXT_PUBLIC_* into the
+  # client bundle at build time, so that prefix on this variable would publish
+  # the client secret to every visitor.
+  #
+  # `firebase-app-hosting-compute@` reads it via roles/secretmanager.admin held
+  # at project level. If that binding ever goes, this app stops booting rather
+  # than starting without it -- the same startup abort the connector hit on
+  # 2026-08-27, which surfaced as a generic Cloud Run 500.
+  - variable: GOOGLE_CLIENT_SECRET
+    secret: oauth-client-secret
+    availability: [RUNTIME]
+
+  # Server-to-server only, and deliberately not NEXT_PUBLIC_: the connector is a
+  # private Cloud Run service reached with an OIDC token (see the callback), so
+  # its address has no business in a browser.
+  - variable: CONNECTORS_API_URL
+    value: https://classistant-connectors-945345983057.us-central1.run.app
+    availability: [RUNTIME]
+
+  # HMAC key for the onboarding cookie (lib/onboardingSession.ts). No longer
+  # signs the session: that is a Firebase Auth session cookie now.
+  - variable: SESSION_SECRET
+    secret: session-secret
+    availability: [RUNTIME]
+
+  # --------------------------------------------------------------- Firebase
+  # Web config for Firebase Auth in the browser (lib/firebaseClient.ts).
+  #
+  # All four are public. The API key is not a credential: every Firebase web app
+  # ships it to every browser, and access is controlled by Auth and IAM. There
+  # is nothing here that is not already visible in the page source.
+  #
+  # BUILD availability is not optional. Next inlines NEXT_PUBLIC_* at build
+  # time, so a value that only exists at RUNTIME compiles to `undefined` and
+  # sign-in fails in production while working perfectly on a dev machine that
+  # has a .env.local. Keep these in sync with src/frontend/.env.example.
+  - variable: NEXT_PUBLIC_FIREBASE_API_KEY
+    value: AIzaSyCA4XkNFqVLTq-GxKDppjw6WqamR4AUrKA
+    availability: [BUILD, RUNTIME]
+
+  - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+    value: classisstant.firebaseapp.com
+    availability: [BUILD, RUNTIME]
+
+  - variable: NEXT_PUBLIC_FIREBASE_APP_ID
+    value: 1:945345983057:web:fc8f467dc0474f2d21be70
+    availability: [BUILD, RUNTIME]
+
+  # Read by the client SDK and, as a fallback, by firebase-admin. The project id
+  # really is spelled with two s's; the product is not.
+  - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+    value: classisstant
+    availability: [BUILD, RUNTIME]
 
 runConfig:
   # A marketing site with bursty term-start traffic and long quiet stretches.

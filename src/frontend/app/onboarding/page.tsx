@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
-import Link from "next/link";
 import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
-import { Container } from "@/components/ui/primitives";
+import { OnboardingFrame, WizardSkeleton } from "@/components/onboarding/shell";
+import { getSchool } from "@/data/schools";
+import { getSession } from "@/lib/authSession";
+import { getUser } from "@/lib/users";
 
 export const metadata: Metadata = {
   title: "Get set up",
@@ -11,37 +13,70 @@ export const metadata: Metadata = {
   robots: { index: false, follow: true },
 };
 
-export default function OnboardingPage() {
+// Reads the session cookie, so it cannot be statically rendered.
+export const dynamic = "force-dynamic";
+
+/**
+ * The page itself is synchronous now, and that is the point.
+ *
+ * It used to await getSession() and the user read in this function body,
+ * above the Suspense boundary. A boundary with nothing suspending under it
+ * streams nothing, so the browser held on the previous page until Firebase
+ * Admin had verified the session cookie -- a network call, because checkRevoked
+ * is on -- and Firestore had answered a query. Two round trips before the first
+ * byte, on a route the router could not prefetch either.
+ *
+ * With the reads moved into a child below the boundary, the frame and the card
+ * flush immediately and the wizard arrives when they finish. loading.tsx is the
+ * other half: it is what makes the route prefetchable at all.
+ * See docs/design/16-onboarding-entry-cost.md.
+ */
+export default async function OnboardingPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ school?: string }>;
+}) {
+  /*
+   * The only await left above the boundary, and it is free: searchParams is
+   * already in hand by the time this runs, so it resolves in a microtask. It is
+   * not a reason to move the session reads back up here -- those are two network
+   * calls, which is the whole reason they sit below.
+   *
+   * It buys the school, which the frame needs in order to render the page in
+   * that school's colours from the server rather than after hydration.
+   */
+  const { school } = await searchParams;
+
   return (
-    <div className="relative min-h-dvh bg-paper">
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 top-0 h-[28rem] overflow-hidden"
-      >
-        <div className="grain-grid absolute inset-0 [mask-image:linear-gradient(to_bottom,black,transparent)]" />
-        <div className="absolute -left-24 -top-32 h-[26rem] w-[26rem] rounded-full bg-sky-200/50 blur-[110px]" />
-      </div>
-
-      <Container className="relative py-12 sm:py-16">
-        {/* useSearchParams needs a boundary on a statically rendered route. */}
-        <Suspense fallback={<div className="min-h-[26rem]" />}>
-          <OnboardingWizard />
-        </Suspense>
-
-        <p className="mt-12 text-center text-[0.82rem] text-body-soft">
-          Trouble getting in? Email{" "}
-          {/* A real mailbox until classistant.ca is bought, so "trouble getting
-              in" does not bounce off an address nobody owns yet. */}
-          <a href="mailto:chim@wopara.com" className="font-semibold text-brand-600 hover:underline">
-            chim@wopara.com
-          </a>{" "}
-          or read the{" "}
-          <Link href="/privacy" className="font-semibold text-brand-600 hover:underline">
-            privacy policy
-          </Link>
-          .
-        </p>
-      </Container>
-    </div>
+    <OnboardingFrame school={school ? getSchool(school) : null}>
+      {/* Also the boundary useSearchParams needs inside the wizard. */}
+      <Suspense fallback={<WizardSkeleton />}>
+        <SignedInWizard />
+      </Suspense>
+    </OnboardingFrame>
   );
+}
+
+async function SignedInWizard() {
+  // The wizard is a client component and the session cookie is httpOnly, so
+  // what has been proven has to be handed down from here. A student returning
+  // from the Google consent screen lands on this page, not on a fresh one.
+  //
+  // Three states, not two, and the wizard opens on a different step for each:
+  // nobody here, a verified number with no access grant, or both. The document
+  // exists from the moment the number was verified, so what distinguishes the
+  // last two is `googleConnected` on it, not whether it is there at all.
+  const session = await getSession();
+  const record = session ? await getUser(session.uid) : null;
+
+  const account = session
+    ? {
+        phone: session.phone,
+        email: record?.email ?? null,
+        schoolId: record?.schoolId ?? null,
+        granted: record?.googleConnected ?? false,
+      }
+    : null;
+
+  return <OnboardingWizard connected={account} />;
 }

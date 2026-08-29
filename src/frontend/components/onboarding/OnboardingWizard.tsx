@@ -10,44 +10,114 @@ import {
   type Identity,
 } from "@/app/onboarding/actions";
 import { SchoolPicker } from "@/components/onboarding/SchoolPicker";
+import {
+  ConnectScene,
+  SceneCard,
+  SealedPasswordScene,
+} from "@/components/onboarding/connectScenes";
 import { Choice, Field, TextInput, formatPhone } from "@/components/onboarding/fields";
+import { PhoneVerifyScene } from "@/components/onboarding/phoneScenes";
+import { Shell } from "@/components/onboarding/shell";
 import { LogoMark } from "@/components/brand/LogoMark";
 import { useSchoolTheme } from "@/components/theme/SchoolTheme";
+import { ACCESS_ITEMS, defaultAccess, type AccessKey } from "@/data/access";
+import { CONSENT_COPY } from "@/data/consent";
 import { getSchool, type School } from "@/data/schools";
 import { cn } from "@/lib/cn";
+import {
+  confirmCode,
+  phoneErrorMessage,
+  sendVerificationCode,
+  signOutClient,
+  warmPhoneAuth,
+  type PendingVerification,
+} from "@/lib/firebaseClient";
 
 /**
- * Four screens, down from six. The school is already chosen in the hero and
- * arrives as ?school=, so this starts at the sign-in hand-off.
+ * Four screens. The school is already chosen in the hero and arrives as
+ * ?school=, so this starts at the number.
  *
- * Order: connect, portal password, confirm details, phone number.
+ * Order: verify your number, connect Google, portal password, choose what it
+ * may touch.
  *
- * Two deliberate placements:
+ * Three deliberate placements:
  *
- * The **portal password comes second, right after Google**, not first. Google
- * has just demonstrated a normal consent flow at that point, which is the best
- * possible moment to ask for something less normal. It is still needed despite
- * the OAuth sign-in: OAuth authorises mail, calendar, and Drive, but it does
- * not create a session on the school's LMS, and the agent has to sign in there
- * overnight while the student is asleep and cannot approve anything.
+ * The **phone number is first**, which is the reverse of where it used to be.
+ * It used to sit last, behind the Finish button, on the reasoning that a field
+ * with no upside for the student should not be what a form opens with. That
+ * reasoning was right about a marketing form and wrong about this one: the
+ * number is now the login (Firebase phone auth, docs/design/15), so it is not
+ * a detail being collected, it is the thing that identifies them. Everything
+ * after it is attached to a verified person rather than to a session that could
+ * be anyone.
  *
- * The **phone number is last**, behind the Finish button. It is the one field
- * with no upside for the student until everything else is agreed, and asking
- * for it early is what makes a form feel like a lead-capture page.
+ * The **portal password comes after Google**, not before. Google has just
+ * demonstrated a normal consent flow at that point, which is the best possible
+ * moment to ask for something less normal. It is still needed despite the OAuth
+ * grant: OAuth authorises mail, calendar, and Drive, but it does not create a
+ * session on the school's LMS, and the agent has to sign in there overnight
+ * while the student is asleep and cannot approve anything.
+ *
+ * The **access switches come last**, after the grant rather than before it.
+ * Google's consent screen is all or nothing, so a student cannot narrow it
+ * there; the only place a real choice can be offered is afterwards, and the
+ * Google step says so in as many words before sending them.
  */
 
-const STEPS = [
-  { title: "Connect your school account", blurb: "Sign in where you always do" },
-  { title: "Let it work while you sleep", blurb: "Portal login for overnight checks" },
-  { title: "Check your details", blurb: "Straight from your school account" },
-  { title: "Where should it text you?", blurb: "The number the agent uses" },
+/** The heading on each screen. Four screens, but three PHASES: see shell.tsx. */
+const STEP_TITLES = [
+  "What is your number?",
+  "Connect your school account",
+  "Let it work while you sleep",
+  "Choose what it can touch",
 ];
 
-export function OnboardingWizard() {
+/** Screens 0 to 2 are all logging in; the last one is the reward. The three
+ *  phases they map onto, and the card that draws them, live in
+ *  components/onboarding/shell.tsx so the loading boundary can render them too. */
+const phaseForStep = (step: number) => (step <= 2 ? 1 : 2);
+
+/**
+ * Shape check for the number, so the button can gate on it.
+ *
+ * Firebase does the real validation and the SMS arriving is the only proof that
+ * matters; this exists so a student is not charged a round trip to find out they
+ * typed nine digits. It cannot be shared with the server action that used to
+ * hold it: actions.ts is a "use server" module, and a non-function export from
+ * one throws at runtime on every request while still building cleanly.
+ */
+const PHONE_OK = /^[2-9]\d{9}$/;
+
+/** Where the invisible reCAPTCHA mounts. Firebase resolves it by id, so it has
+ *  to be stable and it has to exist in the DOM before a code can be sent. */
+const RECAPTCHA_ID = "classistant-recaptcha";
+
+/**
+ * What the server already knows, read from the session cookie by the page,
+ * because the cookie is httpOnly and this is a client component.
+ *
+ * Three fields for three distinct states, and keeping them apart is the whole
+ * shape of the flow:
+ *
+ *   phone      set once Firebase has verified a number. Identity.
+ *   granted    set once Google has been connected. Authorisation.
+ *   email      only known after the grant, because it is only proven there.
+ *
+ * A student can hold the first without the second, which is the normal state in
+ * the middle of onboarding rather than an error.
+ */
+export type ConnectedAccount = {
+  phone: string;
+  email: string | null;
+  schoolId: string | null;
+  granted: boolean;
+};
+
+export function OnboardingWizard({ connected }: { connected: ConnectedAccount | null }) {
   const params = useSearchParams();
   const { school: themedSchool, setSchool } = useSchoolTheme();
 
-  const preselected = params.get("school");
+  const preselected = params.get("school") ?? connected?.schoolId;
   const [school, setLocalSchool] = useState<School | null>(
     preselected ? (getSchool(preselected) ?? null) : null,
   );
@@ -58,13 +128,65 @@ export function OnboardingWizard() {
     if (school && themedSchool?.id !== school.id) setSchool(school.id);
   }, [school, themedSchool, setSchool]);
 
-  const [step, setStep] = useState(0);
-  const [identity, setIdentity] = useState<Identity | null>(null);
+  /*
+   * Start fetching the Firebase Auth SDK, which is no longer in this page's
+   * bundle (see lib/firebaseClient.ts for why it was taken out).
+   *
+   * In an effect rather than at module scope, so it begins after the page has
+   * painted and hydrated instead of competing with the chunks that do that. A
+   * student still has to read the screen and type ten digits before anything
+   * needs it, which is far longer than the fetch takes.
+   */
+  useEffect(warmPhoneAuth, []);
+
+  /*
+   * Where to open, from what the server already proved.
+   *
+   *   nothing            step 0, the number
+   *   number verified    step 1, connect Google
+   *   grant complete     step 2, the portal password
+   *
+   * Coming back from the consent screen is the third case, which is why a
+   * student never re-does a step they finished before leaving the page.
+   */
+  const [step, setStep] = useState(connected ? (connected.granted ? 2 : 1) : 0);
+
+  /*
+   * Derived, not state. The address is only ever known because the server
+   * proved it during the access grant, and the return from Google is a full
+   * page load, so there is no moment where this component learns it on its own.
+   * Holding it in state would only create somewhere for a stale value to live.
+   */
+  const identity: Identity | null = connected?.email
+    ? { email: connected.email, name: connected.email.split("@")[0] }
+    : null;
 
   const [nickname, setNickname] = useState("");
   const [editingNickname, setEditingNickname] = useState(false);
-  const [serviceEmail, setServiceEmail] = useState("");
-  const [editingServiceEmail, setEditingServiceEmail] = useState(false);
+
+  /*
+   * Step 0. `pending` is Firebase's handle on the code it just texted; holding
+   * it is what tells the two halves of this step apart, so it doubles as the
+   * "code has been sent" flag rather than carrying a second boolean that could
+   * disagree with it.
+   */
+  const [phone, setPhone] = useState("");
+  const [code, setCode] = useState("");
+  const [pending, setPending] = useState<PendingVerification | null>(null);
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [verifiedPhone, setVerifiedPhone] = useState<string | null>(
+    connected?.phone ?? null,
+  );
+
+  /** Step 1. The address they say they will sign in with, checked against the
+   *  school's domain here and against Google's answer in the callback. */
+  const [schoolEmail, setSchoolEmail] = useState(connected?.email ?? "");
+
+  /** Step 3. Starts fully on, which is where the grant actually is. */
+  const [access, setAccess] = useState<Record<AccessKey, boolean>>(defaultAccess);
+
+  /** The part before the @, which is all the field lets them edit. */
+  const localPart = schoolEmail.replace(/@.*$/, "");
 
   const [portalUser, setPortalUser] = useState("");
   const [portalPassword, setPortalPassword] = useState("");
@@ -72,26 +194,200 @@ export function OnboardingWizard() {
 
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [acceptMarketing, setAcceptMarketing] = useState(false);
-  const [phone, setPhone] = useState("");
   const [consentSms, setConsentSms] = useState(false);
 
-  const [connectState, connectAction, connecting] = useActionState(
-    async (prev: Awaited<ReturnType<typeof connectGoogle>> | null, formData: FormData) => {
-      const result = await connectGoogle(prev, formData);
-      if (result.ok && result.identity) {
-        setIdentity(result.identity);
-        setStep(1);
+  /*
+   * The two consents that are not optional, and the button gates on both.
+   *
+   * `completeOnboarding` already rejects a submit missing either, so this is
+   * not the check that protects anything -- the server is, and it stays. What
+   * gating the button adds is *when* the student finds out: a required box that
+   * only announces itself after a failed submit is a worse version of the same
+   * rule, and marketing is the one genuinely free choice on this screen, so it
+   * must stay outside this.
+   *
+   * SMS consent is in here because the product is delivered by text. Accepting
+   * the terms while refusing the only channel would produce an account that
+   * cannot be served, and A2P registration expects the opt-in to be explicit
+   * and separate from the terms -- which is why it is a second box rather than
+   * a clause inside the first.
+   */
+  const consentsGiven = acceptTerms && consentSms;
+  const missingConsent = !acceptTerms
+    ? consentSms
+      ? "Accept the terms and privacy policy to finish."
+      : "Accept the terms, and agree to the texts, to finish."
+    : "Agree to receive the texts to finish.";
+
+  const [busy, setBusy] = useState(false);
+  const [connectError, setConnectError] = useState<string | null>(null);
+
+  /**
+   * Step 0a. Texts the code.
+   *
+   * The reCAPTCHA lives in the hidden div rendered near the bottom of this
+   * component. Firebase will not send an SMS without one: it is what stands
+   * between this form and someone burning the project's messaging budget in a
+   * loop. Invisible, so an ordinary student never sees a challenge.
+   */
+  const sendCode = async () => {
+    setBusy(true);
+    setPhoneError(null);
+    try {
+      setPending(await sendVerificationCode(phone, RECAPTCHA_ID));
+      setCode("");
+    } catch (err) {
+      setPhoneError(phoneErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /**
+   * Step 0b. Spends the code, then trades the ID token for the session cookie.
+   *
+   * The number on the session after this is one Google delivered a message to
+   * and saw typed back, which is why nothing later in the wizard asks for a
+   * phone number again.
+   */
+  const verifyCode = async () => {
+    if (!pending) return;
+    setBusy(true);
+    setPhoneError(null);
+    try {
+      const idToken = await confirmCode(pending, code);
+
+      const res = await fetch("/api/auth/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        phone?: string;
+        connected?: boolean;
+        schoolId?: string | null;
+        email?: string | null;
+        error?: string;
+      };
+
+      if (!res.ok) {
+        await signOutClient();
+        setPhoneError(data.error ?? "We could not verify that number.");
+        return;
       }
-      return result;
-    },
-    null,
-  );
+
+      setVerifiedPhone(data.phone ?? null);
+      setPending(null);
+
+      /*
+       * Take what the server just told us about this student.
+       *
+       * `connected` is a prop, read once when the page rendered. A student who
+       * arrives without a session -- an expired cookie, a new browser -- is
+       * rendered with it null, and it stays null for the life of the page no
+       * matter what they then prove. So a returning student who signed in here
+       * and skipped straight past the school step (because `connected` below
+       * sends them to step 2) reached the summary with no address to show, and
+       * "School email" rendered blank next to their verified number.
+       *
+       * The response has carried both fields all along; this is the code that
+       * was throwing them away.
+       */
+      if (data.email) setSchoolEmail(data.email);
+      if (data.schoolId && !school) {
+        setLocalSchool(getSchool(data.schoolId) ?? null);
+      }
+
+      // Already granted on an earlier visit, so the consent screen has nothing
+      // left to ask. Otherwise on to the school step.
+      setStep(data.connected ? 2 : 1);
+    } catch (err) {
+      setPhoneError(phoneErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /**
+   * Step 1. Hands the tab to Google for the access grant.
+   *
+   * This is plain Google OAuth, not Firebase. Firebase's job ended with the
+   * SMS; the refresh token the overnight agent needs can only come from an
+   * authorisation-code exchange, which the connector performs with a client
+   * secret this app never holds. See docs/design/15-firebase-auth.md.
+   */
+  const startGrant = async () => {
+    if (!school) return;
+    setBusy(true);
+    setConnectError(null);
+
+    // Set once we are handing the tab over. Clearing the pending state on the
+    // way out would flip the button back to its resting label for as long as
+    // the navigation takes, which on a slow connection is seconds of looking
+    // like the press did nothing.
+    let leaving = false;
+
+    try {
+      const grant = await connectGoogle(school.id, schoolEmail);
+      if (!grant.ok || !grant.redirectUrl) {
+        setConnectError(grant.errors?.schoolEmail ?? grant.message);
+        return;
+      }
+
+      // A full navigation, not a router push: we are leaving the app for
+      // accounts.google.com and will come back as a fresh page load.
+      leaving = true;
+      window.location.assign(grant.redirectUrl);
+    } catch {
+      setConnectError("We could not reach Google. Try again in a moment.");
+    } finally {
+      if (!leaving) setBusy(false);
+    }
+  };
+
+  /** Lets a student on the wrong number or the wrong account start over. */
+  const signOut = async () => {
+    await fetch("/api/auth/session", { method: "DELETE" });
+    await signOutClient();
+    // A full reload rather than local state: the session cookie is httpOnly and
+    // the page decides which step to open on, so the server has to re-render.
+    window.location.assign("/onboarding?school=" + encodeURIComponent(school?.id ?? ""));
+  };
+
+  // Errors the callback route reports back on the query string. Each is
+  // something the student can act on; the underlying detail is in the logs.
+  const OAUTH_ERRORS: Record<string, string> = {
+    cancelled: "You cancelled the Google sign-in. Try again when you are ready.",
+    domain: school
+      ? `That Google account is not an @${school.emailDomain} address. Sign in with your school account.`
+      : "That is not a school account.",
+    state: "That sign-in link expired. Start again.",
+    incomplete: "Google did not send us back everything we needed. Try again.",
+    exchange: "We could not finish the sign-in with Google. Try again.",
+    unreachable: "We could not reach our servers. Try again in a moment.",
+    google: "Google turned down the sign-in. Try again.",
+    school: "Pick a supported school first.",
+    // The session expired while they were on Google's consent screen. Rare, and
+    // recoverable by verifying the number again.
+    signin: "Your session expired while you were with Google. Start again.",
+    // They signed in at Google with a different address than the one they typed
+    // on the school step. Nothing was stored: see the check in the callback.
+    mismatch:
+      "You signed in with a different address than the one you entered. Use the same one for both.",
+  };
+  const oauthError = OAUTH_ERRORS[params.get("error") ?? ""];
 
   const [submitState, submitAction, submitting] = useActionState(completeOnboarding, null);
   const errors = submitState?.errors ?? {};
 
   if (submitState?.ok) {
-    return <DoneScreen name={nickname || identity?.name || ""} phone={phone} school={school} />;
+    return (
+      <DoneScreen
+        name={nickname || identity?.name || ""}
+        phone={verifiedPhone ?? phone}
+        school={school}
+      />
+    );
   }
 
   if (unsupported) {
@@ -100,7 +396,7 @@ export function OnboardingWizard() {
 
   if (!school) {
     return (
-      <Shell step={0}>
+      <Shell phase={0} showSignIn={!verifiedPhone}>
         <h1 className="text-[1.6rem] font-extrabold leading-tight text-ink-900">
           Which school are you at?
         </h1>
@@ -115,35 +411,240 @@ export function OnboardingWizard() {
   }
 
   return (
-    <Shell step={step} school={school}>
+    // The sign-in offer belongs under the number screen and only there. Past
+    // that point the student has a verified session, so "sign in" would be an
+    // invitation to restart something they are three quarters of the way
+    // through. See the prop's own note in shell.tsx.
+    <Shell phase={phaseForStep(step)} school={school} showSignIn={step === 0 && !verifiedPhone}>
       <form action={submitAction}>
-        <p className="text-[0.78rem] font-semibold uppercase tracking-[0.16em] text-brand-600">
-          Step {step + 1} of {STEPS.length}
-        </p>
-        <h1 className="mt-2 text-[1.6rem] font-extrabold leading-tight text-ink-900">
-          {STEPS[step].title}
+        <h1 className="text-[1.6rem] font-extrabold leading-tight text-ink-900">
+          {STEP_TITLES[step]}
         </h1>
 
-        {/* -------------------------------------------------- 1. connect */}
+        {/* ---------------------------------------------- 1. your number */}
         {step === 0 ? (
           <div className="mt-7 flex flex-col gap-5">
-            <p className="text-[0.95rem] leading-[1.6] text-body">
-              This takes you to {school.name}&rsquo;s own sign-in page, the same one you use for
-              your email. Classistant never sees your password.
-            </p>
+            {/*
+              Reason on the left, demonstration on the right.
+
+              The scene ran full bleed first and was wrong at that size: it took
+              up more of the step than the step's actual ask, which is one field.
+              Half the width puts it at the same size the connect scenes render
+              at in their own two-up row, which is what the rest of onboarding is
+              calibrated to.
+
+              Pairing them also fixes what the copy was doing. Above the scene it
+              was a paragraph to read before getting to the picture; beside it,
+              the reason for handing over a number sits next to the proof that it
+              takes fifteen seconds. The gift line leads because it is the answer
+              to "why do you want this", and it is the same promise the phase
+              rail and the final button already make.
+            */}
+            <div className="grid items-center gap-5 sm:grid-cols-2">
+              <div className="flex flex-col gap-3">
+                <p className="text-[1.05rem] font-semibold leading-[1.45] text-ink-900">
+                  You will receive your welcome gift via text.
+                </p>
+                <p className="text-[0.9rem] leading-[1.6] text-body">
+                  It is also how Classistant reaches you, and how you sign back in, so we
+                  send a six digit code to check the number is really yours.
+                </p>
+              </div>
+
+              {/* Labels itself, so there is no caption. */}
+              <SceneCard>
+                <PhoneVerifyScene />
+              </SceneCard>
+            </div>
+
+            {/* Already verified, either earlier in this session or on a previous
+                visit. The number is the login, so it is worth showing rather
+                than leaving them guessing which one it went to. */}
+            {verifiedPhone ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-paper p-4 ring-1 ring-line">
+                <p className="text-[0.86rem] text-ink-800">
+                  Verified <span className="font-semibold text-ink-900">{verifiedPhone}</span>
+                </p>
+                <button
+                  type="button"
+                  onClick={signOut}
+                  className="rounded-lg px-2.5 py-1 text-[0.82rem] font-semibold text-brand-600 transition-colors hover:bg-sky-100"
+                >
+                  Not your number?
+                </button>
+              </div>
+            ) : pending ? (
+              <>
+                <Field
+                  label="Six digit code"
+                  htmlFor="code"
+                  hint={`Sent to ${formatPhone(phone)}. It expires in a few minutes.`}
+                >
+                  <TextInput
+                    autoFocus
+                    id="code"
+                    // Not `name`: this must never travel with the final submit.
+                    // The code is spent here and is worthless afterwards.
+                    type="text"
+                    inputMode="numeric"
+                    // The one autocomplete token phones actually act on: iOS and
+                    // Android offer the code straight from the notification.
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    value={code}
+                    onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+                    onKeyDown={(e) => {
+                      // The form's action is completeOnboarding. Enter here has
+                      // to mean "verify", not "submit the whole wizard".
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        if (code.length === 6 && !busy) void verifyCode();
+                      }
+                    }}
+                    placeholder="123456"
+                    className="font-mono tracking-[0.4em]"
+                    invalid={Boolean(phoneError)}
+                  />
+                </Field>
+
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={verifyCode}
+                    disabled={busy || code.length !== 6}
+                    className="rounded-xl bg-brand-600 px-6 py-3 text-[0.93rem] font-semibold text-white transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-line disabled:text-body-soft"
+                  >
+                    {busy ? "Checking..." : "Verify my number"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPending(null);
+                      setCode("");
+                      setPhoneError(null);
+                    }}
+                    className="rounded-lg px-2.5 py-2 text-[0.85rem] font-semibold text-brand-600 transition-colors hover:bg-sky-100"
+                  >
+                    Use a different number
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <Field
+                  label="Mobile number"
+                  htmlFor="phone"
+                  error={phoneError ?? undefined}
+                  hint="Canadian mobile numbers only."
+                >
+                  <TextInput
+                    autoFocus
+                    id="phone"
+                    // Deliberately no `name`. The number reaches the server by
+                    // being verified, not by being submitted, and a field named
+                    // `phone` in this form would offer a second, unproven path.
+                    type="tel"
+                    inputMode="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(formatPhone(e.target.value))}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        if (PHONE_OK.test(phone.replace(/\D/g, "")) && !busy) void sendCode();
+                      }
+                    }}
+                    placeholder="(604) 555-0123"
+                    autoComplete="tel-national"
+                    invalid={Boolean(phoneError)}
+                  />
+                </Field>
+
+                <button
+                  type="button"
+                  onClick={sendCode}
+                  disabled={busy || !PHONE_OK.test(phone.replace(/\D/g, ""))}
+                  className="self-start rounded-xl bg-brand-600 px-6 py-3 text-[0.93rem] font-semibold text-white transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-line disabled:text-body-soft"
+                >
+                  {busy ? "Sending..." : "Text me a code"}
+                </button>
+
+                {/*
+                  The ongoing-texts consent is NOT here, deliberately.
+
+                  It used to be, and that was a trap: it only rendered in this
+                  half of the step, so a student who left it unticked lost sight
+                  of it the moment the code was sent and then failed the final
+                  submit with the one control that could fix it three screens
+                  behind them. It lives with the other consents on the last step
+                  now, which is also where its error message appears.
+
+                  Texting a verification code without it is fine. It is a
+                  one-time message sent because they pressed the button asking
+                  for it, which is transactional rather than the automated
+                  coursework texts CONSENT_COPY.sms covers.
+                */}
+                <p className="text-[0.82rem] leading-[1.6] text-body-soft">
+                  One text, right now, with a six digit code. Message and data rates may
+                  apply.
+                </p>
+              </>
+            )}
+          </div>
+        ) : null}
+
+        {/* --------------------------------------- 2. school account */}
+        {step === 1 ? (
+          <div className="mt-7 flex flex-col gap-5">
+            {/* Reason left, demonstration right, at the same half width as
+                every other scene in the wizard. These two used to share a row
+                with SealedPasswordScene, which is where that size comes from;
+                giving each its own step is not a reason to double it. */}
+            <div className="grid items-center gap-5 sm:grid-cols-2">
+              <div className="flex flex-col gap-3">
+                <p className="text-[1.05rem] font-semibold leading-[1.45] text-ink-900">
+                  You sign in on {school.name}&rsquo;s own page.
+                </p>
+                {/* "Nothing is typed here" was tried and is not true: the
+                    address field is on this step. The claim worth making is
+                    about the password, and the scene makes it. */}
+                <p className="text-[0.9rem] leading-[1.6] text-body">
+                  The same one you use for your email.
+                </p>
+              </div>
+
+              {/* What happens when you press the button, in two acts, because
+                  pressing it is what produces the consent screen. It labels
+                  itself, so there is no caption. */}
+              <SceneCard>
+                <ConnectScene school={school} />
+              </SceneCard>
+            </div>
 
             <Field
-              label="Your school username"
-              htmlFor="username"
-              error={connectState?.errors?.username}
-              hint={`We add @${school.emailDomain} for you, which is what sends you straight to your school's login page instead of a Google account chooser.`}
+              label="Student email"
+              htmlFor="schoolEmail"
+              error={errors.schoolEmail}
             >
               <div className="flex items-stretch overflow-hidden rounded-xl border border-line bg-white focus-within:border-brand-500 focus-within:ring-4 focus-within:ring-brand-500/12">
                 <input
-                  id="username"
-                  name="username"
+                  id="schoolEmail"
                   autoComplete="username"
                   placeholder="yourname"
+                  value={localPart}
+                  onChange={(e) =>
+                    setSchoolEmail(
+                      // Stored whole, edited as the part before the @. A student
+                      // who pastes a full address should not end up with it
+                      // twice over.
+                      `${e.target.value.trim().toLowerCase().replace(/@.*$/, "")}@${school.emailDomain}`,
+                    )
+                  }
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      if (localPart && !busy) void startGrant();
+                    }
+                  }}
                   className="min-w-0 flex-1 bg-transparent px-4 py-3 text-[0.95rem] text-ink-900 outline-none placeholder:text-body-soft/70"
                 />
                 <span className="grid shrink-0 place-items-center border-l border-line bg-paper px-3 font-mono text-[0.85rem] text-body-soft">
@@ -152,47 +653,114 @@ export function OnboardingWizard() {
               </div>
             </Field>
 
-            <input type="hidden" name="schoolId" value={school.id} />
+            {/* The promise that makes the all-or-nothing consent screen fair.
+                Google cannot offer a partial grant, so the student is told
+                before they go that the choosing happens on this side, and the
+                last step is where it happens. */}
+            <p className="rounded-xl bg-sky-50 p-4 text-[0.86rem] leading-[1.6] text-ink-800 ring-1 ring-sky-200">
+              Google asks for everything at once. You will be able to switch off anything you
+              do not want Classistant to touch in the last step.
+            </p>
 
-            <button
-              type="submit"
-              formAction={connectAction}
-              disabled={connecting}
-              className="flex items-center justify-center gap-3 rounded-xl border border-line bg-white px-5 py-3.5 text-[0.95rem] font-semibold text-ink-900 transition-colors hover:bg-sky-50 disabled:opacity-60"
-            >
-              <GoogleGlyph />
-              {connecting ? "Opening your school sign-in..." : "Continue with Google"}
-            </button>
+            {/* The button and the school's own joining note are one unit, so
+                they sit in their own tighter stack rather than taking the
+                column's gap-5. The note is not gated on the button: it is this
+                school's instructions for what to type, which is most useful
+                before there is anything in the field. */}
+            {localPart || school.note ? (
+              <div className="flex flex-col gap-2.5">
+                {localPart ? (
+                  <button
+                    // type="button", not submit. The form's action is
+                    // completeOnboarding, and this runs its own handler.
+                    type="button"
+                    onClick={startGrant}
+                    disabled={busy}
+                    style={{ animation: "bubble-in .35s var(--ease-out-soft) both" }}
+                    className="flex items-center justify-center gap-3 rounded-xl border border-line bg-white px-5 py-3.5 text-[0.95rem] font-semibold text-ink-900 transition-colors hover:bg-sky-50 disabled:opacity-60"
+                  >
+                    <GoogleGlyph />
+                    {busy ? "Opening your school sign-in..." : "Continue with Google"}
+                  </button>
+                ) : null}
 
-            {connectState && !connectState.ok ? (
-              <p role="alert" className="text-[0.85rem] text-ink-800">
-                {connectState.message}
-              </p>
+                {school.note ? (
+                  <p className="text-[0.82rem] leading-[1.55] text-body-soft">{school.note}</p>
+                ) : null}
+              </div>
             ) : null}
 
-            <ScopeList />
+            {connectError ? (
+              <p role="alert" className="text-[0.85rem] text-ink-800">
+                {connectError}
+              </p>
+            ) : oauthError ? (
+              <p
+                role="alert"
+                className="rounded-xl bg-paper p-4 text-[0.85rem] leading-[1.6] text-ink-800 ring-1 ring-line"
+              >
+                {oauthError}
+              </p>
+            ) : null}
           </div>
         ) : null}
 
-        {/* ------------------------------------------ 2. portal password */}
-        {step === 1 ? (
+        {/* ------------------------------------------ 3. portal password */}
+        {step === 2 ? (
           <div className="mt-7 flex flex-col gap-5">
-            <div className="rounded-xl bg-sky-50 p-4 ring-1 ring-sky-200">
-              <p className="text-[0.88rem] leading-[1.65] text-ink-800">
-                Signing in with Google let it read your mail and calendar. It does not give it a
-                session on {school.name}&rsquo;s portal, and that is where posted grades and
-                course files live. Classistant checks the portal overnight, while you are asleep
-                and cannot approve anything, so it needs to be able to sign in on its own.
-              </p>
+            {/* Same pairing as the other two steps. The explanation lost its
+                sky-50 callout box in the move: beside a SceneCard, which carries
+                its own ring, two ringed boxes side by side read as competing
+                panels, and the four-point list further down this step is already
+                doing the work a callout would. */}
+            <div className="grid items-center gap-5 sm:grid-cols-2">
+              <div className="flex flex-col gap-3">
+                <p className="text-[1.05rem] font-semibold leading-[1.45] text-ink-900">
+                  Google does not get it into your portal.
+                </p>
+                <p className="text-[0.9rem] leading-[1.6] text-body">
+                  That is where posted grades and course files live. Classistant checks it
+                  overnight, while you are asleep and cannot approve anything, so it needs to
+                  be able to sign in on its own.
+                </p>
+              </div>
+
+              {/* Moved here from the connect step, which resolves the concern
+                  docs/design/13 raises about itself: the sealed envelope is a
+                  simplification of the Google grant and very nearly literal
+                  about the portal password. This is the step it is accurate on,
+                  and the step it argues for. */}
+              <SceneCard>
+                <SealedPasswordScene school={school} />
+              </SceneCard>
             </div>
 
-            <Field label="Portal username or student number" htmlFor="portalUser" error={errors.portalUser}>
+            {/*
+              The placeholder is generic on purpose.
+
+              It used to be `localPart` -- the student's own name, taken from
+              the address they just connected. Rendered in placeholder grey it
+              reads exactly like a filled-in field, so a student who had typed
+              only the password saw two complete fields and a Continue button
+              that would not respond, with nothing on screen naming the empty
+              one. The suggestion is worth making, so it moved to the hint,
+              where it is offered rather than impersonated.
+            */}
+            <Field
+              label="Portal username or student number"
+              htmlFor="portalUser"
+              error={errors.portalUser}
+              hint={
+                localPart
+                  ? `Often the same as your school email name, ${localPart} — but some schools want your student number instead.`
+                  : "Some schools use a username here, others your student number."
+              }
+            >
               <TextInput
                 id="portalUser"
                 name="portalUser"
                 value={portalUser}
                 onChange={(e) => setPortalUser(e.target.value)}
-                placeholder={identity?.email.split("@")[0] ?? "yourname"}
                 autoComplete="off"
                 invalid={Boolean(errors.portalUser)}
               />
@@ -238,12 +806,54 @@ export function OnboardingWizard() {
           </div>
         ) : null}
 
-        {/* -------------------------------------------------- 3. details */}
-        {step === 2 && identity ? (
+        {/* ------------------------------------ 4. what it can touch */}
+        {step === 3 ? (
           <div className="mt-7 flex flex-col gap-5">
+            <p className="text-[0.95rem] leading-[1.6] text-body">
+              Google asked for everything at once, because that is the only way it asks. Here
+              is the whole list. Switch off anything you would rather Classistant left alone.
+            </p>
+
+            <ul className="flex flex-col gap-2.5">
+              {ACCESS_ITEMS.map((item) => (
+                <li key={item.key}>
+                  <AccessToggle
+                    item={item}
+                    on={access[item.key]}
+                    onChange={() =>
+                      setAccess((prev) => ({ ...prev, [item.key]: !prev[item.key] }))
+                    }
+                  />
+                </li>
+              ))}
+            </ul>
+
+            {/*
+              The honest footnote, and it has to stay.
+
+              A switch that looks like it revokes something at Google would be a
+              claim this product cannot keep: the grant is one token covering the
+              whole set, and narrowing it for real means sending a student back
+              through consent with a shorter list. What these do is bind
+              Classistant, which is worth something and is not the same thing.
+            */}
+            <p className="text-[0.82rem] leading-[1.6] text-body-soft">
+              These tell Classistant what to leave alone. To take the permissions back from
+              Google itself, remove Classistant in your{" "}
+              <a
+                href="https://myaccount.google.com/permissions"
+                target="_blank"
+                rel="noreferrer noopener"
+                className="font-semibold text-brand-600 hover:underline"
+              >
+                Google account
+              </a>
+              , which ends its access entirely.
+            </p>
+
             <div className="rounded-2xl bg-paper p-5 ring-1 ring-line">
               <p className="text-[0.75rem] font-semibold uppercase tracking-[0.14em] text-body-soft">
-                From your school account
+                Your account
               </p>
 
               <dl className="mt-4 flex flex-col gap-4">
@@ -263,7 +873,7 @@ export function OnboardingWizard() {
                   ) : (
                     <dd className="mt-0.5 flex flex-wrap items-center gap-3">
                       <span className="text-[1.02rem] font-semibold text-ink-900">
-                        {nickname || identity.name}
+                        {nickname || identity?.name || localPart}
                       </span>
                       <button
                         type="button"
@@ -274,56 +884,35 @@ export function OnboardingWizard() {
                       </button>
                     </dd>
                   )}
-                  {identity.simulated && !nickname ? (
+                  {!nickname ? (
                     <p className="mt-1.5 text-[0.76rem] text-body-soft">
-                      Google is not connected yet, so this name is placeholder data.
+                      Taken from your address. Change it to whatever you want to be called.
                     </p>
                   ) : null}
                 </div>
 
                 <div>
                   <dt className="text-[0.8rem] text-body-soft">School email</dt>
-                  <dd className="mt-0.5 font-mono text-[0.92rem] text-ink-900">{identity.email}</dd>
+                  <dd className="mt-0.5 font-mono text-[0.92rem] text-ink-900">
+                    {identity?.email ?? schoolEmail}
+                  </dd>
+                </div>
+
+                <div>
+                  <dt className="text-[0.8rem] text-body-soft">Texts go to</dt>
+                  <dd className="mt-0.5 font-mono text-[0.92rem] text-ink-900">
+                    {verifiedPhone ?? formatPhone(phone)}
+                  </dd>
                 </div>
               </dl>
-
-              <div className="mt-5 border-t border-line pt-4">
-                {editingServiceEmail ? (
-                  <Field
-                    label="Account for Drive, Calendar, and email"
-                    htmlFor="serviceEmail"
-                    error={errors.serviceEmail}
-                    hint="Only if your coursework lives in a different Google account."
-                  >
-                    <TextInput
-                      autoFocus
-                      id="serviceEmail"
-                      name="serviceEmail"
-                      type="email"
-                      value={serviceEmail}
-                      onChange={(e) => setServiceEmail(e.target.value)}
-                      placeholder="you@example.com"
-                      invalid={Boolean(errors.serviceEmail)}
-                    />
-                  </Field>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setEditingServiceEmail(true)}
-                    className="text-left text-[0.85rem] font-semibold text-brand-600 hover:underline"
-                  >
-                    Different email for Google Drive, Calendar, and email?
-                  </button>
-                )}
-              </div>
             </div>
 
             <Choice
               name="acceptTerms"
               checked={acceptTerms}
               onChange={() => setAcceptTerms((v) => !v)}
-              title="I accept the terms and privacy policy"
-              body="Including that Classistant can read course mail and write to your calendar."
+              title={CONSENT_COPY.terms.title}
+              body={CONSENT_COPY.terms.body}
             />
             {errors.acceptTerms ? (
               <p role="alert" className="-mt-3 text-[0.8rem] font-medium text-ink-800">
@@ -331,12 +920,29 @@ export function OnboardingWizard() {
               </p>
             ) : null}
 
+            {/* The consent for ongoing texts, sitting with the other two rather
+                than back on the number step. This is the screen its error
+                message appears on, and a required control a student cannot
+                reach from the error is worse than no control at all. */}
+            <Choice
+              name="consentSms"
+              checked={consentSms}
+              onChange={() => setConsentSms((v) => !v)}
+              title={CONSENT_COPY.sms.title}
+              body={CONSENT_COPY.sms.body}
+            />
+            {errors.consentSms ? (
+              <p role="alert" className="-mt-3 text-[0.8rem] font-medium text-ink-800">
+                {errors.consentSms}
+              </p>
+            ) : null}
+
             <Choice
               name="acceptMarketing"
               checked={acceptMarketing}
               onChange={() => setAcceptMarketing((v) => !v)}
-              title="Send me product emails"
-              body="Occasional updates about new features. Nothing to do with your coursework, and you can opt out any time."
+              title={CONSENT_COPY.marketing.title}
+              body={CONSENT_COPY.marketing.body}
             />
 
             <p className="text-[0.82rem] leading-[1.6] text-body-soft">
@@ -353,63 +959,26 @@ export function OnboardingWizard() {
           </div>
         ) : null}
 
-        {/* ---------------------------------------------------- 4. phone */}
-        {step === 3 ? (
-          <div className="mt-7 flex flex-col gap-5">
-            <p className="text-[0.95rem] leading-[1.6] text-body">
-              This is the only place Classistant lives day to day. Everything else is set.
-            </p>
-
-            <Field
-              label="Mobile number"
-              htmlFor="phone"
-              error={errors.phone}
-              hint="Canadian mobile numbers only."
-            >
-              <TextInput
-                autoFocus
-                id="phone"
-                name="phone"
-                type="tel"
-                inputMode="tel"
-                value={phone}
-                onChange={(e) => setPhone(formatPhone(e.target.value))}
-                placeholder="(604) 555-0123"
-                autoComplete="tel-national"
-                invalid={Boolean(errors.phone)}
-              />
-            </Field>
-
-            <Choice
-              name="consentSms"
-              checked={consentSms}
-              onChange={() => setConsentSms((v) => !v)}
-              title="Text me about my coursework"
-              body="Automated texts from Classistant about your schoolwork. Message and data rates may apply. Reply STOP to end at any time."
-            />
-            {errors.consentSms ? (
-              <p role="alert" className="-mt-3 text-[0.8rem] font-medium text-ink-800">
-                {errors.consentSms}
-              </p>
-            ) : null}
-          </div>
-        ) : null}
-
         {/* Everything travels with the final submit. */}
         <HiddenState
           step={step}
           values={{
-            schoolId: school.id,
-            email: identity?.email ?? "",
-            name: identity?.name ?? "",
             nickname,
-            serviceEmail,
             portalUser,
             portalPassword,
-            phone,
             acceptTerms: acceptTerms ? "on" : "",
             acceptMarketing: acceptMarketing ? "on" : "",
             consentSms: consentSms ? "on" : "",
+            // The access switches. Written out here rather than as checkbox
+            // inputs on the step, because an unchecked checkbox submits nothing
+            // and the server reads absence as off; mirroring them means the
+            // value sent always matches the switch on screen.
+            ...Object.fromEntries(
+              ACCESS_ITEMS.map((item) => [
+                `access.${item.key}`,
+                access[item.key] ? "on" : "",
+              ]),
+            ),
           }}
         />
 
@@ -423,16 +992,19 @@ export function OnboardingWizard() {
           <button
             type="button"
             onClick={() => setStep((s) => Math.max(0, s - 1))}
-            disabled={step === 0}
+            // Nothing to go back to on step 0, and nothing worth going back to
+            // on step 1: the number is already verified and the account already
+            // connected, so Back would only offer to redo settled work.
+            disabled={step <= 1}
             className="rounded-lg px-3 py-2 text-[0.9rem] font-semibold text-body transition-colors hover:bg-sky-100 hover:text-ink-900 disabled:pointer-events-none disabled:opacity-0"
           >
             Back
           </button>
 
-          {step === 1 ? (
+          {step === 2 ? (
             <button
               type="button"
-              onClick={() => setStep(2)}
+              onClick={() => setStep(3)}
               disabled={portalUser.trim().length < 2 || portalPassword.length < 6}
               className="rounded-xl bg-brand-600 px-6 py-3 text-[0.93rem] font-semibold text-white transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-line disabled:text-body-soft"
             >
@@ -440,30 +1012,125 @@ export function OnboardingWizard() {
             </button>
           ) : null}
 
-          {step === 2 ? (
-            // The big one. It asks for the number, rather than submitting.
-            <button
-              type="button"
-              onClick={() => setStep(3)}
-              disabled={!acceptTerms}
-              className="rounded-xl bg-brand-600 px-8 py-4 text-[1rem] font-bold text-white shadow-[0_12px_28px_-12px_var(--color-brand-600)] transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-line disabled:text-body-soft disabled:shadow-none"
-            >
-              Finish
-            </button>
-          ) : null}
-
           {step === 3 ? (
-            <button
-              type="submit"
-              disabled={submitting}
-              className="rounded-xl bg-brand-600 px-8 py-4 text-[1rem] font-bold text-white shadow-[0_12px_28px_-12px_var(--color-brand-600)] transition-colors hover:bg-brand-700 disabled:opacity-70"
-            >
-              {submitting ? "Setting up..." : "Start texting me"}
-            </button>
+            // Named for what it produces rather than for what it does. The
+            // screen above it is the one where a student finds out the beta is
+            // free, and "Send welcome gift" is the reward rather than the
+            // paperwork. Same reasoning as the PHASES label.
+            <div className="flex flex-col items-end gap-2">
+              <button
+                type="submit"
+                disabled={submitting || !consentsGiven}
+                className="rounded-xl bg-brand-600 px-8 py-4 text-[1rem] font-bold text-white shadow-[0_12px_28px_-12px_var(--color-brand-600)] transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-line disabled:text-body-soft disabled:shadow-none"
+              >
+                {submitting ? "Sending..." : "Send welcome gift"}
+              </button>
+
+              {/* Why the button is off, said before it is pressed rather than
+                  after. A disabled control with no stated reason is the trap
+                  the portal username field fell into: a student reads it as
+                  broken, because nothing on screen tells them otherwise. */}
+              {!consentsGiven && !submitting ? (
+                <p className="text-right text-[0.8rem] leading-[1.5] text-body-soft">
+                  {missingConsent}
+                </p>
+              ) : null}
+            </div>
           ) : null}
         </div>
       </form>
+
+      {/*
+        The invisible reCAPTCHA, mounted for the whole wizard rather than inside
+        step 0.
+
+        Firebase resolves this container by id when a code is sent, so it has to
+        be in the DOM before the press. Rendering it only on step 0 would work
+        until a student went back to it, at which point the element would be a
+        new node and the verifier would still be holding the old one.
+
+        Outside the <form> on purpose: it injects an iframe and a hidden input,
+        and neither belongs in a form whose action writes a student's account.
+
+        Deliberately unstyled, and that is load-bearing in both directions.
+
+        `hidden` (`display: none`) breaks it: grecaptcha cannot mint a token
+        from a container it cannot lay out, and it fails as
+        `auth/invalid-app-credential`, which reads exactly like a project
+        misconfiguration and is not one.
+
+        Sizing it to nothing (`h-0 w-0 overflow-hidden`) breaks it differently:
+        grecaptcha renders its anchor iframe INSIDE this element, and clipping
+        that to zero makes it read positions off a node with no box, which
+        throws "Cannot read properties of null (reading 'style')" from inside
+        recaptcha__en.js.
+
+        At `size: "invisible"` an empty div is already the whole answer. It
+        collapses to nothing on its own, and the floating badge is
+        `position: fixed` and never lived in here anyway.
+      */}
+      <div id={RECAPTCHA_ID} />
     </Shell>
+  );
+}
+
+/**
+ * One access switch.
+ *
+ * A real checkbox under a styled surface rather than a div with a click
+ * handler: it has to be reachable by keyboard and announced as a checkbox, and
+ * the cheapest way to get both is to use the element that already is one.
+ */
+function AccessToggle({
+  item,
+  on,
+  onChange,
+}: {
+  item: (typeof ACCESS_ITEMS)[number];
+  on: boolean;
+  onChange: () => void;
+}) {
+  return (
+    <label
+      className={cn(
+        "flex cursor-pointer items-start gap-4 rounded-xl p-4 ring-1 transition-colors",
+        on ? "bg-sky-50 ring-sky-200" : "bg-paper ring-line",
+      )}
+    >
+      <input
+        type="checkbox"
+        checked={on}
+        onChange={onChange}
+        // The value is mirrored by HiddenState, so this input is the control
+        // and not the thing submitted. Naming it would send it twice.
+        className="peer sr-only"
+      />
+
+      <span className="min-w-0 flex-1">
+        <span className="block text-[0.92rem] font-semibold text-ink-900">{item.label}</span>
+        <span className="mt-1 block text-[0.82rem] leading-[1.5] text-body-soft">
+          {item.detail}
+        </span>
+      </span>
+
+      {/* The switch. Focus ring is driven off the peer, because the input it
+          belongs to is visually hidden and would otherwise show nothing. */}
+      <span
+        aria-hidden="true"
+        className={cn(
+          "relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors",
+          "peer-focus-visible:ring-4 peer-focus-visible:ring-brand-500/30",
+          on ? "bg-brand-600" : "bg-line",
+        )}
+      >
+        <span
+          className={cn(
+            "absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-all duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]",
+            on ? "left-[1.4rem]" : "left-0.5",
+          )}
+        />
+      </span>
+    </label>
   );
 }
 
@@ -473,10 +1140,11 @@ export function OnboardingWizard() {
  */
 function HiddenState({ step, values }: { step: number; values: Record<string, string> }) {
   const rendered: Record<number, string[]> = {
-    0: ["schoolId"],
-    1: ["portalUser", "portalPassword"],
-    2: ["nickname", "serviceEmail", "acceptTerms", "acceptMarketing"],
-    3: ["phone", "consentSms"],
+    // Steps 0 and 1 render nothing that travels with the final submit. The
+    // number and the code are deliberately absent from the form entirely:
+    // neither is submitted, they reach the server by being verified.
+    2: ["portalUser", "portalPassword"],
+    3: ["nickname", "acceptTerms", "consentSms", "acceptMarketing"],
   };
   const skip = new Set(rendered[step] ?? []);
   return (
@@ -487,97 +1155,6 @@ function HiddenState({ step, values }: { step: number; values: Record<string, st
           <input key={key} type="hidden" name={key} value={value} />
         ))}
     </>
-  );
-}
-
-function ScopeList() {
-  return (
-    <ul className="flex flex-col gap-2 rounded-xl bg-paper p-4 ring-1 ring-line">
-      <li className="text-[0.75rem] font-semibold uppercase tracking-[0.14em] text-body-soft">
-        Google will ask you to allow
-      </li>
-      {[
-        "Read course email and announcements",
-        "Create and update calendar events",
-        "Send email you have approved, from your address",
-        "Read syllabi and course files in Drive",
-      ].map((scope) => (
-        <li key={scope} className="flex items-start gap-2.5 text-[0.85rem] text-ink-800">
-          <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-sky-400" />
-          {scope}
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function Shell({
-  step,
-  school,
-  children,
-}: {
-  step: number;
-  school?: School;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="grid gap-10 lg:grid-cols-[17rem_1fr] lg:gap-14">
-      <aside className="lg:sticky lg:top-28 lg:self-start">
-        <Link href="/" className="inline-flex items-center gap-2.5">
-          <LogoMark size={30} />
-          <span className="font-display text-[1.1rem] font-extrabold tracking-[-0.03em] text-ink-900">
-            Classistant
-          </span>
-        </Link>
-
-        {school ? (
-          <p className="mt-5 text-[0.88rem] font-semibold text-ink-900">{school.name}</p>
-        ) : null}
-
-        <ol className="mt-6 hidden flex-col gap-4 lg:flex">
-          {STEPS.map((s, i) => (
-            <li key={s.title} className="flex items-start gap-3">
-              <span
-                className={cn(
-                  "mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full text-[0.68rem] font-bold transition-colors",
-                  i < step
-                    ? "bg-brand-600 text-white"
-                    : i === step
-                      ? "bg-brand-600 text-white ring-4 ring-brand-500/20"
-                      : "bg-white text-body-soft ring-1 ring-line",
-                )}
-              >
-                {i < step ? "✓" : i + 1}
-              </span>
-              <span>
-                <span
-                  className={cn(
-                    "block text-[0.88rem] font-semibold",
-                    i <= step ? "text-ink-900" : "text-body-soft",
-                  )}
-                >
-                  {s.title}
-                </span>
-                <span className="mt-0.5 block text-[0.76rem] text-body-soft">{s.blurb}</span>
-              </span>
-            </li>
-          ))}
-        </ol>
-
-        <div className="mt-6 flex items-center gap-2 lg:hidden">
-          {STEPS.map((s, i) => (
-            <span
-              key={s.title}
-              className={cn("h-1.5 flex-1 rounded-full", i <= step ? "bg-brand-600" : "bg-line")}
-            />
-          ))}
-        </div>
-      </aside>
-
-      <div className="min-w-0 rounded-[1.4rem] bg-white p-6 shadow-soft ring-1 ring-line sm:p-9">
-        {children}
-      </div>
-    </div>
   );
 }
 
@@ -616,12 +1193,30 @@ function DoneScreen({ name, phone, school }: { name: string; phone: string; scho
         </ul>
       </div>
 
-      <Link
-        href="/"
-        className="mt-8 inline-block rounded-xl bg-brand-600 px-6 py-3 text-[0.93rem] font-semibold text-white transition-colors hover:bg-brand-700"
-      >
-        Back to home
-      </Link>
+      {/*
+        The dashboard, not the home page.
+
+        "Back to home" was the only destination this screen had before there was
+        anywhere else to send anyone, and it sent a student who had just handed
+        over a school login and a portal password to a marketing page inviting
+        them to get set up. The account they just made is the thing to show them
+        next: it is where the switches they set two screens ago live, and where
+        the first entries of the activity feed will appear.
+      */}
+      <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+        <Link
+          href="/dashboard"
+          className="inline-block rounded-xl bg-brand-600 px-6 py-3 text-[0.93rem] font-semibold text-white transition-colors hover:bg-brand-700"
+        >
+          Open my dashboard
+        </Link>
+        <Link
+          href="/"
+          className="inline-block rounded-xl px-4 py-3 text-[0.9rem] font-semibold text-body transition-colors hover:bg-sky-100 hover:text-ink-900"
+        >
+          Back to home
+        </Link>
+      </div>
     </div>
   );
 }

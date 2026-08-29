@@ -88,11 +88,17 @@ The `It calls you` tile is the tallest on the wall, three rows on `lg`. Its
 phone was capped at a fixed 5.2rem and sat in the top third with the label
 pinned to the bottom, leaving a hole big enough to read as a loading state.
 
-Height now comes from the tile and width from the phone's own 1:2 proportions,
-with `max-w-full` giving way on the narrow phone grid. That also removed
-`Tile`'s `align` prop: art that should reach the edges of a taller box grows
-with `flex-1`, which fills the space, instead of `justify-between` pushing two
-small things apart.
+Height now comes from the tile and width from the phone's own proportions, with
+`max-w-full` giving way on the narrow phone grid. That also removed `Tile`'s
+`align` prop: art that should reach the edges of a taller box grows with
+`flex-1`, which fills the space, instead of `justify-between` pushing two small
+things apart.
+
+**70% of the height, not all of it.** Filling the tile outright ran the handset
+to 1:2.13 against a width clamped by the column, which is a real phone's ratio
+but reads as a sliver at this size, in the narrowest tile on the wall. It sits
+at 1:1.85 and centred, so the leftover reads as margin above and below rather
+than as a hole underneath.
 
 Answer and decline carry the handset glyph rather than being bare colour dots.
 Two circles alone read as a traffic light.

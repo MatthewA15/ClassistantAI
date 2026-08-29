@@ -17,10 +17,17 @@ import { cn } from "@/lib/cn";
 export function GlowSlot({
   children,
   scrolled,
+  pulse = false,
   className,
 }: {
   children: ReactNode;
   scrolled: boolean;
+  /**
+   * Brighten on a slow loop to draw the eye back. Only the CTA sets this: a
+   * header where all three capsules breathe in time is a light show, and the
+   * point is to single one of them out.
+   */
+  pulse?: boolean;
   className?: string;
 }) {
   return (
@@ -54,6 +61,33 @@ export function GlowSlot({
           style={{ animationDuration: "29s", animationDelay: "-11s" }}
         />
       </div>
+
+      {/* The attention pulse is its own layer, starting from nothing, rather
+          than a brightening of the glow above.
+
+          Brightening was the first attempt and it could not have worked. Those
+          blobs paint at 22-28% alpha inside a container held at 50-80%, so the
+          strongest colour actually reaching the page is about 0.28 x 0.8. The
+          requested 40% more opacity moves that by roughly four percentage
+          points of a blue wash on a near-white header, which is a handful of
+          RGB units. Multiplying something nearly invisible gives you something
+          nearly invisible, whatever the multiplier.
+
+          Zero to full on a dedicated blob is a change you can see, and the
+          resting glow stays exactly as designed.
+
+          Inline opacity 0 is the reduced-motion resting state: the animation
+          class is not applied there, so this stays hidden rather than being
+          stuck at full. */}
+      {pulse ? (
+        <div
+          aria-hidden="true"
+          style={{ opacity: 0 }}
+          className="pointer-events-none absolute -inset-x-7 -bottom-6 -top-5 -z-10 motion-safe:animate-cta-attention"
+        >
+          <div className="absolute inset-0 rounded-full bg-brand-600/38 blur-[30px]" />
+        </div>
+      ) : null}
 
       {children}
     </div>
