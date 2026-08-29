@@ -10,19 +10,21 @@ many seconds before sending it, which supports sub-second delays.
 
 from firebase_functions import https_fn
 from twilio.rest import Client as TwilioClient
+from twilio.rest.api.v2010.account.message import MessageInstance
 from pydantic import ValidationError
 from models import ErrorResponse, SendRequest, SendResponse
 from db import db
 import logging
 import time
 from datetime import datetime, timezone
-from firebase_functions.options import IngressSetting
-
 
 from constants import (
     TWILIO_ACCOUNT_SID,
     TWILIO_AUTH_TOKEN,
+    TWILIO_FROM_NUMBER,
     TWILIO_MESSAGING_SERVICE_SID,
+    TWILIO_POLL_INTERVAL_S,
+    TWILIO_POLL_TIMEOUT_S,
 )
 
 logger = logging.getLogger(__name__)
@@ -43,6 +45,40 @@ def _json_response(model, status: int) -> https_fn.Response:
     )
 
 
+# Statuses that mean the message has left Twilio's hands (success or failure).
+_TERMINAL_STATUSES = {
+    # Success
+    MessageInstance.Status.SENT,
+    MessageInstance.Status.DELIVERED,
+    MessageInstance.Status.READ,
+    # Failure
+    MessageInstance.Status.FAILED,
+    MessageInstance.Status.UNDELIVERED,
+    MessageInstance.Status.CANCELED,
+}
+
+
+def _wait_until_sent(sid: str) -> None:
+    """Poll the Twilio Message resource until it reaches a terminal status
+    or ``TWILIO_POLL_TIMEOUT_S`` elapses, whichever comes first.
+    """
+    assert _twilio_client is not None, "Twilio REST credentials are not configured."
+
+    deadline = time.monotonic() + TWILIO_POLL_TIMEOUT_S
+    while time.monotonic() < deadline:
+        prev = _twilio_client.messages(sid).fetch()
+        if prev.status in _TERMINAL_STATUSES:
+            # TODO: Retry on failure
+            return
+        time.sleep(TWILIO_POLL_INTERVAL_S)
+    # Timeout: assume the message is in flight and proceed anyway.
+    logger.warning(
+        "send_message: timed out after %ss waiting for message %s; continuing.",
+        TWILIO_POLL_TIMEOUT_S,
+        sid,
+    )
+
+
 @https_fn.on_request(max_instances=100,
                      service_account="classistant-message-sender@classisstant.iam.gserviceaccount.com")
 def send_message(req: https_fn.Request) -> https_fn.Response:
@@ -55,15 +91,14 @@ def send_message(req: https_fn.Request) -> https_fn.Response:
     {
       "user_id": "<firestore doc id>",
       "messages": [
-        { "body": "first message" },
-        { "body": "second message", "delay_s": 0.5 }
+        "first message",
+        "second message"
       ]
     }
     ```
 
-    The first message is sent immediately. Every subsequent message must
-    include ``delay_s`` (> 0); the function sleeps for that many seconds
-    before sending it.
+    The first message is sent immediately. Every subsequent message is sent
+    after the previous message is delivered.
     """
     if req.method != "POST":
         return _json_response(ErrorResponse(error="Method not allowed."), 405)
@@ -97,21 +132,23 @@ def send_message(req: https_fn.Request) -> https_fn.Response:
 
     results = []
     for i, m in enumerate(payload.messages):
-        if i > 0 and m.delay_s is not None:
-            time.sleep(m.delay_s)  # Wait
+        if i > 0:
+            if (prev_msg_id := results[-1]["message_sid"]) is not None:
+                _wait_until_sent(prev_msg_id)
 
         msg = _twilio_client.messages.create(
-            messaging_service_sid=TWILIO_MESSAGING_SERVICE_SID,
+            # messaging_service_sid=TWILIO_MESSAGING_SERVICE_SID,
+            from_=TWILIO_FROM_NUMBER,
             to=phone_number,
-            body=m.body,
+            body=m,
         )
         results.append({
-            "message_sid": msg.sid or "(unknown)",
-            "body": m.body,
+            "message_sid": msg.sid,
+            "body": m,
             "sent_at": datetime.now(timezone.utc).isoformat(),
         })
         logger.debug("send_message: sent message of size %d to user %s at %s",
-                     len(m.body),
+                     len(m),
                      payload.user_id,
                      results[-1]["sent_at"]
                      )

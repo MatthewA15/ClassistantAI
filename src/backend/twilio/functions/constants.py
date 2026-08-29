@@ -15,14 +15,15 @@ PROJECT_LOCATION = environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")
 # Twilio REST credentials for outbound SMS.
 TWILIO_ACCOUNT_SID = environ.get("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN = environ.get("TWILIO_AUTH_TOKEN")
+TWILIO_FROM_NUMBER = environ.get("TWILIO_FROM_NUMBER")
 TWILIO_MESSAGING_SERVICE_SID = environ.get("TWILIO_MESSAGING_SERVICE_SID")
 
-# Bounds for the inter-message delay_s (seconds).
-TWILIO_MIN_DELAY_S = 0.05
-TWILIO_MAX_DELAY_S = 2
+# Polling settings for waiting until the previous message reaches a terminal
+# status before sending the next one.
+TWILIO_POLL_INTERVAL_S = 0.1   # seconds between status fetches
+TWILIO_POLL_TIMEOUT_S = 5      # max seconds to wait before assuming sent
 
-# Generic, friendly nudges shown to unrecognised senders. One is picked at
-# random so repeat texts don't feel like a canned autoresponder.
+# Generic, friendly nudges shown to unrecognised senders.
 SIGNUP_NUDGES = [
     "Hey! I don't recognise this number yet. Finish signing up at {url} and I'll be able to help.",
     "Hmm, I don't see an account for this phone. Complete your signup at {url} and text me again!",
