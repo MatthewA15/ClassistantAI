@@ -1,4 +1,4 @@
-# Classistant AI Connector API — Contract v0.5 (handoff for ADK tools)
+# Classistant AI Connector API — Contract v0.6 (handoff for ADK tools)
 
 Base URL: `https://<cloud-run-url>` (local: `http://localhost:8080`). All responses JSON.
 `{user_id}` in every path below is the **Firebase UID** — the same identifier the frontend's session already carries and the `users` collection is keyed by. There is no other identifier this service accepts; a Google `sub` is never a valid `{user_id}`.
@@ -27,7 +27,27 @@ This service has no auth endpoints. Login, the OAuth authorization-code exchange
 |---|---|---|---|
 | GET | `/users/{user_id}/drive/files?q=&max_results=` | optional Drive query | `{files:[{id, name, mimeType, modifiedTime, webViewLink}], count}` |
 | GET | `/users/{user_id}/drive/files/{file_id}/download` | — | **Raw file bytes (not JSON)** with `Content-Type` + `Content-Disposition: attachment; filename=...`. Google-native files are auto-exported (Docs→txt, Sheets→csv, Slides→pdf); other google-apps types → `415`. `404` not found, `403` no access / needs re-consent. ADK tool code must handle a binary response. |
-| POST | `/users/{user_id}/docs` | `{title, content}` | `{doc_id, url, status:"created"}` |
+| POST | `/users/{user_id}/docs` | `{title, content, markdown?}` | `{doc_id, url, status:"created", formatting_applied}` |
+
+### `POST /docs` — markdown rendering (v0.6)
+
+`markdown` is optional and defaults to `false`. **`false` (or absent) is the pre-v0.6 behaviour exactly**: `content` is inserted verbatim as plain text, markdown syntax and all. Existing callers need no change.
+
+Send `markdown: true` to have `content` parsed as markdown and rendered with real Docs formatting:
+
+| Markdown | Becomes |
+|---|---|
+| `#`, `##`, `###` | `HEADING_1`, `HEADING_2`, `HEADING_3` |
+| `**bold**`, `*italic*` | bold / italic text runs |
+| `[text](url)` | a clickable link on `text` |
+| `- item` | a disc-bulleted list |
+| `1. item` | a decimal-numbered list |
+
+Anything outside that set — tables, code fences, block quotes, images, nested list indentation, `####` and deeper headings — is **never dropped**. Its text is inserted unstyled, because a student seeing an unstyled paragraph is far better than a student missing one. Nested list items are flattened to a single level.
+
+The response is `DocCreatedResponse` — `doc_id`, `url`, `status` (unchanged since v0.3) plus `formatting_applied`, which is always present and defaults to `true`.
+
+`formatting_applied` is `false` **only** when `markdown: true` was requested *and* the conversion failed — in which case the Doc was still created, with `content` inserted as unformatted plain text. A malformed heading never costs the student the document, so treat `false` as "the Doc is fine, but it reads as raw markdown", not as an error. It is `true` when markdown rendered successfully, and `true` when `markdown` was false or absent (nothing was requested, so nothing failed).
 
 ## Errors
 
@@ -45,3 +65,4 @@ Every `/users/{user_id}/...` endpoint reads through `app/services/firestore_cred
 - v0.3: added Drive file download; drive.readonly scope added — re-consent required.
 - v0.4 (**breaking**): `/auth/login` and `/auth/callback` removed — login moved to the frontend (issue #12). `{user_id}` in path params is now a Firebase UID, not a Google `sub`. Credential storage moved from Secret Manager to Firestore + KMS envelope encryption; new `500` error semantics for malformed stored credentials (see Errors).
 - v0.5 (**breaking**): corrects a false start within this same version — `/auth/callback` was briefly restored (client secret handling was mistakenly believed to require it) and then removed again for good once [`docs/ENCRYPTION_CONTRACT.md`](../../../docs/ENCRYPTION_CONTRACT.md) settled the frontend as owning the full write side, encrypt included. This service now has **zero** auth endpoints, **zero** KMS encrypt capability, and no code path that can name or touch a `school_password` credential. The `google_sub` fallback lookup on the read path is also removed — `{user_id}` is the Firebase UID with no alternate-identifier tolerance, anywhere. Credential documents are now read from `users/{user_id}/credentials/google_refresh_token` (a direct document get) rather than a queried top-level `user_credentials` collection.
+- v0.6: `POST /docs` accepts an optional `markdown` flag (default `false`), and its response gains `formatting_applied` (default `true`). Both are **additive** — no existing field changed shape or name, and `markdown: false` sends byte-for-byte the request v0.5 sent. `formatting_applied` is a declared field on `DocCreatedResponse`, so it survives the endpoint's `response_model` filtering.
