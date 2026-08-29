@@ -112,8 +112,11 @@ def test_response_keeps_its_existing_fields(calls, client):
     assert body["doc_id"] == DOC_ID
     assert body["url"] == f"https://docs.google.com/document/d/{DOC_ID}/edit"
     assert body["status"] == "created"
-    # Added, not renamed: the agent's existing reads are untouched.
-    assert body["formatting_skipped"] is False
+    # Added, not renamed: the agent's existing reads are untouched. This is
+    # also the regression test for the response_model trap -- the field is
+    # declared on DocCreatedResponse, so it survives FastAPI's filtering. A
+    # loose dict key would be dropped here and raise KeyError.
+    assert body["formatting_applied"] is True
 
 
 def test_document_is_created_with_the_title(calls, client):
@@ -138,7 +141,7 @@ def test_markdown_true_sends_converted_requests(calls, client):
     )
 
     assert response.status_code == 201
-    assert response.json()["formatting_skipped"] is False
+    assert response.json()["formatting_applied"] is True
 
     requests = batch_requests(calls)
     assert requests[0] == {
@@ -157,7 +160,7 @@ def test_markdown_true_with_no_renderable_text_sends_no_batch_update(calls, clie
     assert response.status_code == 201
     assert [c for c in calls if c[0] == "batchUpdate"] == []
     # Nothing failed -- there was simply nothing to format.
-    assert response.json()["formatting_skipped"] is False
+    assert response.json()["formatting_applied"] is True
 
 
 # --------------------------------------------------------------------------
@@ -190,7 +193,7 @@ def test_converter_failure_is_reported_in_the_response(calls, client, failing_co
     )
 
     body = response.json()
-    assert body["formatting_skipped"] is True
+    assert body["formatting_applied"] is False
     # The document still exists and is still usable.
     assert body["doc_id"] == DOC_ID
     assert body["status"] == "created"
