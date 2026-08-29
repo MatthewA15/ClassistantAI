@@ -153,6 +153,5 @@ def twilio_webhook(req: https_fn.Request) -> https_fn.Response:
     )
 
     resp = MessagingResponse()
-    resp.message("Sending your message to Classy! Stand by...")
 
     return https_fn.Response(str(resp))
