@@ -1,21 +1,50 @@
 """Google Calendar connector (P1: list events, create events)."""
 from datetime import datetime, timezone
 from fastapi import APIRouter, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.services.google_creds import service_for_user
 
 router = APIRouter(prefix="/users/{user_id}/calendar", tags=["calendar"])
 
 
-@router.get("/events")
+class EventStartEnd(BaseModel):
+    """Google Calendar start/end block (dateTime or date + optional timeZone)."""
+    date: str | None = Field(None, description="All-day date (yyyy-MM-dd).")
+    date_time: str | None = Field(
+        None, alias="dateTime", description="RFC3339 timestamp.")
+    time_zone: str | None = Field(
+        None, alias="timeZone", description="IANA tz, e.g. America/Toronto.")
+
+    model_config = {"populate_by_name": True}
+
+
+class CalendarEvent(BaseModel):
+    id: str
+    summary: str | None = None
+    description: str | None = None
+    start: EventStartEnd | None = None
+    end: EventStartEnd | None = None
+    location: str | None = None
+    html_link: str | None = Field(
+        None, alias="htmlLink", description="Link to the event in Calendar UI.")
+
+    model_config = {"populate_by_name": True}
+
+
+class EventListResponse(BaseModel):
+    events: list[CalendarEvent]
+    count: int
+
+
+@router.get("/events", response_model=EventListResponse)
 def list_events(
     user_id: str,
     time_min: str | None = Query(None, description="RFC3339, defaults to now"),
     time_max: str | None = Query(None, description="RFC3339"),
     max_results: int = Query(25, le=100),
 ):
-    """P1. Upcoming events, expanded (recurring -> instances), ordered by start."""
+    """List upcoming primary-calendar events, expanding recurring series into individual instances sorted by start time."""
     svc = service_for_user(user_id, "calendar", "v3")
     resp = svc.events().list(
         calendarId="primary",
@@ -25,16 +54,8 @@ def list_events(
         singleEvents=True,
         orderBy="startTime",
     ).execute()
-    events = [{
-        "id": e["id"],
-        "summary": e.get("summary"),
-        "description": e.get("description"),
-        "start": e.get("start"),
-        "end": e.get("end"),
-        "location": e.get("location"),
-        "html_link": e.get("htmlLink"),
-    } for e in resp.get("items", [])]
-    return {"events": events, "count": len(events)}
+    events = [CalendarEvent.model_validate(e) for e in resp.get("items", [])]
+    return EventListResponse(events=events, count=len(events))
 
 
 class EventIn(BaseModel):
@@ -46,9 +67,16 @@ class EventIn(BaseModel):
     timezone: str = "America/Toronto"
 
 
-@router.post("/events", status_code=201)
+class EventCreatedResponse(BaseModel):
+    event_id: str
+    html_link: str | None = Field(
+        None, description="Link to the created event.")
+    status: str = "created"
+
+
+@router.post("/events", status_code=201, response_model=EventCreatedResponse)
 def create_event(user_id: str, event: EventIn):
-    """P1. Used by the agent to push syllabus deadlines / exam dates into the calendar."""
+    """Create a new event on the user's primary calendar (e.g. a syllabus deadline or exam date)."""
     svc = service_for_user(user_id, "calendar", "v3")
     body = {
         "summary": event.summary,
@@ -58,4 +86,4 @@ def create_event(user_id: str, event: EventIn):
         "end": {"dateTime": event.end, "timeZone": event.timezone},
     }
     created = svc.events().insert(calendarId="primary", body=body).execute()
-    return {"event_id": created["id"], "html_link": created.get("htmlLink"), "status": "created"}
+    return EventCreatedResponse(event_id=created["id"], html_link=created.get("htmlLink"))
