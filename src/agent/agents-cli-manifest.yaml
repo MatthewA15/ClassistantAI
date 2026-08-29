@@ -1,4 +1,4 @@
-name: "agent"
+name: "classistant-agent"
 acli_version: "1.4.1"
 agent_directory: "app"
 region: "us-east1"

@@ -15,7 +15,7 @@
 variable "project_name" {
   type        = string
   description = "Project name used as a base for resource naming"
-  default     = "classy"
+  default     = "classistant-agent"
 }
 
 variable "project_id" {

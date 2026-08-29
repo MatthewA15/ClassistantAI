@@ -3,5 +3,12 @@
   "deployment_target": "agent_runtime",
   "is_a2a": true,
   "agent_directory": "app",
-  "deployment_timestamp": "2026-08-26T04:12:21.821434+00:00"
+  "deployment_timestamp": "2026-08-29T07:24:24.477396+00:00",
+  "pending_operation": {
+    "operation_name": "projects/945345983057/locations/us-east1/reasoningEngines/2528718414210400256/operations/4524023949209632768",
+    "project": "classisstant",
+    "location": "us-east1",
+    "deployment_target": "agent_runtime",
+    "started_at": "2026-08-29T07:47:19.956742+00:00"
+  }
 }
