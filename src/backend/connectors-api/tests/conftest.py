@@ -22,7 +22,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 _TEST_ENV = {
-    "GCP_PROJECT_ID": "test-project",
+    "GOOGLE_CLOUD_PROJECT": "test-project",
     "GOOGLE_CLIENT_ID": "test-client.apps.googleusercontent.com",
     "GOOGLE_CLIENT_SECRET": "test-client-secret",
     "KMS_LOCATION": "us-central1",
