@@ -396,7 +396,7 @@ export function OnboardingWizard({ connected }: { connected: ConnectedAccount | 
 
   if (!school) {
     return (
-      <Shell phase={0}>
+      <Shell phase={0} showSignIn={!verifiedPhone}>
         <h1 className="text-[1.6rem] font-extrabold leading-tight text-ink-900">
           Which school are you at?
         </h1>
@@ -411,7 +411,11 @@ export function OnboardingWizard({ connected }: { connected: ConnectedAccount | 
   }
 
   return (
-    <Shell phase={phaseForStep(step)} school={school}>
+    // The sign-in offer belongs under the number screen and only there. Past
+    // that point the student has a verified session, so "sign in" would be an
+    // invitation to restart something they are three quarters of the way
+    // through. See the prop's own note in shell.tsx.
+    <Shell phase={phaseForStep(step)} school={school} showSignIn={step === 0 && !verifiedPhone}>
       <form action={submitAction}>
         <h1 className="text-[1.6rem] font-extrabold leading-tight text-ink-900">
           {STEP_TITLES[step]}
@@ -1189,12 +1193,30 @@ function DoneScreen({ name, phone, school }: { name: string; phone: string; scho
         </ul>
       </div>
 
-      <Link
-        href="/"
-        className="mt-8 inline-block rounded-xl bg-brand-600 px-6 py-3 text-[0.93rem] font-semibold text-white transition-colors hover:bg-brand-700"
-      >
-        Back to home
-      </Link>
+      {/*
+        The dashboard, not the home page.
+
+        "Back to home" was the only destination this screen had before there was
+        anywhere else to send anyone, and it sent a student who had just handed
+        over a school login and a portal password to a marketing page inviting
+        them to get set up. The account they just made is the thing to show them
+        next: it is where the switches they set two screens ago live, and where
+        the first entries of the activity feed will appear.
+      */}
+      <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+        <Link
+          href="/dashboard"
+          className="inline-block rounded-xl bg-brand-600 px-6 py-3 text-[0.93rem] font-semibold text-white transition-colors hover:bg-brand-700"
+        >
+          Open my dashboard
+        </Link>
+        <Link
+          href="/"
+          className="inline-block rounded-xl px-4 py-3 text-[0.9rem] font-semibold text-body transition-colors hover:bg-sky-100 hover:text-ink-900"
+        >
+          Back to home
+        </Link>
+      </div>
     </div>
   );
 }

@@ -36,6 +36,25 @@ const firebaseConfig = {
 };
 
 /**
+ * Host and port of the Auth emulator, or undefined for the real project.
+ *
+ * Set in apphosting.local.yaml and nowhere else. That file is read by
+ * `firebase emulators:start` and by nothing else, so the emulator run talks to
+ * the emulator and plain `npm run dev` keeps talking to real Firebase. Putting
+ * it in .env.local instead would point `next dev` at an emulator that is not
+ * running, and every sign-in would fail on a connection refused.
+ *
+ * The browser cannot read the FIREBASE_AUTH_EMULATOR_HOST that the emulator
+ * already injects for the Admin SDK, because Next only exposes NEXT_PUBLIC_*.
+ * Hence a second variable carrying the same value in the same protocol-less
+ * shape; connectAuthEmulator wants a full URL, so the scheme is added below.
+ *
+ * Must stay a literal process.env.NEXT_PUBLIC_* expression, for the reason in
+ * the firebaseConfig note above.
+ */
+const AUTH_EMULATOR_HOST = process.env.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST;
+
+/**
  * The SDK, fetched on demand rather than bundled into the page.
  *
  * firebase/app plus firebase/auth is around 40 kB gzipped, and it used to be a
@@ -76,7 +95,18 @@ async function sdk() {
  */
 export function warmPhoneAuth(): void {
   void sdk()
-    .then(async (mod) => mod.initializeRecaptchaConfig(await clientAuth()))
+    .then(async (mod) => {
+      // Still worth awaiting on the emulator: this is what pulls the SDK down
+      // ahead of the first press and what attaches the emulator to the Auth
+      // instance, both of which are wanted either way.
+      const auth = await clientAuth();
+      // The config fetch is not. The emulator publishes no reCAPTCHA config,
+      // and with the mock verifier in play there is no score to warm, so the
+      // call is a request that can only fail. It is caught below and would be
+      // invisible, but it would also sit in the network tab on every mount
+      // looking like a real problem.
+      if (!AUTH_EMULATOR_HOST) await mod.initializeRecaptchaConfig(auth);
+    })
     .catch(() => {});
 }
 
@@ -96,6 +126,29 @@ async function clientAuth(): Promise<Auth> {
   const mod = await sdk();
   if (!cached) {
     cached = mod.getAuth(app(mod));
+
+    // Immediately after getAuth and before anything else touches the instance.
+    // The SDK refuses to attach an emulator to an Auth object that has already
+    // made a network call and throws auth/emulator-config-failed, so this line
+    // cannot be moved later or into a lazier branch.
+    //
+    // It does more than redirect traffic. connectAuthEmulator sets
+    // settings.appVerificationDisabledForTesting, which makes RecaptchaVerifier
+    // below load a mock instead of Google's script. So on the emulator there is
+    // no reCAPTCHA at all, no Enterprise SMS-defense scoring, and no real SMS:
+    // the six digit code is printed to the terminal running the emulator, and
+    // is also readable at
+    //   /emulator/v1/projects/<project>/verificationCodes
+    // Every failure mode in docs/design/15 therefore stops applying here, which
+    // is the entire reason to develop against it.
+    //
+    // The warning banner it injects is left switched on deliberately. Confusing
+    // an emulator session for a real one is the expensive mistake, and the
+    // banner is the only thing on screen that distinguishes them.
+    if (AUTH_EMULATOR_HOST) {
+      mod.connectAuthEmulator(cached, `http://${AUTH_EMULATOR_HOST}`);
+    }
+
     // Google's own screens and the SMS itself, in the student's language.
     cached.useDeviceLanguage();
   }
