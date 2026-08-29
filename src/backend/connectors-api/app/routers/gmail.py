@@ -1,8 +1,8 @@
-"""Gmail connector (P1: read; P2: create drafts).
-
-Drafts only, never auto-send (team decision Aug 19): the agent may prepare an
-email to a prof, but the student clicks send.
 """
+Gmail connector (P1: read; P2: create drafts, send drafts).
+"""
+
+from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Query
 from googleapiclient.errors import HttpError
 from pydantic import BaseModel, EmailStr, Field
@@ -155,3 +155,89 @@ def create_draft(user_id: str, draft: DraftIn):
     created = svc.users().drafts().create(
         userId="me", body={"message": {"raw": raw}}).execute()
     return DraftCreatedResponse(draft_id=created["id"])
+
+
+class DraftSendIn(BaseModel):
+    to: EmailStr = Field(..., description="Must match the draft's To header.")
+    subject: str = Field(...,
+                         description="Must match the draft's Subject header.")
+    body: str = Field(...,
+                      description="Must match the draft's body text exactly.")
+    user_confirmation: str = Field(
+        ..., description="The user's confirmation message (e.g. 'yes, send it'). Must be non-empty.")
+
+
+class DraftSentResponse(BaseModel):
+    message_id: str
+    thread_id: str
+    sent_at: str = Field(...,
+                         description="RFC3339 timestamp of when Gmail processed the send.")
+    status: str = "sent"
+
+
+class FieldMismatch(BaseModel):
+    field: str = Field(...,
+                       description="The field that failed to match (e.g. 'to', 'subject', 'body').")
+    expected: str = Field(..., description="The value found in the draft.")
+    got: str = Field(..., description="The value provided in the request.")
+
+
+class DraftMismatchResponse(BaseModel):
+    detail: str = Field(default="Draft content mismatch.",
+                        description="Summary of the mismatch.")
+    mismatches: list[FieldMismatch] = Field(
+        default_factory=list, description="Per-field mismatch details.")
+
+
+@router.post("/emails/drafts/{draft_id}/send", status_code=200, response_model=DraftSentResponse,
+             responses={409: {"model": DraftMismatchResponse, "description": "Draft content mismatch."}})
+def send_draft(user_id: str, draft_id: str, payload: DraftSendIn):
+    """Send an existing Gmail draft — the request body must exactly match the draft's to/subject/body, and include the user's confirmation."""
+    if not payload.user_confirmation.strip():
+        raise HTTPException(400, "Confirmation message is required to send.")
+
+    svc = service_for_user(user_id, "gmail", "v1")
+
+    # 1. Fetch the existing draft with full payload (headers + parts).
+    try:
+        draft = svc.users().drafts().get(userId="me", id=draft_id, format="full").execute()
+    except HttpError as e:
+        if e.resp.status == 404:
+            raise HTTPException(404, f"Draft {draft_id} not found")
+        raise
+
+    # 2. Extract To, Subject, and body from the deserialized message payload.
+    msg = draft.get("message", {})
+    payload_dict = msg.get("payload", {})
+    headers = payload_dict.get("headers", [])
+    draft_to = _header(headers, "To") or ""
+    draft_subject = _header(headers, "Subject") or ""
+    draft_body = _body(payload_dict) or ""
+
+    # 3. Validate that the request matches the draft exactly.
+    mismatches = []
+    if payload.to != draft_to:
+        mismatches.append(FieldMismatch(
+            field="to", expected=draft_to, got=str(payload.to)))
+    if payload.subject != draft_subject:
+        mismatches.append(FieldMismatch(
+            field="subject", expected=draft_subject, got=payload.subject))
+    if payload.body != draft_body:
+        mismatches.append(FieldMismatch(
+            field="body", expected=draft_body, got=payload.body))
+    if mismatches:
+        raise HTTPException(
+            409,
+            detail=DraftMismatchResponse(mismatches=mismatches).model_dump(),
+        )
+
+    # 4. Send the draft.
+    sent = svc.users().drafts().send(
+        userId="me", body={"id": draft_id}).execute()
+    sent_at = datetime.now(timezone.utc).isoformat()
+
+    return DraftSentResponse(
+        message_id=sent["id"],
+        thread_id=sent["threadId"],
+        sent_at=sent_at,
+    )
