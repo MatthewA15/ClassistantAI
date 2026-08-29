@@ -1,0 +1,7 @@
+.env
+.adk/
+__pycache__/
+.venv/
+
+# Service account key
+classisstant-b4a627fd6884.json
