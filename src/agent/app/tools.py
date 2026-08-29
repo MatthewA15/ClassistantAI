@@ -61,7 +61,9 @@ def send_text(messages: list[str], tool_context: ToolContext) -> dict:
         )
 
     # Use debug user id in dev
-    user_id = os.environ.get("TEST_USER_ID", tool_context.user_id)
+    user_id = tool_context.user_id \
+        if os.environ.get("DEBUG", "false") == "false" \
+        else os.environ.get("TEST_USER_ID")
     payload = {"user_id": user_id, "messages": messages}
 
     # Acquire a Google-signed ID token for service-to-service auth on Cloud
