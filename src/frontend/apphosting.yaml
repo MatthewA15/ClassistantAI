@@ -81,6 +81,10 @@ env:
     value: classisstant
     availability: [BUILD, RUNTIME]
 
+  - variable: GOOGLE_CLOUD_PROJECT
+    value: classisstant
+    availability: [RUNTIME]
+
 runConfig:
   # A marketing site with bursty term-start traffic and long quiet stretches.
   # Scaling to zero is the right default; the cold start costs a first visitor
