@@ -1,13 +1,15 @@
 from google.adk.agents.llm_agent import Agent
 from google.adk.apps import App
 
+from .tools import send_text
 from .util import load_prompt
 
 root_agent = Agent(
-    model='gemini-3.5-flash',
-    name='root_agent',
-    description='A helpful assistant for user questions.',
+    model='gemini-flash-latest',
+    name='classy',
+    description="You are Classy, Classistant's main agent.",
     instruction=load_prompt(),
+    tools=[send_text],
 )
 
 app = App(

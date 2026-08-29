@@ -33,7 +33,8 @@ otel_to_cloud = os.environ.get(
     "GOOGLE_CLOUD_AGENT_ENGINE_ENABLE_TELEMETRY", ""
 ).lower() in ("true", "1")
 allow_origins = (
-    os.getenv("ALLOW_ORIGINS", "").split(",") if os.getenv("ALLOW_ORIGINS") else None
+    os.getenv("ALLOW_ORIGINS", "").split(
+        ",") if os.getenv("ALLOW_ORIGINS") else None
 )
 
 AGENT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -75,8 +76,8 @@ app: FastAPI = get_fast_api_app(
     otel_to_cloud=otel_to_cloud,
     lifespan=lifespan,
 )
-app.title = "agent"
-app.description = "API for interacting with the Agent agent"
+app.title = "classy"
+app.description = "API for interacting with the Agent " + app.title
 
 
 # Proxy routes so the Vertex AI Console Playground (reasoning_engine SDK) can
