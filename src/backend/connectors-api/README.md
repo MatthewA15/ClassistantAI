@@ -38,22 +38,14 @@ Either `cd` here first:
 
 ```bash
 cd src/backend/connectors-api
-gcloud run deploy classistant-connectors --source . --region us-central1 \
-  --set-env-vars GCP_PROJECT_ID=classisstant,GOOGLE_CLIENT_ID=...,GOOGLE_CLIENT_SECRET=...,KMS_LOCATION=...,KMS_KEYRING=classistant-keyring,KMS_KEY=classistant-key \
-  --allow-unauthenticated
-```
-
-or point `--source` at it explicitly from anywhere in the repo:
-
-```bash
-gcloud run deploy classistant-connectors --source src/backend/connectors-api --region us-central1 \
-  --set-env-vars ...   # exactly as above
+gcloud run deploy classistant-connectors \
+    --source . \
+    --region us-central1 \
+    --set-env-vars GOOGLE_CLIENT_ID=...,GOOGLE_CLIENT_SECRET=...,KMS_LOCATION=...,KMS_KEYRING=classistant-keyring,KMS_KEY=classistant-key \
 ```
 
 Same rule for a plain `docker build src/backend/connectors-api`. The
 `Dockerfile` itself needs no change; only the context does.
-
-(Hackathon note: `--allow-unauthenticated` keeps the demo simple; locking this behind an API key or IAM for the agent is on the post-Saturday list.)
 
 ## What the frontend writes to Firestore
 
