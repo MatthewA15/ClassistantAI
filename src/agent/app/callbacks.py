@@ -22,8 +22,8 @@ _MEMORY_REMINDER = (
 )
 
 # Threshold window for the memory nudge.
-_MIN_TURNS = 10
-_MAX_TURNS = 30
+_MIN_TURNS = 5
+_MAX_TURNS = 20
 
 
 def reset_turn_counter(state: State) -> None:
