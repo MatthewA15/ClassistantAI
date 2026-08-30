@@ -50,6 +50,14 @@ def send_text(messages: list[str], tool_context: ToolContext) -> dict:
             least one message. Each message should be concise and easy to
             read on a phone.
     """
+
+    if os.environ.get("DEBUG", "false") != "false":
+        return _error_response(
+            "debug_mode",
+            "We're in debug mode. Don't use this function. Just respond normally",
+            retryable=False
+        )
+
     if not _TWILIO_SEND_URL:
         logger.error("send_text: TWILIO_SEND_URL is not set.")
         return _error_response(
@@ -60,10 +68,7 @@ def send_text(messages: list[str], tool_context: ToolContext) -> dict:
             retryable=False,
         )
 
-    # Use debug user id in dev
-    user_id = tool_context.user_id \
-        if os.environ.get("DEBUG", "false") == "false" \
-        else os.environ.get("TEST_USER_ID")
+    user_id = tool_context.user_id
     payload = {"user_id": user_id, "messages": messages}
 
     # Acquire a Google-signed ID token for service-to-service auth on Cloud
