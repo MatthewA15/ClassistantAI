@@ -68,11 +68,21 @@ The number is masked everywhere it appears, in responses and in logs: the `+` an
 
 | Method | Path | In | Out |
 |---|---|---|---|
-| POST | `/users/{user_id}/calls` | `{goal, language?, region?}` — `goal` is required, min 8 chars | `{run_id, status:"started", to_phone_masked}` — `201` |
+| POST | `/users/{user_id}/calls` | `{goal, language?, region?}` — `goal` is required, min 8 chars | `{run_id, status:"started", to_phone_masked, persisted}` — `201` |
 | GET | `/users/{user_id}/calls/{run_id}?cursor=&limit=` | `limit` 1..100 | `CallRunResponse` (below) |
 | GET | `/users/{user_id}/calls?max_results=10` | `max_results` ≤ 50 | `{calls:[{run_id, goal, status, to_phone_masked}], count}` — most recent first |
 
 `POST` can take **around 150 seconds**: CALL-E plans the call before it accepts the run, so the ADK tool calling this needs a client timeout well above its default. A `201` means the run was *submitted*, not that the call happened — the phone rings asynchronously, and `GET /calls/{run_id}` is where the outcome arrives.
+
+### `persisted` — the call happened, the bookkeeping may not have
+
+`persisted` is `true` in the normal case and can be ignored. It is `false` when the call was placed but this service could not write its own `users/{user_id}/call_runs/{run_id}` record.
+
+By the time that write happens the phone has already rung and the CALL-E credits are already spent, so a failure there is not allowed to fail the request: the `run_id` is the only handle that exists for a call the student is living through, and a `500` would throw it away. So the endpoint still answers `201` with the `run_id`, and says what did not happen.
+
+The consequence, accepted deliberately: an unpersisted run has no document here, so **`GET /calls/{run_id}` will `404` for it and it will not appear in `GET /calls`** — ownership is checked against Firestore, and a run this service cannot prove belongs to the student must not be readable by them. A caller that sees `persisted: false` should hold onto the `run_id` itself. Treat it as "the call is happening, but we lost our copy of the paperwork", never as a failure to call.
+
+The failure is logged at `ERROR` with the traceback and the masked number, because the cause is usually IAM rather than a bug — see the Firestore access note below.
 
 `goal` should carry every concrete fact the call needs — names, dates, course codes, reference numbers, and what a good outcome looks like. CALL-E cannot come back and ask, so "ask about my registration" produces a materially worse call than "ask whether the late-add petition for CHEM 204, submitted Aug 24 under student number 30112233, has been approved".
 
@@ -108,6 +118,14 @@ On top of the shared shapes in [Errors](#errors) below:
 - **`502`** — `CalleUpstreamError`. CALL-E failed or answered in a shape this service cannot read. The call may or may not have been placed; check `GET /calls/{run_id}` before retrying a `POST`.
 - **`503`** — `CalleNotConfigured` or `CalleAuthError`. `CALLE_ACCESS_TOKEN` is unset, or CALL-E rejected it with a 401/403. **This is always an operator action, never a user error**: the token is minted by a brokered browser login and it expires, so someone must run `python scripts/calle_login.py` and rotate the environment variable. Retrying without that will not help. It is deliberately not surfaced as a `401`/`403`, which would blame the caller for a token they do not control.
 
+### Firestore access this section requires
+
+**Calling is the first write path this service has ever had.** Everything before it — Gmail, Calendar, Drive, Docs — only ever *read* Firestore, to fetch the encrypted credential. So a service account with `roles/datastore.viewer` was sufficient, and that is what was deployed.
+
+The calls endpoints write `users/{user_id}/call_runs/{run_id}`, so the service account now needs **`roles/datastore.user`** (read + write). Without it, reads still succeed and the call is still placed — only the record fails, with `PermissionDenied: 403 Missing or insufficient permissions`, surfacing as `persisted: false` rather than an error. This is a silent-until-you-look failure by design, so check `persisted` after deploying to a new project.
+
+The KMS grant is unchanged and still one-directional: `roles/cloudkms.cryptoKeyDecrypter` on the refresh-token key only, and nothing at all on the school-password key.
+
 ## Errors
 
 Every `/users/{user_id}/...` endpoint reads through `app/services/firestore_creds.py`. Two credential-specific error shapes on top of FastAPI's standard validation `422`:
@@ -125,4 +143,4 @@ Every `/users/{user_id}/...` endpoint reads through `app/services/firestore_cred
 - v0.4 (**breaking**): `/auth/login` and `/auth/callback` removed — login moved to the frontend (issue #12). `{user_id}` in path params is now a Firebase UID, not a Google `sub`. Credential storage moved from Secret Manager to Firestore + KMS envelope encryption; new `500` error semantics for malformed stored credentials (see Errors).
 - v0.5 (**breaking**): corrects a false start within this same version — `/auth/callback` was briefly restored (client secret handling was mistakenly believed to require it) and then removed again for good once [`docs/ENCRYPTION_CONTRACT.md`](../../../docs/ENCRYPTION_CONTRACT.md) settled the frontend as owning the full write side, encrypt included. This service now has **zero** auth endpoints, **zero** KMS encrypt capability, and no code path that can name or touch a `school_password` credential. The `google_sub` fallback lookup on the read path is also removed — `{user_id}` is the Firebase UID with no alternate-identifier tolerance, anywhere. Credential documents are now read from `users/{user_id}/credentials/google_refresh_token` (a direct document get) rather than a queried top-level `user_credentials` collection.
 - v0.6: `POST /docs` accepts an optional `markdown` flag (default `false`), and its response gains `formatting_applied` (default `true`). Both are **additive** — no existing field changed shape or name, and `markdown: false` sends byte-for-byte the request v0.5 sent. `formatting_applied` is a declared field on `DocCreatedResponse`, so it survives the endpoint's `response_model` filtering.
-- v0.7: adds the **Calls** section — three endpoints wrapping CALL-E, which dial the student's own verified number and nothing else. Additive: no existing endpoint, field or status code changed. Also corrects two long-standing documentation drifts rather than any behaviour: `POST /emails/drafts/{draft_id}/send` has existed in `app/routers/gmail.py` since before v0.6 but the Gmail section still claimed there was "no send endpoint by design", and `app/main.py` still declared `version="0.5.0"`. Both now say what the code does.
+- v0.7: adds the **Calls** section — three endpoints wrapping CALL-E, which dial the student's own verified number and nothing else. Additive: no existing endpoint, field or status code changed. Also corrects two long-standing documentation drifts rather than any behaviour: `POST /emails/drafts/{draft_id}/send` has existed in `app/routers/gmail.py` since before v0.6 but the Gmail section still claimed there was "no send endpoint by design", and `app/main.py` still declared `version="0.5.0"`. Both now say what the code does. `POST /calls` also carries a `persisted` flag (default `true`); it is documented as part of v0.7 rather than a new version because the calls endpoints had never completed a request in any deployed environment before it existed -- the service account was read-only, so every call 500d after placing the call. No caller can have depended on the older shape.

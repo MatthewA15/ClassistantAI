@@ -37,6 +37,7 @@ and this router reads like the others. Only the HTTP errors specific to
 calling -- 403, 404, 409 -- are raised here.
 """
 import logging
+from urllib.parse import quote, unquote
 
 from fastapi import APIRouter, HTTPException, Query
 from google.cloud import firestore
@@ -86,6 +87,28 @@ def _mask_phone(phone: str) -> str:
         return _MASK_CHAR * len(digits)
     hidden = _MASK_CHAR * (len(digits) - _MASK_VISIBLE_DIGITS)
     return f"+{hidden}{digits[-_MASK_VISIBLE_DIGITS:]}"
+
+
+def _run_document_id(run_id: str) -> str:
+    """The Firestore document id for a CALL-E run id.
+
+    Defensive, not corrective. Every run id CALL-E has actually been observed
+    to return is base64url -- `wMXbZkrDQ-UoPcJPxTw_5A` -- which is already a
+    valid document id and passes through `quote` completely unchanged. So
+    this is a no-op on real traffic today, and documents keep the ids they
+    already have.
+
+    It exists because a document id cannot contain "/": the client raises
+    `ValueError: A document must have an even number of path elements`, and a
+    run id is an opaque string from a service we do not control. Validating
+    it here costs nothing and keeps one class of upstream change from
+    reaching Firestore as a crash.
+
+    `quote` is injective, so two run ids can never collide on one document.
+    The true run id is stored as a field regardless, and it is the field,
+    never the document id, that is returned to callers and sent to CALL-E.
+    """
+    return quote(run_id, safe="")
 
 
 def _user_doc(user_id: str) -> dict:
@@ -162,6 +185,17 @@ class CallStartedResponse(BaseModel):
     status: str = "started"
     to_phone_masked: str = Field(
         ..., description="The student's own number, masked."
+    )
+    persisted: bool = Field(
+        True,
+        description=(
+            "False when the call was placed but this service could not record "
+            "it. The call is real and `run_id` is valid at CALL-E either way; "
+            "what is missing is our own call_runs document, so "
+            "GET /calls/{run_id} will 404 for this run and it will not appear "
+            "in GET /calls. Treat it as 'the call is happening, hold onto this "
+            "id yourself', not as a failure to call."
+        ),
     )
 
 
@@ -276,23 +310,56 @@ def start_call(user_id: str, call: CallIn):
     )
     run_id = started["run_id"]
 
-    _call_runs(user_id).document(run_id).set(
-        {
-            "run_id": run_id,
-            "plan_id": started.get("plan_id"),
-            "goal": call.goal,
-            "status": "started",
-            "to_phone_masked": masked,
-            "created_at": firestore.SERVER_TIMESTAMP,
-        }
-    )
+    # By the time we get here the phone has already rung and the budget is
+    # already spent, so nothing below may raise. Recording the run is
+    # bookkeeping; the run_id is the only handle that exists for a call the
+    # student is living through right now, and losing it to a failed write
+    # would be the worst outcome available here.
+    #
+    # Deliberately broad: it is not worth enumerating which Firestore failure
+    # modes are worth keeping the run_id for. They all are. (The first one we
+    # actually hit was a PermissionDenied -- this service was read-only until
+    # calls shipped, and its service account had roles/datastore.viewer.)
+    #
+    # The consequence, accepted knowingly: an unpersisted run has no
+    # users/{user_id}/call_runs document, so GET /calls/{run_id} will 404 for
+    # it -- ownership is checked against Firestore, and a run we cannot prove
+    # belongs to this student must not be readable by them. The caller still
+    # holds the run_id and `persisted: false` says why. A later 404 is a much
+    # smaller harm than never learning the id of a call that is happening.
+    persisted = True
+    try:
+        _call_runs(user_id).document(_run_document_id(run_id)).set(
+            {
+                "run_id": run_id,
+                "plan_id": started.get("plan_id"),
+                "goal": call.goal,
+                "status": "started",
+                "to_phone_masked": masked,
+                "created_at": firestore.SERVER_TIMESTAMP,
+            }
+        )
+    except Exception:  # noqa: BLE001 -- see above; the run_id must survive
+        persisted = False
+        # exception() keeps the traceback, which is what identifies an IAM
+        # problem. Masked number only, as everywhere else.
+        logger.exception(
+            "call placed but not recorded (user_id=%s, run_id=%s, to=%s); "
+            "the run is live and pollable at CALL-E but will 404 here",
+            user_id,
+            run_id,
+            masked,
+        )
+    else:
+        # Masked here as everywhere else: a log line is a place the number
+        # leaks from just as readily as a response body.
+        logger.info(
+            "call started (user_id=%s, run_id=%s, to=%s)", user_id, run_id, masked
+        )
 
-    # Masked here as everywhere else: a log line is a place the number leaks
-    # from just as readily as a response body.
-    logger.info(
-        "call started (user_id=%s, run_id=%s, to=%s)", user_id, run_id, masked
+    return CallStartedResponse(
+        run_id=run_id, to_phone_masked=masked, persisted=persisted
     )
-    return CallStartedResponse(run_id=run_id, to_phone_masked=masked)
 
 
 @router.get("/{run_id}", response_model=CallRunResponse)
@@ -309,7 +376,7 @@ def get_call_run(
     """
     # Ownership first, and before CALL-E is touched: a run_id belonging to
     # another student must be indistinguishable from one that never existed.
-    doc_ref = _call_runs(user_id).document(run_id)
+    doc_ref = _call_runs(user_id).document(_run_document_id(run_id))
     if not doc_ref.get().exists:
         raise HTTPException(
             404, f"No call run {run_id!r} for user_id={user_id!r}."
@@ -320,16 +387,29 @@ def get_call_run(
 
     # Terminal state onto our own document, so the dashboard can render a
     # finished call without going back to CALL-E for it.
-    doc_ref.set(
-        {
-            "status": response.status,
-            "summary": response.summary,
-            "task_completed": response.task_completed,
-            "duration_seconds": response.duration_seconds,
-            "last_checked_at": firestore.SERVER_TIMESTAMP,
-        },
-        merge=True,
-    )
+    #
+    # Non-fatal for the same reason the write in start_call is: this is a
+    # cache of something the caller is already holding. Failing the request
+    # would throw away the live status we just fetched in order to report
+    # that we could not memoise it, which serves nobody.
+    try:
+        doc_ref.set(
+            {
+                "status": response.status,
+                "summary": response.summary,
+                "task_completed": response.task_completed,
+                "duration_seconds": response.duration_seconds,
+                "last_checked_at": firestore.SERVER_TIMESTAMP,
+            },
+            merge=True,
+        )
+    except Exception:  # noqa: BLE001 -- a cache miss must not fail the read
+        logger.exception(
+            "could not cache call status (user_id=%s, run_id=%s); "
+            "returning CALL-E's answer anyway",
+            user_id,
+            run_id,
+        )
     return response
 
 
@@ -348,7 +428,7 @@ def list_calls(user_id: str, max_results: int = Query(10, le=50)):
     for snapshot in snapshots:
         doc = snapshot.to_dict() or {}
         calls.append(CallSummary(
-            run_id=doc.get("run_id") or snapshot.id,
+            run_id=doc.get("run_id") or unquote(snapshot.id),
             goal=doc.get("goal"),
             status=doc.get("status"),
             to_phone_masked=doc.get("to_phone_masked"),

@@ -1,6 +1,6 @@
 # Classistant AI Connectors
 
-FastAPI service exposing Gmail / Calendar / Drive / Docs as HTTP tools for the Classistant AI ADK agent. See [`API_CONTRACT.md`](API_CONTRACT.md) (frozen contract for the agent side) and [`docs/adr/`](../../../docs/adr/) for why decisions were made.
+FastAPI service exposing Gmail / Calendar / Drive / Docs / phone calls as HTTP tools for the Classistant AI ADK agent. See [`API_CONTRACT.md`](API_CONTRACT.md) (frozen contract for the agent side) and [`docs/adr/`](../../../docs/adr/) for why decisions were made.
 
 This service lives at `src/backend/connectors-api/` inside the ClassyAI monorepo. **Every command below is run from this directory**, not the repo root. Paths written as `docs/...` mean the repo's shared `docs/` three levels up — the encryption contract and the ADRs are shared with the frontend, so they are not owned by this service.
 
@@ -26,7 +26,9 @@ Run tests: `pytest` from this directory (mocks Firestore/KMS, no live GCP access
 2. Enable APIs: `gcloud services enable gmail.googleapis.com calendar-json.googleapis.com drive.googleapis.com docs.googleapis.com firestore.googleapis.com cloudkms.googleapis.com run.googleapis.com`
 3. **OAuth consent screen** (APIs & Services): External → app name Classistant AI → add all teammates as **test users** (unverified apps only allow test users — fine for the demo). The OAuth **client** itself now belongs to the frontend (Richard) — this service only needs its client_id/secret in `.env` to authenticate the refresh-token grant.
 4. **KMS**: create keyring `classistant-keyring` and key `classistant-key` (region: TODO(matthew) — not yet confirmed, see `.env.example`). Grant this service's SA `roles/cloudkms.cryptoKeyDecrypter` on the refresh-token key only — never on the school-password key.
-5. **Firestore**: `users/{uid}/credentials/{credential_type}` subcollection (frontend writes it during login/onboarding). This service only needs read access, and only ever reads the `google_refresh_token` document.
+5. **Firestore**: `users/{uid}/credentials/{credential_type}` subcollection (frontend writes it during login/onboarding); this service only ever *reads* the `google_refresh_token` document from it. Grant the service account **`roles/datastore.user`** (read **and write**) -- not `roles/datastore.viewer`.
+
+   **Calls is the first write path this service has ever had.** Gmail, Calendar, Drive and Docs only read Firestore, so `roles/datastore.viewer` was enough until `POST /users/{uid}/calls` shipped, and that is what was originally deployed. The calls endpoints write `users/{uid}/call_runs/{run_id}`. With viewer-only rights the symptom is deceptive: reads succeed, **the phone call is still placed and still billed**, and only the record fails with `PermissionDenied: 403 Missing or insufficient permissions`. That is deliberately not an error to the caller -- the response is still `201` with `persisted: false` (see [`API_CONTRACT.md`](API_CONTRACT.md)) -- so after deploying to a new project, check `persisted` rather than waiting for a 500 that will not come.
 
 ## Deploy to Cloud Run
 
@@ -57,9 +59,15 @@ wins.
 
 ```
 users/{firebase_uid}                                     <- profile, consent, access switches
-users/{firebase_uid}/credentials/google_refresh_token     <- the only document this service reads
+users/{firebase_uid}/credentials/google_refresh_token     <- the only credential this service reads
 users/{firebase_uid}/credentials/school_password          <- exists; this service must never touch it
+users/{firebase_uid}/call_runs/{run_id}                   <- the only document this service WRITES
 ```
+
+`call_runs` is this service's own record of each phone call it placed, and the
+only thing it writes anywhere -- hence the `roles/datastore.user` requirement
+above. It is not part of the credential contract and the frontend does not
+write it.
 
 `{firebase_uid}` is the **Firebase Auth uid**, and it is the same `{user_id}`
 that every `/users/{user_id}/...` endpoint takes. Not the Google `sub` — that
@@ -92,8 +100,14 @@ plus two maps: `consent` (`terms`/`sms`/`marketing`, each
 `access` maps `gmail_read` / `gmail_drafts` / `calendar` / `drive_read` /
 `docs` to booleans — the switches the student actually set. The Google grant is
 one token covering the whole scope set, so these are enforced on our side or
-not at all. **This service does not currently read `access`**; see the
-`TODO(matthew)` in `app/services/firestore_creds.py`.
+not at all.
+
+**Only `access.calls` is enforced today**, by `app/routers/calls.py`: an
+explicit `false` is a `403`, and absent or anything else means allowed (the
+dashboard switch ships after the endpoint, so an older user document must not
+read as denied). Every other switch is still unread — a student who declined
+Drive is still served the Drive endpoints, because the token carries the scope
+regardless. See the `TODO(matthew)` in `app/services/firestore_creds.py`.
 
 ## Status vs Saturday scope
 

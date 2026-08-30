@@ -84,13 +84,50 @@ IN_PROGRESS_PAYLOAD = {
 
 
 class _Snapshot:
+    """Mirrors google.cloud.firestore DocumentSnapshot: `exists` and `id` are
+    properties, and `to_dict()` is None (not {}) for a document that is not
+    there.
+    """
+
     def __init__(self, doc_id: str, data: dict | None):
-        self.id = doc_id
-        self.exists = data is not None
+        self._id = doc_id
         self._data = data
+
+    @property
+    def id(self) -> str:
+        return self._id
+
+    @property
+    def exists(self) -> bool:
+        return self._data is not None
 
     def to_dict(self):
         return dict(self._data) if self._data is not None else None
+
+
+def _check_document_id(doc_id) -> str:
+    """The real client's own rule, which a permissive fake would hide.
+
+    google.cloud.firestore builds a document out of path segments, so an id
+    containing "/" adds a segment and raises `ValueError: A document must have
+    an even number of path elements`. Verified against the installed client
+    rather than assumed.
+    """
+    if not isinstance(doc_id, str):
+        raise TypeError(f"document id must be a str, got {type(doc_id).__name__}")
+    if "/" in doc_id:
+        raise ValueError("A document must have an even number of path elements")
+    return doc_id
+
+
+def _check_document_data(data) -> dict:
+    """Firestore rejects a non-dict body and non-string field names."""
+    if not isinstance(data, dict):
+        raise TypeError(f"document data must be a dict, got {type(data).__name__}")
+    for key in data:
+        if not isinstance(key, str):
+            raise TypeError(f"field name must be a str, got {type(key).__name__}")
+    return data
 
 
 class _Document:
@@ -102,17 +139,20 @@ class _Document:
     def id(self) -> str:
         return self._path[-1]
 
-    def collection(self, name: str):
-        return _Collection(self._db, self._path + (name,))
+    def collection(self, collection_id: str):
+        return _Collection(self._db, self._path + (collection_id,))
 
-    def get(self) -> _Snapshot:
+    def get(self, field_paths=None, transaction=None) -> _Snapshot:
         return _Snapshot(self.id, self._db.documents.get(self._path))
 
-    def set(self, data: dict, merge: bool = False):
-        self._db.writes.append((self._path, dict(data), merge))
+    def set(self, document_data: dict, merge: bool = False):
+        _check_document_data(document_data)
+        if self._db.write_error is not None:
+            raise self._db.write_error
+        self._db.writes.append((self._path, dict(document_data), merge))
         existing = self._db.documents.get(self._path) if merge else None
         merged = dict(existing or {})
-        merged.update(data)
+        merged.update(document_data)
         self._db.documents[self._path] = merged
 
 
@@ -124,11 +164,11 @@ class _Collection:
         self._descending = False
         self._limit = None
 
-    def document(self, doc_id: str) -> _Document:
-        return _Document(self._db, self._path + (doc_id,))
+    def document(self, document_id=None) -> _Document:
+        return _Document(self._db, self._path + (_check_document_id(document_id),))
 
-    def order_by(self, field: str, direction=None):
-        self._order = field
+    def order_by(self, field_path: str, direction=None):
+        self._order = field_path
         self._descending = direction == "DESCENDING"
         return self
 
@@ -136,7 +176,8 @@ class _Collection:
         self._limit = count
         return self
 
-    def stream(self):
+    def stream(self, transaction=None):
+        """A generator, as the real client returns -- not a list."""
         children = [
             (path, data)
             for path, data in self._db.documents.items()
@@ -149,18 +190,27 @@ class _Collection:
             )
         if self._limit is not None:
             children = children[: self._limit]
-        return [_Snapshot(path[-1], data) for path, data in children]
+        for path, data in children:
+            yield _Snapshot(path[-1], data)
 
 
 class _FakeFirestore:
-    """Documents keyed by path tuple; every write recorded in order."""
+    """Documents keyed by path tuple; every write recorded in order.
+
+    Deliberately strict: it enforces the constraints the real client enforces
+    (see `_check_document_id` / `_check_document_data`), because a fake that
+    accepts what production rejects is a fake that certifies broken code.
+    """
 
     def __init__(self, documents: dict | None = None):
         self.documents = dict(documents or {})
         self.writes: list[tuple] = []
+        # Set to an exception to make every set() raise it, the way a service
+        # account without roles/datastore.user does.
+        self.write_error: Exception | None = None
 
-    def collection(self, name: str) -> _Collection:
-        return _Collection(self, (name,))
+    def collection(self, collection_id: str) -> _Collection:
+        return _Collection(self, (collection_id,))
 
     def user_path(self, user_id: str = USER) -> tuple:
         return ("users", user_id)
@@ -258,6 +308,7 @@ def test_starting_a_call_returns_the_masked_number_and_never_the_real_one(
         "run_id": RUN_ID,
         "status": "started",
         "to_phone_masked": MASKED,
+        "persisted": True,
     }
     assert PHONE not in response.text
 
@@ -532,3 +583,193 @@ def test_listing_never_carries_a_full_number(db, calle, client):
 
     assert PHONE not in response.text
     assert MASKED in response.text
+
+# --------------------------------------------------------------------------
+# Opaque run ids from CALL-E
+#
+# CALL-E returns base64url run ids -- wMXbZkrDQ-UoPcJPxTw_5A -- which are
+# already valid Firestore document ids and pass through the encoding
+# unchanged. None of this is corrective; a run id is an opaque string from a
+# service we do not control, and "/" is the one character that would turn a
+# write into a ValueError. These pin the encoding so that stays true.
+#
+# `_check_document_id` mirrors the real client's rule, which is what makes
+# them bite: the original fake accepted any string as a document id.
+# --------------------------------------------------------------------------
+
+# What CALL-E actually returns.
+OBSERVED_RUN_ID = "wMXbZkrDQ-UoPcJPxTw_5A"
+
+# Hypothetical, and not a shape CALL-E has ever returned -- it exists only
+# to prove the encoding holds if an upstream id ever stops being safe.
+RESOURCE_RUN_ID = "runs/abc123"
+
+
+def test_a_run_id_containing_a_slash_is_stored_rather_than_crashing(
+    db, calle, client
+):
+    calle.start_result = {"plan_id": "plan-1", "run_id": RESOURCE_RUN_ID}
+
+    response = client.post(ENDPOINT, json={"goal": GOAL})
+
+    assert response.status_code == 201
+    # The caller gets CALL-E's real id back -- the encoding is ours, internal,
+    # and must never leak into the API or into what we send CALL-E.
+    assert response.json()["run_id"] == RESOURCE_RUN_ID
+
+    written = _written(db, db.run_path("runs%2Fabc123"))
+    assert len(written) == 1, "the call must still be recorded"
+    assert written[0]["run_id"] == RESOURCE_RUN_ID
+
+
+def test_a_slashed_run_id_is_not_addressable_on_the_detail_route(db, calle, client):
+    """The remaining limitation, pinned so it cannot regress silently.
+
+    A slash in the run id adds a path segment, so `/calls/runs/abc123` matches
+    no route. Percent-encoding does not help: httpx and Starlette normalise
+    `%2F` back to `/` before routing, verified both ways. So this 404s at the
+    routing layer, before any code here runs -- CALL-E is never consulted.
+
+    That is a clean miss rather than the crash this module used to produce,
+    and nothing is lost: the run is recorded and comes back from the list
+    endpoint with its real id (see the test below). Addressing such a run
+    directly would need the id as a query parameter rather than a path
+    segment, which is a separate change and not one to make speculatively.
+    """
+    db.documents[db.run_path("runs%2Fabc123")] = {"run_id": RESOURCE_RUN_ID}
+
+    assert client.get(f"{ENDPOINT}/{RESOURCE_RUN_ID}").status_code == 404
+    assert calle.polled == []
+
+
+def test_an_encoded_run_id_reaching_the_handler_resolves_to_its_document(
+    db, calle, client
+):
+    """The encoding itself round-trips, independent of what routing allows."""
+    from app.routers.calls import _run_document_id
+
+    assert _run_document_id(RESOURCE_RUN_ID) == "runs%2Fabc123"
+    assert _run_document_id(RUN_ID) == RUN_ID
+    # The shape that actually arrives, untouched.
+    assert _run_document_id(OBSERVED_RUN_ID) == OBSERVED_RUN_ID
+
+
+def test_a_real_calle_run_id_is_stored_unchanged(db, calle, client):
+    """The encoding must be a no-op for the ids CALL-E actually returns."""
+    calle.start_result = {"plan_id": "plan-1", "run_id": OBSERVED_RUN_ID}
+
+    response = client.post(ENDPOINT, json={"goal": GOAL})
+
+    assert response.json()["run_id"] == OBSERVED_RUN_ID
+    assert _written(db, db.run_path(OBSERVED_RUN_ID)), (
+        "a base64url id needs no encoding and must keep its own document id"
+    )
+
+
+def test_a_slashed_run_id_is_listed_under_its_real_id(db, calle, client):
+    db.documents[db.run_path("runs%2Fabc123")] = {
+        "run_id": RESOURCE_RUN_ID,
+        "status": "COMPLETED",
+        "to_phone_masked": MASKED,
+        "created_at": 1,
+    }
+
+    body = client.get(ENDPOINT).json()
+
+    assert [call["run_id"] for call in body["calls"]] == [RESOURCE_RUN_ID]
+
+
+# --------------------------------------------------------------------------
+# A failed write must never cost us the run id
+#
+# The real incident: this service was read-only until calls shipped, so its
+# service account held roles/datastore.viewer. Reads of users/{uid} succeeded,
+# the call was placed and the student's phone rang -- and then the call_runs
+# write raised PermissionDenied, the endpoint 500d, and the run id was gone.
+# A paid call nobody could poll. The write is bookkeeping; the run id is the
+# only handle that exists.
+# --------------------------------------------------------------------------
+
+def _denied() -> Exception:
+    """The real failure, not a stand-in: what a viewer-only SA actually gets."""
+    from google.api_core.exceptions import PermissionDenied
+
+    return PermissionDenied("Missing or insufficient permissions.")
+
+
+def test_a_denied_write_still_returns_the_run_id(db, calle, client):
+    db.write_error = _denied()
+
+    response = client.post(ENDPOINT, json={"goal": GOAL})
+
+    assert response.status_code == 201, "a placed call must never report failure"
+    body = response.json()
+    assert body["run_id"] == RUN_ID
+    assert body["persisted"] is False
+    assert body["to_phone_masked"] == MASKED
+
+
+def test_a_denied_write_is_logged_with_the_masked_number_only(db, calle, client, caplog):
+    db.write_error = _denied()
+
+    with caplog.at_level(logging.ERROR, logger=calls.__name__):
+        client.post(ENDPOINT, json={"goal": GOAL})
+
+    errors = [r for r in caplog.records if r.levelno >= logging.ERROR]
+    assert errors, "a call we failed to record must be findable in the logs"
+    logged = " ".join(r.getMessage() + (r.exc_text or "") for r in errors)
+    assert PHONE not in logged
+    assert MASKED in logged
+    assert RUN_ID in logged, "the run id is the whole point of the log line"
+    # The traceback is what identifies this as an IAM problem rather than a bug.
+    assert any(r.exc_info for r in errors)
+
+
+def test_a_denied_write_never_leaks_the_number_into_the_response(db, calle, client):
+    db.write_error = _denied()
+
+    response = client.post(ENDPOINT, json={"goal": GOAL})
+
+    assert PHONE not in response.text
+    assert "confirm_token" not in response.text
+
+
+def test_persisted_is_true_when_the_write_succeeds(db, calle, client):
+    assert client.post(ENDPOINT, json={"goal": GOAL}).json()["persisted"] is True
+
+
+def test_any_write_failure_keeps_the_run_id_not_just_permission_denied(
+    db, calle, client
+):
+    # Deliberately broad in the router: every failure mode here is one where
+    # the run id is worth more than the error.
+    db.write_error = RuntimeError("transport blew up")
+
+    body = client.post(ENDPOINT, json={"goal": GOAL}).json()
+
+    assert body["run_id"] == RUN_ID
+    assert body["persisted"] is False
+
+
+def test_an_unpersisted_run_404s_on_the_detail_route(db, calle, client):
+    """The accepted consequence, pinned so it is a decision and not a surprise."""
+    db.write_error = _denied()
+    client.post(ENDPOINT, json={"goal": GOAL})
+
+    # Ownership is checked against Firestore, and there is no document -- so
+    # this run is not readable here even though the call is real. The caller
+    # was told as much by `persisted: false`.
+    assert client.get(f"{ENDPOINT}/{RUN_ID}").status_code == 404
+    assert calle.polled == []
+
+
+def test_a_failed_status_cache_still_returns_calles_answer(db, calle, client):
+    """Polling must not fail because we could not memoise the result."""
+    db.documents[db.run_path()] = {"run_id": RUN_ID, "goal": GOAL}
+    db.write_error = _denied()
+
+    response = client.get(f"{ENDPOINT}/{RUN_ID}")
+
+    assert response.status_code == 200
+    assert response.json()["summary"] == "The petition was approved on Aug 28."
+    assert PHONE not in response.text
