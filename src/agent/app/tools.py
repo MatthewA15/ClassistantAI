@@ -2,9 +2,14 @@
 
 import logging
 import os
-
+from datetime import datetime
+from zoneinfo import ZoneInfo
 import httpx
 from google.adk.tools import ToolContext
+from google.adk.memory.memory_entry import MemoryEntry
+from google.genai.types import Content, Part
+from pydantic import BaseModel
+from typing import Literal
 
 from .util import get_id_token
 
@@ -37,6 +42,53 @@ def _error_response(
     error = {"code": code, "message": message, "retryable": retryable}
     error.update(extra)
     return {"ok": False, "error": error}
+
+
+async def search_memories(query: str, tool_context: ToolContext):
+    """Query this tool when you need to fetch information about user preferences."""
+    try:
+        return await tool_context.search_memory(query)
+    except ValueError as e:
+        return _error_response(
+            code="memory_service_not_available",
+            message=str(e),
+            retryable=False
+        )
+
+
+class Fact(BaseModel):
+    fact: str
+    # Helps the agent categorize its thoughts
+    fact_type: Literal["user_preference", "reminder", "agent_learning"]
+
+
+async def save_to_memory(important_facts: list[Fact],
+                         tool_context: ToolContext) -> dict:
+    try:
+        await tool_context.add_memory(
+            memories=[
+                MemoryEntry(
+                    content=Content(
+                        role="model",
+                        parts=[Part.from_text(text=fact.fact)]
+                    ),
+                    custom_metadata={"fact_type": fact.fact_type},
+                    timestamp=datetime.now().isoformat()
+                )
+                for fact in important_facts
+            ],
+            custom_metadata={
+                "enable_consolidation": True
+            })
+
+        return {"ok": True,
+                "message": f"Successfully added {len(important_facts)} facts to long-term memory."}
+    except ValueError as e:
+        return _error_response(
+            code="memory_service_not_available",
+            message=str(e),
+            retryable=False
+        )
 
 
 def send_text(messages: list[str], tool_context: ToolContext) -> dict:
@@ -148,3 +200,69 @@ def send_text(messages: list[str], tool_context: ToolContext) -> dict:
             status_code=resp.status_code,
             body=body,
         )
+
+
+def to_timezone(
+    datetime_str: str,
+    target_timezone: str,
+    source_timezone: str = "UTC",
+) -> dict:
+    """Convert a datetime string from one timezone to another.
+
+    Use this tool when you need to translate a wall-clock time the agent
+    computed (e.g. an assignment due date or a reminder) into the student's
+    local timezone so the text you send reads naturally to them.
+
+    Args:
+        datetime_str: A datetime in ``"YYYY-mm-dd HH:MM"`` (24-hour) format,
+            e.g. ``"2026-08-29 14:30"``. It is interpreted as being in
+            ``source_timezone``.
+        target_timezone: An IANA timezone name to convert *to*, e.g.
+            ``"America/New_York"`` or ``"Africa/Lagos"``.
+        source_timezone: An IANA timezone name that ``datetime_str`` is
+            currently expressed in. Defaults to ``"UTC"``.
+
+    Returns:
+        On success, ``{"ok": True, "datetime": "...", "timezone": "..."}``
+        where ``datetime`` is the converted time in ``"YYYY-mm-dd HH:MM"``
+        format and ``timezone`` is the resolved target timezone name. On
+        failure, ``{"ok": False, "error": {...}}``.
+    """
+    try:
+        naive = datetime.strptime(datetime_str, "%Y-%m-%d %H:%M")
+    except ValueError as exc:
+        return _error_response(
+            "bad_datetime_format",
+            f"datetime_str must be in 'YYYY-mm-dd HH:MM' format, "
+            f"got {datetime_str!r}: {exc}",
+            retryable=True,
+        )
+
+    try:
+        source_tz = ZoneInfo(source_timezone)
+        localized = naive.replace(tzinfo=source_tz)
+    except (KeyError, ValueError) as exc:
+        return _error_response(
+            "bad_timezone",
+            f"source_timezone {source_timezone!r} is not a valid IANA "
+            f"timezone: {exc}",
+            retryable=True,
+        )
+
+    try:
+        target_tz = ZoneInfo(target_timezone)
+    except (KeyError, ValueError) as exc:
+        return _error_response(
+            "bad_timezone",
+            f"target_timezone {target_timezone!r} is not a valid IANA "
+            f"timezone: {exc}",
+            retryable=True,
+        )
+
+    converted = localized.astimezone(target_tz)
+
+    return {
+        "ok": True,
+        "datetime": converted.strftime("%Y-%m-%d %H:%M"),
+        "timezone": str(converted.tzinfo),
+    }
