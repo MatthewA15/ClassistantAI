@@ -1,6 +1,13 @@
 # 05. Schools data
 
-Source: [`data/schools.ts`](../../src/frontend/data/schools.ts)
+Source: [`scripts/schools.seed.ts`](../../src/frontend/scripts/schools.seed.ts)
+
+> **The list moved.** Schools live in the `schools` collection in Firestore now,
+> not in a TypeScript constant. The eligibility rules below are unchanged and
+> still govern which schools may exist at all, but they are enforced against the
+> seed file rather than against the module the app imports. See
+> [21 User properties and schools](21-user-properties-and-schools.md) for what
+> that cost and how seeding works.
 
 ## The eligibility rule
 
@@ -43,8 +50,8 @@ is told plainly that its mail does run on Google and we simply have not opened
 the campus, while a `pending` school gets "Not yet" and the weaker claim. "Soon"
 is a promise, so only a school we have actually confirmed may make it.
 
-`LIVE_SCHOOLS` is what marketing surfaces read from. `SCHOOLS` is what the
-onboarding search reads from. Keep that split.
+`liveSchools(schools)` is what marketing surfaces read from. The whole list is
+what the onboarding search reads from. Keep that split.
 
 ## Current state (August 2026)
 
@@ -74,9 +81,19 @@ produce a student who onboards successfully and then gets nothing.
 mail platforms between academic years and they do it quietly. An entry that was
 correct last September is not evidence about this September.
 
-Adding a school is three things: confirm on the school's IT pages, add the entry
-with its `source`, flip `status` to `live`. The landing page count and the
-marquee update themselves.
+Adding a school is four things now: confirm on the school's IT pages, add the
+entry to `scripts/schools.seed.ts` with its `source`, flip `status` to `live`,
+and run `npm run seed:schools -- --commit`. The landing page count and the
+marquee update themselves once the collection has it.
+
+A school can also be added straight in the Firestore console without a deploy,
+which is the point of the move. Bring it back to the seed file in the same week,
+or the next seed run will report it as an orphan and the one after that will
+have forgotten why it is there.
+
+`LIVE_SCHOOLS` is gone. It was a constant computed at module load, which only
+worked while the list was a literal; `liveSchools(schools)` is the filter now
+and it runs where it is used.
 
 ## The waitlist
 

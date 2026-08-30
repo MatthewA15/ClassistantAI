@@ -42,9 +42,14 @@ cleanly. Put shared constants in a plain module.
 
 ### `completeOnboarding(prev, formData)`
 
-Fields: `schoolId`, `email`, `name`, `nickname`, `serviceEmail` (optional
-alternate Google account), `portalUser`, `portalPassword`, `phone` (digits),
+Fields: `name` (required since #36, no longer defaulted from the address),
+`timeZone` (hidden, the browser's IANA zone), `portalUser`, `portalPassword`,
 `acceptTerms`, `acceptMarketing`, `consentSms` (checkboxes are `"on"` or empty).
+
+The school, the address, and the number are **not** submitted. Each was proven
+by a round trip -- the SMS for the number, the Google exchange for the address
+and school -- and the action reads all three off the session and the user
+document. A form field for any of them would be a second, unproven path.
 
 `portalPassword` is still collected, and deliberately so: OAuth authorises mail,
 calendar, and Drive but gives no session on the school's LMS, and the overnight

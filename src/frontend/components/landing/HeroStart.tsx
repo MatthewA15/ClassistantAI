@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useActionState, useEffect, useRef, useState } from "react";
 import { joinWaitlist } from "@/app/onboarding/actions";
-import { useSchoolTheme } from "@/components/theme/SchoolTheme";
-import { LIVE_SCHOOLS, schoolInitials, type School } from "@/data/schools";
+import { useSchoolTheme, useSchools } from "@/components/theme/SchoolTheme";
+import { liveSchools, schoolInitials, type School } from "@/data/schools";
 import { cn } from "@/lib/cn";
 
 /**
@@ -53,6 +53,9 @@ function SchoolCrest({ school, active }: { school: School; active: boolean }) {
  */
 export function HeroStart() {
   const { school, setSchool } = useSchoolTheme();
+  // Derived from the list the root layout read, rather than the LIVE_SCHOOLS
+  // constant this replaced. Same set, but it can now change without a deploy.
+  const live = liveSchools(useSchools());
   /**
    * Reaching for the locked CTA runs a two-beat explanation rather than a dead
    * click. Beat one names the step you skipped; beat two answers the question
@@ -133,12 +136,12 @@ export function HeroStart() {
           : nudge === 2
             ? // Counted, never typed. This sentence used to say "six" and would
               // have quietly become a lie the moment the list changed.
-              `Classistant is only supported at these ${LIVE_SCHOOLS.length} schools.`
+              `Classistant is only supported at these ${live.length} schools.`
             : ""}
       </p>
 
       <div className="mt-3 flex flex-wrap gap-2">
-        {LIVE_SCHOOLS.map((s, i) => {
+        {live.map((s, i) => {
           const on = school?.id === s.id;
           return (
             <button

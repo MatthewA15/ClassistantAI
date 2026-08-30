@@ -10,6 +10,7 @@ import { Card, CardHead, DataRow, buttonClass } from "@/components/dashboard/ui"
 import { readNotifications } from "@/data/notifications";
 import { getSchool } from "@/data/schools";
 import { getSession } from "@/lib/authSession";
+import { listSchools } from "@/lib/schools";
 import { getAccount } from "@/lib/users";
 
 export const metadata: Metadata = { title: "Settings" };
@@ -45,8 +46,10 @@ export default async function SettingsPage() {
   const account = await getAccount(session.uid);
   if (!account) redirect("/onboarding");
 
-  const school = account.schoolId ? getSchool(account.schoolId) : undefined;
-  const prefs = readNotifications(account.notifications);
+  const school = account.schoolId
+    ? getSchool(await listSchools(), account.schoolId)
+    : undefined;
+  const prefs = readNotifications(account.notifications, account.timeZone);
 
   return (
     <>
@@ -60,7 +63,13 @@ export default async function SettingsPage() {
           <CardHead title="You" />
 
           <div className="border-b border-line-soft pb-4">
-            <ProfileForm name={account.name ?? account.email?.split("@")[0] ?? "you"} />
+            {/* No address-derived fallback. It used to read
+                `account.name ?? account.email?.split("@")[0]`, which put
+                `jokafor3` into the input as a real editable value -- so a
+                student pressing Change and then Save committed the exact string
+                #36 made this field required to avoid. An account with no name
+                predates that requirement; the field opens empty and asks. */}
+            <ProfileForm name={account.name} />
           </div>
 
           <dl className="pt-1">
@@ -81,13 +90,22 @@ export default async function SettingsPage() {
                 </Link>
               }
             />
+            {/*
+              Three states, not two. `school` is undefined both when the student
+              has no school and when the catalogue could not be read, and
+              collapsing those told a fully onboarded student "Not set" about a
+              school sitting on their own document. `schoolId` is what says
+              which of the two it is.
+            */}
             <DataRow
               label="School"
-              value={school?.name ?? "Not set"}
+              value={school?.name ?? (account.schoolId ? "Could not load" : "Not set")}
               hint={
                 school
                   ? `Taken from your @${school.emailDomain} address, so it follows the account rather than being picked.`
-                  : undefined
+                  : account.schoolId
+                    ? "We could not reach the school list just now. Your account is unaffected."
+                    : undefined
               }
             />
             <DataRow

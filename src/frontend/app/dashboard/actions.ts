@@ -8,14 +8,18 @@ import {
   writeNotifications,
   type NotificationPrefs,
 } from "@/data/notifications";
+import { getSchool } from "@/data/schools";
 import { getSession } from "@/lib/authSession";
 import { savePortalCredentials } from "@/lib/portalCredentials";
+import { listSchools } from "@/lib/schools";
+import { resolveTimeZone } from "@/lib/timeZone";
 import {
   getAccount,
   updateAccessSwitches,
   updateDisplayName,
   updateMarketingPreference,
   updateNotificationPrefs,
+  updateTimeZone,
 } from "@/lib/users";
 
 /**
@@ -31,7 +35,7 @@ import {
  * devtools. `getSession()` returns a uid that Firebase verified, on a cookie
  * this process set and can revoke, and that is the only id any of these use.
  *
- * The same reasoning is why `saveProfile` writes a nickname and nothing else.
+ * The same reasoning is why `saveProfile` writes the name and nothing else.
  * The address was proven by the Google exchange and the number by an SMS round
  * trip; a text input that overwrote either would hand a student an identity
  * nobody checked, which is the whole thing those two round trips exist to
@@ -143,15 +147,30 @@ export async function saveNotifications(
   if (error) return error;
 
   const base = defaultNotifications();
+
+  /*
+   * The zone, resolved against the student's school before any fixed default.
+   *
+   * Read from the browser rather than picked from a list (see the note on
+   * `timezone` in data/notifications.ts), and validated rather than trusted:
+   * `resolveTimeZone` rejects anything `Intl` will not recognise, because this
+   * is a hidden input on a public endpoint and it decides what "10 PM" means.
+   *
+   * It is stored at the top level of the document, not in the prefs map. That
+   * is the whole point of #36: one field, where the agent can find it.
+   */
+  const account = await getAccount(uid);
+  const school = account?.schoolId
+    ? getSchool(await listSchools(), account.schoolId)
+    : undefined;
+  const timeZone = resolveTimeZone(formData.get("timeZone"), school?.timeZone);
+
   const prefs: NotificationPrefs = {
     quietStart: readHour(formData.get("quietStart"), base.quietStart),
     quietEnd: readHour(formData.get("quietEnd"), base.quietEnd),
     calls: formData.get("calls") === "on",
     digestHour: readHour(formData.get("digestHour"), null),
-    // Read from the browser rather than picked from a list. See the note on
-    // `timezone` in data/notifications.ts for why it is not inferred from the
-    // phone number.
-    timezone: String(formData.get("timezone") ?? "").trim() || base.timezone,
+    timezone: timeZone,
   };
 
   /*
@@ -169,6 +188,7 @@ export async function saveNotifications(
 
   try {
     await updateNotificationPrefs(uid, writeNotifications(prefs));
+    await updateTimeZone(uid, timeZone);
     await updateMarketingPreference(uid, formData.get("marketing") === "on");
   } catch (err) {
     console.error("saveNotifications failed", {
@@ -182,8 +202,8 @@ export async function saveNotifications(
   return { ok: true, message: "Saved." };
 }
 
-/** The nickname, and only the nickname. See the rule at the top of this file
- *  for why the address and the number are not here. */
+/** The name, and only the name. See the rule at the top of this file for why
+ *  the address and the number are not here. */
 export async function saveProfile(
   _prev: SaveResult | null,
   formData: FormData,
@@ -191,19 +211,19 @@ export async function saveProfile(
   const { uid, error } = await requireUid();
   if (error) return error;
 
-  const name = String(formData.get("nickname") ?? "").trim();
+  const name = String(formData.get("name") ?? "").trim();
   if (name.length < 1) {
     return {
       ok: false,
       message: "Give it something to call you.",
-      errors: { nickname: "This cannot be empty." },
+      errors: { name: "This cannot be empty." },
     };
   }
   if (name.length > 40) {
     return {
       ok: false,
       message: "That name is too long.",
-      errors: { nickname: "Keep it under 40 characters." },
+      errors: { name: "Keep it under 40 characters." },
     };
   }
 

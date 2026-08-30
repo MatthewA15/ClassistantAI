@@ -2,6 +2,27 @@ rules_version='2'
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    /*
+     * The school catalogue (issue #36). Reference data about real institutions:
+     * readable by anyone, writable by nobody through a client.
+     *
+     * Seeding goes through `npm run seed:schools`, and every read the app makes
+     * is server-side via firebase-admin, which bypasses these rules entirely.
+     * So `write: if false` costs us nothing and closes the console-adjacent
+     * path where a browser could rewrite what a university is called.
+     *
+     * WARNING: this rule is currently INERT. The catch-all below still grants
+     * read and write on every document until 2026-09-21, and Firestore grants
+     * access if ANY matching rule allows it -- a narrower rule cannot take
+     * permission back. This block starts doing something the day that wildcard
+     * is removed, which has to happen before it expires and locks the project
+     * out of its own client SDK.
+     */
+    match /schools/{schoolId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
     match /{document=**} {
       // This rule allows anyone with your database reference to view, edit,
       // and delete all data in your database. It is useful for getting
