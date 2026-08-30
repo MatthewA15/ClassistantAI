@@ -2,12 +2,12 @@ from google.adk.agents.llm_agent import Agent
 from google.adk.apps import App
 from google.adk.tools.preload_memory_tool import PreloadMemoryTool
 
-from .tools import send_text, search_memories, save_to_memory
+from .tools import send_text, search_memories, save_to_memory, web_search
 from .util import load_prompt
 from .api import build_connector_api, inject_user_id
 from .callbacks import memory_nudge_callback
 
-_tools = [PreloadMemoryTool(), search_memories, save_to_memory, send_text]
+_tools = [PreloadMemoryTool(), search_memories, save_to_memory, send_text, web_search]
 if (connector_api := build_connector_api()) is not None:
     _tools.append(connector_api)
 

@@ -17,6 +17,8 @@ from .callbacks import reset_turn_counter
 logger = logging.getLogger(__name__)
 
 _TWILIO_SEND_URL = os.environ.get("TWILIO_SEND_URL")
+_BRAVE_API_KEY = os.environ.get("BRAVE_API_KEY")
+_BRAVE_LLM_CONTEXT_URL = "https://api.search.brave.com/res/v1/llm/context"
 _REQUEST_TIMEOUT_S = 30
 
 
@@ -275,3 +277,69 @@ def to_timezone(
         "datetime": converted.strftime("%Y-%m-%d %H:%M"),
         "timezone": str(converted.tzinfo),
     }
+
+
+def web_search(query: str) -> dict:
+    """Search the web for up-to-date information.
+
+    Use this tool when you need current, factual information that may not be
+    in your training data — e.g. recent news, live data, unfamiliar topics, or
+    anything you want to ground in real sources. Returns pre-extracted web
+    content optimized for grounding your answers.
+
+    Args:
+        query: The user's search query. Maximum 400 characters and 50 words.
+    """
+    if not _BRAVE_API_KEY:
+        logger.error("web_search: BRAVE_API_KEY is not set.")
+        return _error_response(
+            "not_configured",
+            "Web search is not configured (missing API key). "
+            "This is an internal error — do not retry; respond using what "
+            "you already know and note that web search is unavailable.",
+            retryable=False,
+        )
+
+    headers = {
+        "Accept": "application/json",
+        "Accept-Encoding": "gzip",
+        "X-Subscription-Token": _BRAVE_API_KEY,
+    }
+    params = {"q": query, "country": "CA", "safesearch": "moderate"}
+
+    try:
+        resp = httpx.get(
+            _BRAVE_LLM_CONTEXT_URL,
+            params=params,
+            headers=headers,
+            timeout=_REQUEST_TIMEOUT_S,
+        )
+    except httpx.RequestError as exc:
+        logger.error("web_search: request failed: %s", exc)
+        return _error_response(
+            "network_error",
+            "Could not reach the Brave Search API. It may be temporarily "
+            "unavailable — you may try again shortly.",
+            retryable=True,
+            detail=str(exc),
+        )
+
+    if not resp.is_success:
+        body = resp.text
+        logger.error(
+            "web_search: upstream returned %s: %s", resp.status_code, body
+        )
+
+        try:
+            return resp.json()
+        except Exception:
+            return _error_response(
+                "upstream_error",
+                "The Brave Search API rejected the request.",
+                retryable=False,
+                status_code=resp.status_code,
+                body=body,
+            )
+
+    data = resp.json()
+    return {"ok": True, "data": data}
