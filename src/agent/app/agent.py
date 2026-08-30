@@ -5,6 +5,7 @@ from google.adk.tools.preload_memory_tool import PreloadMemoryTool
 from .tools import send_text, search_memories, save_to_memory
 from .util import load_prompt
 from .api import build_connector_api, inject_user_id
+from .callbacks import memory_nudge_callback
 
 _tools = [PreloadMemoryTool(), search_memories, save_to_memory, send_text]
 if (connector_api := build_connector_api()) is not None:
@@ -16,6 +17,7 @@ root_agent = Agent(
     description="You are Classy, Classistant's main agent.",
     instruction=load_prompt(),
     tools=_tools,
+    before_model_callback=memory_nudge_callback,
     before_tool_callback=inject_user_id,
 )
 

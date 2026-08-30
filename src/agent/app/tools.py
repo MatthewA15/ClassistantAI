@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from typing import Literal
 
 from .util import get_id_token
+from .callbacks import reset_turn_counter
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,10 @@ class Fact(BaseModel):
 
 async def save_to_memory(important_facts: list[Fact],
                          tool_context: ToolContext) -> dict:
+    """
+    Use this tool to save important facts, deadlines, reminders and your learnings to long-term memory.
+    """
+
     try:
         await tool_context.add_memory(
             memories=[
@@ -80,6 +85,10 @@ async def save_to_memory(important_facts: list[Fact],
             custom_metadata={
                 "enable_consolidation": True
             })
+
+        # The agent just saved to memory, so reset the periodic nudge
+        # counter so the next reminder interval starts fresh.
+        reset_turn_counter(tool_context.state)
 
         return {"ok": True,
                 "message": f"Successfully added {len(important_facts)} facts to long-term memory."}
