@@ -21,6 +21,12 @@ OAuth client, or refresh fails with invalid_client (ENCRYPTION_CONTRACT.md
 Per-user credentials (refresh tokens) live in Firestore, envelope-encrypted
 with Cloud KMS by the frontend; this service only performs the decrypt half.
 See app/services/firestore_creds.py.
+
+The CALL-E settings below are the second deliberate exception, on the same
+reasoning as the client secret: one service-level bearer token for the whole
+service, not a per-user credential. It identifies *this integration* to
+CALL-E, never a student, so it is configuration rather than something the
+encryption contract has anything to say about. See app/services/calle_mcp.py.
 """
 from pydantic import Field
 from pydantic_settings import BaseSettings
@@ -54,6 +60,23 @@ class Settings(BaseSettings):
     # Must byte-match what the frontend actually sends or KMS decrypt fails
     # closed -- this default must never silently drift from the contract.
     kms_aad_source: str = "user_id"
+
+    # CALL-E: the hosted MCP server that places the actual phone call.
+    #
+    # All three have defaults, unlike the KMS fields above, and that is the
+    # point: a missing CALL-E token must degrade to a 503 on the call
+    # endpoints alone. It must never fail Settings() at startup, because
+    # that would take Gmail, Calendar, Drive and Docs down with it over a
+    # feature they don't use. app/services/calle_mcp.py raises
+    # CalleNotConfigured at call time instead.
+    #
+    # The token is service configuration, not a per-user credential: it is
+    # never written to Firestore, never wrapped by KMS, and has no
+    # encrypted form. It comes from a brokered browser login and it
+    # EXPIRES -- mint or rotate it with `python scripts/calle_login.py`.
+    calle_base_url: str = "https://seleven-mcp-sg.airudder.com"
+    calle_channel: str = "openagent_oauth"
+    calle_access_token: str | None = None
 
     class Config:
         env_file = ".env"
