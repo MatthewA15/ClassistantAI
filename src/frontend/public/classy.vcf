@@ -1,0 +1,8 @@
+BEGIN:VCARD
+VERSION:3.0
+FN:Classy
+N:Classy;;;;
+URL:https://classistant.ca
+NOTE:A school assistant that lives in your text messages.
+PHOTO;VALUE=URL:https://classistant.ca/logo.png
+END:VCARD
