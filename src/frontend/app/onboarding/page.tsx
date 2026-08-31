@@ -4,6 +4,7 @@ import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
 import { OnboardingFrame, WizardSkeleton } from "@/components/onboarding/shell";
 import { getSchool } from "@/data/schools";
 import { getSession } from "@/lib/authSession";
+import { listSchools } from "@/lib/schools";
 import { getUser } from "@/lib/users";
 
 export const metadata: Metadata = {
@@ -48,7 +49,7 @@ export default async function OnboardingPage({
   const { school } = await searchParams;
 
   return (
-    <OnboardingFrame school={school ? getSchool(school) : null}>
+    <OnboardingFrame school={school ? (getSchool(await listSchools(), school) ?? null) : null}>
       {/* Also the boundary useSearchParams needs inside the wizard. */}
       <Suspense fallback={<WizardSkeleton />}>
         <SignedInWizard />

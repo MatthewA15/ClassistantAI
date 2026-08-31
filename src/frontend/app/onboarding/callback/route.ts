@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { getSchool } from "@/data/schools";
 import { getSession } from "@/lib/authSession";
+import { listSchools } from "@/lib/schools";
 import { storeCredential } from "@/lib/credentials";
 import {
   GrantError,
@@ -92,7 +93,7 @@ export async function GET(request: NextRequest) {
   const session = await getSession();
   if (!session) return back({ error: "signin" }, pending.schoolId);
 
-  const school = getSchool(pending.schoolId);
+  const school = getSchool(await listSchools(), pending.schoolId);
   if (!school || school.status !== "live") return back({ error: "school" });
 
   /*

@@ -91,11 +91,11 @@ form feel like a lead-capture page.
 
 ## Details step
 
-Name and email are shown as retrieved, not as empty inputs. Two escape hatches:
-**Change nickname** for what the agent calls you, and **Different email for
-Google Drive, Calendar, and email?** for the case where coursework lives in
-another account. Both are collapsed until clicked, so the default path is
-reading two lines and moving on.
+The email is shown as retrieved, not as an empty input. **Name is a required
+field** and always open: it used to be a collapsed "Change nickname" escape
+hatch defaulting to the local part of the address, which was fine while nothing
+read it and became "Hey jokafor3" the moment the agent started greeting people.
+See [21 User properties and schools](21-user-properties-and-schools.md).
 
 While Google is stubbed, the name is placeholder text and the UI says so rather
 than pretending it came from the registrar.
