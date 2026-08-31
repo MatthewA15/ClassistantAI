@@ -59,7 +59,7 @@ export function NotificationsForm({
 
   return (
     <form action={action} className="flex flex-col gap-6">
-      <input type="hidden" name="timezone" value={timezone} />
+      <input type="hidden" name="timeZone" value={timezone} />
 
       <div className="flex flex-col gap-2.5">
         <Switch
