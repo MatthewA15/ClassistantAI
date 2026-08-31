@@ -9,7 +9,9 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --conditions=react-server --test lib/*.test.ts",
-    "verify:credentials": "node --import tsx --conditions=react-server scripts/verify-credential-write.mts"
+    "verify:credentials": "node --import tsx --conditions=react-server scripts/verify-credential-write.mts",
+    "build:vcard": "node --import tsx scripts/build-vcard.mts",
+    "seed:schools": "node --import tsx --conditions=react-server scripts/seed-schools.mts"
   },
   "dependencies": {
     "@google-cloud/kms": "^5.7.0",
