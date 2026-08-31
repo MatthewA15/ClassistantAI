@@ -226,7 +226,7 @@ def _decrypt_password(
 
 
 # --------------------------------------------------------------------------
-# Public API — cached per user
+# Public API — cached per user (+ env-var debug override)
 # --------------------------------------------------------------------------
 
 @ttl_cache(maxsize=128, ttl=60*10)
@@ -247,6 +247,12 @@ def get_portal_credentials(user_id: str) -> dict[str, str]:
 
     Callers (callbacks.py) translate those into agent-friendly error dicts.
     """
+
+    debug_username = os.environ.get("PORTAL_DEBUG_USERNAME")
+    debug_password = os.environ.get("PORTAL_DEBUG_PASSWORD")
+
+    if debug_username and debug_password:
+        return {"username": str(debug_username), "password": debug_password}
 
     if not (username := _fetch_username(user_id)):
         raise CredentialNotFound(

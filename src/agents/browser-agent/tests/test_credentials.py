@@ -185,3 +185,39 @@ async def test_wrong_key_name_used(patch_clients):
     assert "classistant-password-key" in kms.decrypt_calls[0]["name"]
     assert "classistant-key/" not in kms.decrypt_calls[0]["name"]
     credentials.clear_cache()
+
+
+# --------------------------------------------------------------------------
+# Debug env override (PORTAL_DEBUG_USERNAME / PORTAL_DEBUG_PASSWORD)
+# --------------------------------------------------------------------------
+
+async def test_debug_env_override_skips_firestore_and_kms(
+    patch_clients, monkeypatch
+):
+    """Both env vars set -> returned for every user, no GCP touch at all."""
+    monkeypatch.setenv("PORTAL_DEBUG_USERNAME", "debug-user")
+    monkeypatch.setenv("PORTAL_DEBUG_PASSWORD", "debug-pass")
+
+    for uid in ("uid-real-1", "ghost-uid"):
+        creds = credentials.get_portal_credentials(uid)
+        assert creds == {"username": "debug-user", "password": "debug-pass"}
+
+    # Neither Firestore nor KMS was consulted, even for nonexistent users.
+    assert not patch_clients["store"].get("users")
+    assert patch_clients["kms"].decrypt_calls == []
+
+
+async def test_debug_env_unset_uses_firestore_path(patch_clients, monkeypatch):
+    """No env vars -> the production Firestore+KMS path is untouched."""
+    monkeypatch.delenv("PORTAL_DEBUG_USERNAME", raising=False)
+    monkeypatch.delenv("PORTAL_DEBUG_PASSWORD", raising=False)
+
+    store, kms = patch_clients["store"], patch_clients["kms"]
+    uid = "uid-11"
+    _, dkey = _seed_full_user(store, uid, "u11", "pw11")
+    kms.decrypt_result = base64.b64encode(dkey)
+
+    creds = credentials.get_portal_credentials(uid)
+    assert creds == {"username": "u11", "password": "pw11"}
+    assert len(kms.decrypt_calls) == 1
+    credentials.clear_cache()
