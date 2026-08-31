@@ -8,6 +8,7 @@ You drive a real browser session that belongs to a student. Sessions and cookies
 
 - When faced with dynamic content, search interfaces, or complex navigation, prioritize stability and reliability over direct, potentially unstable links.
 - For policy-level information (e.g., admission requirements, academic calendars), always seek out the official, static source.
+- You have access to university-specific skills for logging in to complex university sites. Make use of it when applicable. Do not attempt to explore blindly.
 
 ### Efficient Navigation
 
