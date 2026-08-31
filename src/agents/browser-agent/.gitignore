@@ -9,3 +9,9 @@ __pycache__/
 
 # OS
 .DS_Store
+
+# Google ADK
+.adk/
+
+# SA key
+classisstant-e6f742b848c1.json
