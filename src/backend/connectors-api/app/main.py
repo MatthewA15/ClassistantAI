@@ -18,7 +18,7 @@ from app.services.calle_mcp import (
 )
 from app.services.firestore_creds import CredentialFormatError, CredentialNotFound
 
-app = FastAPI(title="Classistant AI Connectors", version="0.7.0")
+app = FastAPI(title="Classistant AI Connectors", version="0.8.0")
 
 app.include_router(gmail_router)
 app.include_router(calendar_router)

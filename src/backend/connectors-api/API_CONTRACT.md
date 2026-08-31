@@ -1,4 +1,4 @@
-# Classistant AI Connector API — Contract v0.7 (handoff for ADK tools)
+# Classistant AI Connector API — Contract v0.8 (handoff for ADK tools)
 
 Base URL: `https://<cloud-run-url>` (local: `http://localhost:8080`). All responses JSON.
 `{user_id}` in every path below is the **Firebase UID** — the same identifier the frontend's session already carries and the `users` collection is keyed by. There is no other identifier this service accepts; a Google `sub` is never a valid `{user_id}`.
@@ -36,13 +36,15 @@ the student said yes. Any drift between the request and the stored draft is a
 |---|---|---|---|
 | GET | `/users/{user_id}/drive/files?q=&max_results=` | optional Drive query | `{files:[{id, name, mimeType, modifiedTime, webViewLink}], count}` |
 | GET | `/users/{user_id}/drive/files/{file_id}/download` | — | **Raw file bytes (not JSON)** with `Content-Type` + `Content-Disposition: attachment; filename=...`. Google-native files are auto-exported (Docs→txt, Sheets→csv, Slides→pdf); other google-apps types → `415`. `404` not found, `403` no access / needs re-consent. ADK tool code must handle a binary response. |
-| POST | `/users/{user_id}/docs` | `{title, content, markdown?}` | `{doc_id, url, status:"created", formatting_applied}` |
+| POST | `/users/{user_id}/docs` | `{title, content, markdown?}` — `markdown` defaults to **`true`** | `{doc_id, url, status:"created", formatting_applied}` |
 
-### `POST /docs` — markdown rendering (v0.6)
+### `POST /docs` — markdown rendering (v0.6, default flipped in v0.8)
 
-`markdown` is optional and defaults to `false`. **`false` (or absent) is the pre-v0.6 behaviour exactly**: `content` is inserted verbatim as plain text, markdown syntax and all. Existing callers need no change.
+`markdown` is optional and **defaults to `true`**: `content` is parsed as markdown and rendered with real Docs formatting. Pass `markdown: false` to insert `content` verbatim as plain text, markdown syntax and all.
 
-Send `markdown: true` to have `content` parsed as markdown and rendered with real Docs formatting:
+The default flipped in v0.8 — see the changelog. Callers that send `markdown` explicitly are unaffected either way.
+
+What rendering does:
 
 | Markdown | Becomes |
 |---|---|
@@ -56,7 +58,7 @@ Anything outside that set — tables, code fences, block quotes, images, nested 
 
 The response is `DocCreatedResponse` — `doc_id`, `url`, `status` (unchanged since v0.3) plus `formatting_applied`, which is always present and defaults to `true`.
 
-`formatting_applied` is `false` **only** when `markdown: true` was requested *and* the conversion failed — in which case the Doc was still created, with `content` inserted as unformatted plain text. A malformed heading never costs the student the document, so treat `false` as "the Doc is fine, but it reads as raw markdown", not as an error. It is `true` when markdown rendered successfully, and `true` when `markdown` was false or absent (nothing was requested, so nothing failed).
+`formatting_applied` is `false` **only** when markdown rendering was attempted *and* the conversion failed — in which case the Doc was still created, with `content` inserted as unformatted plain text. A malformed heading never costs the student the document, so treat `false` as "the Doc is fine, but it reads as raw markdown", not as an error. It is `true` when markdown rendered successfully, and `true` when `markdown` was false (nothing was attempted, so nothing failed).
 
 ## Calls (v0.7 — CALL-E)
 
@@ -154,3 +156,6 @@ Every `/users/{user_id}/...` endpoint reads through `app/services/firestore_cred
 - v0.5 (**breaking**): corrects a false start within this same version — `/auth/callback` was briefly restored (client secret handling was mistakenly believed to require it) and then removed again for good once [`docs/ENCRYPTION_CONTRACT.md`](../../../docs/ENCRYPTION_CONTRACT.md) settled the frontend as owning the full write side, encrypt included. This service now has **zero** auth endpoints, **zero** KMS encrypt capability, and no code path that can name or touch a `school_password` credential. The `google_sub` fallback lookup on the read path is also removed — `{user_id}` is the Firebase UID with no alternate-identifier tolerance, anywhere. Credential documents are now read from `users/{user_id}/credentials/google_refresh_token` (a direct document get) rather than a queried top-level `user_credentials` collection.
 - v0.6: `POST /docs` accepts an optional `markdown` flag (default `false`), and its response gains `formatting_applied` (default `true`). Both are **additive** — no existing field changed shape or name, and `markdown: false` sends byte-for-byte the request v0.5 sent. `formatting_applied` is a declared field on `DocCreatedResponse`, so it survives the endpoint's `response_model` filtering.
 - v0.7: adds the **Calls** section — three endpoints wrapping CALL-E, which dial the student's own verified number and nothing else. Additive: no existing endpoint, field or status code changed. Also corrects two long-standing documentation drifts rather than any behaviour: `POST /emails/drafts/{draft_id}/send` has existed in `app/routers/gmail.py` since before v0.6 but the Gmail section still claimed there was "no send endpoint by design", and `app/main.py` still declared `version="0.5.0"`. Both now say what the code does. `POST /calls` also carries a `persisted` flag (default `true`); it is documented as part of v0.7 rather than a new version because the calls endpoints had never completed a request in any deployed environment before it existed -- the service account was read-only, so every call 500d after placing the call. No caller can have depended on the older shape. Call runs were also moved from the `users/{user_id}/call_runs` subcollection to a top-level `call_runs` collection carrying a `user_id` field (see "Where call runs are stored"); no request or response field changed, so this is amended into v0.7 rather than bumped.
+- v0.8 (**behaviour change**): `POST /docs`'s `markdown` flag now defaults to **`true`** instead of `false`. A caller that omits the flag and sends markdown-formatted `content` will now get a Doc with real headings, bold, links and lists where it previously got the raw syntax as literal text. **This changes output for existing callers who relied on the old default** — send `markdown: false` explicitly to keep verbatim insertion. Nothing else moved: no field was added, renamed or removed, and an explicit `markdown` value behaves exactly as before.
+
+  The reason: the ADK agent is the only caller, and it writes markdown anyway, so the old default made it remember a flag to get the output it already wanted. Content with no markdown syntax in it is inserted identically under either default, so the change is a no-op for plain prose.

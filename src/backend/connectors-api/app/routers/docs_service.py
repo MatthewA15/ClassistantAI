@@ -21,8 +21,18 @@ router = APIRouter(prefix="/users/{user_id}/docs", tags=["docs"])
 
 class DocIn(BaseModel):
     title: str
-    content: str  # plain text; agent formats with newlines
-    markdown: bool = False  # opt in to rendering `content` as markdown
+    content: str  # the agent writes markdown; see `markdown` below
+    markdown: bool = Field(
+        True,
+        description=(
+            "Render `content` as markdown -- headings, bold, links and lists "
+            "become real Docs formatting. On by default: the agent writes "
+            "markdown anyway, so this is the behaviour it wants without having "
+            "to ask for it, and content with no markdown syntax in it comes "
+            "out unchanged either way. Pass false to insert `content` verbatim "
+            "as plain text, markdown syntax and all."
+        ),
+    )
 
 
 class DocCreatedResponse(BaseModel):
@@ -32,10 +42,10 @@ class DocCreatedResponse(BaseModel):
     formatting_applied: bool = Field(
         True,
         description=(
-            "False only when `markdown: true` was requested and the conversion "
+            "False only when markdown rendering was attempted and the conversion "
             "failed -- the Doc was still created, with `content` inserted as "
             "unformatted plain text. True when markdown rendered successfully, "
-            "and True when no formatting was requested."
+            "and True when `markdown` was false, since nothing was attempted."
         ),
     )
 
@@ -44,8 +54,9 @@ class DocCreatedResponse(BaseModel):
 def create_doc(user_id: str, doc: DocIn):
     """Create a Google Doc with the given title and content (e.g. an agent-generated study plan).
 
-    `content` is inserted verbatim unless `markdown` is true, in which case it
-    is parsed and rendered with real Docs headings, bold, links and lists.
+    `content` is parsed as markdown and rendered with real Docs headings,
+    bold, links and lists. Pass `markdown: false` to insert it verbatim as
+    plain text instead.
     """
     svc = service_for_user(user_id, "docs", "v1")
     created = svc.documents().create(body={"title": doc.title}).execute()

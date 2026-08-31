@@ -5,8 +5,8 @@ batchUpdate body, so these assert what would go over the wire without
 mocking out the thing under test.
 
 The load-bearing test here is `test_markdown_false_sends_exactly_todays_request`:
-the agent is already calling this endpoint, and the flag defaulting to false has
-to mean byte-for-byte no change.
+markdown rendering is on by default now, so `markdown: false` is the only way
+back to verbatim insertion, and it has to stay byte-for-byte exact.
 """
 import logging
 
@@ -95,11 +95,36 @@ def test_markdown_false_sends_exactly_todays_request(calls, client):
     ]
 
 
-def test_markdown_field_is_optional_and_defaults_to_the_old_behaviour(calls, client):
-    content = "# Still literal"
-    response = client.post(ENDPOINT, json={"title": "Plan", "content": content})
+def test_markdown_field_is_optional_and_defaults_to_rendering(calls, client):
+    """Omitting the flag renders, and renders identically to passing true."""
+    response = client.post(
+        ENDPOINT,
+        json={"title": "Plan", "content": "# Plan\n\n- one\n- two"},
+    )
 
     assert response.status_code == 201
+    assert response.json()["formatting_applied"] is True
+
+    # The same assertions test_markdown_true_sends_converted_requests makes,
+    # with the flag left out: the heading marker is consumed rather than
+    # inserted literally, and the style requests follow the text.
+    requests = batch_requests(calls)
+    assert requests[0] == {
+        "insertText": {"location": {"index": 1}, "text": "Plan\none\ntwo"}
+    }
+    kinds = [next(iter(r)) for r in requests]
+    assert kinds == ["insertText", "updateParagraphStyle", "createParagraphBullets"]
+
+
+def test_content_without_markdown_syntax_is_unchanged_by_the_new_default(calls, client):
+    """The reason flipping the default is safe for existing content.
+
+    Plain prose has no markdown syntax to consume, so it lands the same way it
+    did when the default was false -- one insertText carrying it verbatim.
+    """
+    content = "Reminder: your CHEM 204 petition is due Friday."
+    client.post(ENDPOINT, json={"title": "Plan", "content": content})
+
     assert batch_requests(calls) == [
         {"insertText": {"location": {"index": 1}, "text": content}}
     ]
