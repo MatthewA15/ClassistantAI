@@ -76,14 +76,35 @@ async def test_no_user_id_leaves_args_untouched(monkeypatch):
     assert "<%USERNAME%>" in args["text"]
 
 
-async def test_credential_not_found_propagates(monkeypatch):
+async def test_credential_not_found_returns_error_dict(monkeypatch):
     def boom(uid):
         raise credentials.CredentialNotFound("no creds")
 
     monkeypatch.setattr(credentials, "get_portal_credentials", boom)
     tool, args, ctx = FakeTool(), {"text": "<%PASSWORD%>"}, FakeToolContext()
-    with pytest.raises(credentials.CredentialNotFound):
-        await callbacks.inject_credentials(tool, args, ctx)
+    result = await callbacks.inject_credentials(tool, args, ctx)
+    # A returned dict short-circuits the tool: the LLM sees the error and
+    # the real browser tool never runs, so credentials can't leak.
+    assert result == {
+        "status": "error",
+        "error": "CredentialNotFound",
+        "message": "no creds",
+    }
+    # Args are untouched (placeholders still in place) and no scrub marker
+    # was set, since the tool never ran.
+    assert args == {"text": "<%PASSWORD%>"}
+    assert not ctx.state.get("browser_creed_scrub")
+
+
+async def test_credential_format_error_short_circuits(monkeypatch):
+    def boom(uid):
+        raise credentials.CredentialFormatError("bad envelope")
+
+    monkeypatch.setattr(credentials, "get_portal_credentials", boom)
+    tool, args, ctx = FakeTool(), {"text": "<%PASSWORD%>"}, FakeToolContext()
+    result = await callbacks.inject_credentials(tool, args, ctx)
+    assert result["status"] == "error"
+    assert result["error"] == "CredentialFormatError"
 
 
 # --------------------------------------------------------------------------
@@ -139,3 +160,24 @@ async def test_state_scrub_marker_cleared_after_scrub():
     # deleted; the contract is "holds no real values" (falsy / empty).
     assert not ctx.state.get("browser_creed_scrub")
     assert ctx.state.get("browser_creed_scrub") == {}
+
+
+async def test_scrub_failure_fails_closed(monkeypatch):
+    """If scrubbing throws, replace the result rather than leak creds."""
+    tool, ctx = FakeTool(), FakeToolContext()
+    args = {"text": "<%PASSWORD%>"}
+    await callbacks.inject_credentials(tool, args, ctx)
+
+    def boom(obj, replacements):
+        raise RuntimeError("scrub exploded")
+
+    monkeypatch.setattr(callbacks, "_substitute_in_obj", boom)
+    result = {"ok": True, "echo": "password: sup3rs3cret!"}
+    await callbacks.scrub_credentials(tool, args, ctx, result)
+    # The real password must not survive in the returned result.
+    flat = str(result)
+    assert "sup3rs3cret!" not in flat
+    assert result["status"] == "error"
+    assert result["error"] == "credential_scrub_failed"
+    # Marker still emptied afterwards so later calls don't re-attempt.
+    assert not ctx.state.get("browser_creed_scrub")

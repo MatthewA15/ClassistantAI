@@ -56,11 +56,16 @@ def _fetch_replacements(
         return {}
     try:
         creds = credentials.get_portal_credentials(user_id)
-    except credentials.CredentialNotFound as exc:
-        logger.info("credentials missing while injecting: %s", exc)
+    except credentials.CredentialError:
+        logger.warning(
+            "credential fetch failed while injecting (user %s)", user_id
+        )
         raise
-    except credentials.CredentialFormatError as exc:
-        logger.error("credential format error while injecting: %s", exc)
+    except Exception:
+        logger.exception(
+            "unexpected credential-fetch error while injecting "
+            "(user %s)", user_id
+        )
         raise
 
     replacements: dict[str, str] = {}
@@ -91,9 +96,23 @@ async def inject_credentials(
         if placeholder in placeholders_in_args
     }
 
-    if not (replacements := _fetch_replacements(
-        tool_context.user_id, placeholders_found)
-    ):
+    try:
+        replacements = _fetch_replacements(
+            tool_context.user_id, placeholders_found
+        )
+    except credentials.CredentialError as exc:
+        logger.warning(
+            "short-circuiting tool %s with credential error (user %s)",
+            tool.name,
+            tool_context.user_id,
+        )
+        return {
+            "status": "error",
+            "error": type(exc).__name__,
+            "message": str(exc),
+        }
+
+    if not replacements:
         return None
 
     # _substitute_in_obj is pure (returns a new object), so splice the
@@ -155,9 +174,27 @@ async def scrub_credentials(
         }
 
         if isinstance(tool_response, dict):
-            scrubbed = _substitute_in_obj(tool_response, reverse)
-            tool_response.clear()
-            tool_response.update(scrubbed)
+            try:
+                scrubbed = _substitute_in_obj(tool_response, reverse)
+                tool_response.clear()
+                tool_response.update(scrubbed)
+            except Exception:
+                # Fail closed: if scrubbing blows up we must NOT return a
+                # result that may contain real credentials. Give the LLM a
+                # generic error and the placeholders instead.
+                logger.exception(
+                    "credential scrub failed for tool %s — replacing "
+                    "result with redacted error", tool.name
+                )
+                tool_response.clear()
+                tool_response.update({
+                    "status": "error",
+                    "error": "credential_scrub_failed",
+                    "message": (
+                        "Tool result was discarded because it could not be "
+                        "sanitized for credentials."
+                    ),
+                })
 
         tool_context.state["browser_creed_scrub"] = {}
     return None
