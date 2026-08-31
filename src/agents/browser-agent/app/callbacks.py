@@ -135,7 +135,7 @@ async def scrub_credentials(
     tool: BaseTool,
     args: dict[str, Any],
     tool_context: ToolContext,
-    result: dict[str, Any],
+    tool_response: dict[str, Any],
 ) -> dict[str, Any] | None:
     """``after_tool_callback`` — scrub leaked credentials from the result.
 
@@ -154,10 +154,10 @@ async def scrub_credentials(
             for placeholder, real in replacements.items()
         }
 
-        if isinstance(result, dict):
-            scrubbed = _substitute_in_obj(result, reverse)
-            result.clear()
-            result.update(scrubbed)
+        if isinstance(tool_response, dict):
+            scrubbed = _substitute_in_obj(tool_response, reverse)
+            tool_response.clear()
+            tool_response.update(scrubbed)
 
         tool_context.state["browser_creed_scrub"] = {}
     return None
