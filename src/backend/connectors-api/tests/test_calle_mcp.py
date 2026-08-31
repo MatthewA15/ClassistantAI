@@ -580,3 +580,35 @@ def test_get_call_run_passes_cursor_and_limit_through_when_they_are_given(server
         "cursor": "c-1",
         "limit": 10,
     }
+
+
+def test_a_phone_number_in_calles_error_text_is_masked(server):
+    """CALL-E names the number it could not reach; that must not travel.
+
+    This detail becomes the connector's 502 `detail`, which the ADK agent
+    logs and hands to the model -- and the agent is never supposed to see a
+    student's raw number, since it does not even send one. Masked here, at
+    the boundary where the untrusted text arrives, rather than at each of the
+    places it later flows to.
+    """
+    number = "+15145550123"
+    server.results[calle.PLAN_CALL_TOOL] = {
+        "isError": True,
+        "content": [{"type": "text", "text": f"Cannot reach {number}: invalid"}],
+    }
+
+    with pytest.raises(calle.CalleUpstreamError) as excinfo:
+        calle.start_call(number, GOAL)
+
+    message = str(excinfo.value)
+    assert number not in message
+    assert "0123" in message, "the last four digits stay, so it is recognisable"
+    assert "invalid" in message, "the reason must survive masking"
+
+
+def test_masking_leaves_ordinary_numbers_alone():
+    """A run id or a duration must not be mangled into a phone number."""
+    assert calle._mask_phones("run 12345 took 96 seconds") == (
+        "run 12345 took 96 seconds"
+    )
+    assert calle._mask_phones("no digits here") == "no digits here"

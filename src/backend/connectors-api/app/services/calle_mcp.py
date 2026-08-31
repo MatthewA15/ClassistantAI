@@ -105,6 +105,12 @@ _RUN_ID_PATTERN = re.compile(
     r"""run[_-]?id["']?\s*[:=]\s*["']?([A-Za-z0-9_-]+)""", re.IGNORECASE
 )
 
+# E.164-shaped runs in untrusted upstream text. CALL-E names the number it
+# could not reach in its own error prose, and that prose crosses two service
+# boundaries (into this service's 502 detail, then into the agent's logs and
+# the model's context), so it is masked before it goes anywhere.
+_PHONE_PATTERN = re.compile(r"\+\d[\d().\s-]{5,17}\d")
+
 _MAX_ERROR_DETAIL_CHARS = 300
 
 
@@ -205,17 +211,37 @@ def _rpc_notification(method: str) -> dict:
     return {"jsonrpc": "2.0", "method": method, "params": {}}
 
 
+def _mask_phones(text: str) -> str:
+    """Mask any phone number CALL-E named back to us.
+
+    CALL-E's own error prose says which number it could not reach, and that
+    prose ends up in this service's 502 `detail` -- which the ADK agent logs
+    and hands to the model. The agent is never supposed to see a student's
+    raw number (it does not even send one; the connector reads it from
+    Firestore), so the number is reduced here to the same shape the calls
+    router shows: the "+" and the last four digits.
+    """
+    def _mask(match: re.Match) -> str:
+        digits = "".join(ch for ch in match.group(0) if ch.isdigit())
+        if len(digits) <= 4:
+            return match.group(0)
+        return "+" + "•" * (len(digits) - 4) + digits[-4:]
+
+    return _PHONE_PATTERN.sub(_mask, text)
+
+
 def _redact(text: str) -> str:
-    """Strip the bearer token out of untrusted text, then truncate it.
+    """Strip secrets and phone numbers out of untrusted text, then truncate.
 
     The order is the whole point: truncating first could leave a usable
     prefix of the token in the message. No CALL-E error is expected to echo
     the Authorization header back, but an upstream body is untrusted text,
-    and this is the one string that must never escape this module.
+    and these are the values that must never escape this module.
     """
     token = settings.calle_access_token
     if token:
         text = text.replace(token, "***")
+    text = _mask_phones(text)
     return text[:_MAX_ERROR_DETAIL_CHARS]
 
 
