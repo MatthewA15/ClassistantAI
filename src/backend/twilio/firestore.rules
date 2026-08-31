@@ -1,39 +1,65 @@
 rules_version='2'
 
+/*
+ * Deny everything, then open `schools` for reading.
+ *
+ * ## Why a blanket deny is safe here
+ *
+ * Nothing in this product reads Firestore from a browser. The frontend goes
+ * through firebase-admin (src/frontend/lib/firebaseAdmin.ts), the Twilio
+ * functions through firebase_admin (src/backend/twilio/functions/db.py), and
+ * the connector through its own service account. The admin SDK bypasses these
+ * rules entirely, so none of that traffic is affected by anything below.
+ *
+ * The client SDK is loaded for exactly one thing -- phone auth, in
+ * src/frontend/lib/firebaseClient.ts, which imports `firebase/app` and
+ * `firebase/auth` and no Firestore at all. So `if false` costs nothing today,
+ * and the day somebody does add a client read they will get a permission error
+ * rather than silently shipping open access to the `users` collection.
+ *
+ * ## What this replaced
+ *
+ * A `match /{document=**}` granting read AND write to anyone until
+ * 2026-09-21 -- the default sandbox rule, left in place. That was open access
+ * to every student's document: profile, phone number, consent evidence, and the
+ * sealed credential subcollection. The envelope encryption in
+ * docs/ENCRYPTION_CONTRACT.md meant a reader could not open a password, but
+ * everything around it was readable and all of it was writable.
+ *
+ * It was also three weeks from expiring, and expiry fails closed, which would
+ * have locked the client SDK out with no warning.
+ *
+ * Requested by @obaodelana on PR #42.
+ */
 service cloud.firestore {
   match /databases/{database}/documents {
     /*
-     * The school catalogue (issue #36). Reference data about real institutions:
-     * readable by anyone, writable by nobody through a client.
+     * The school catalogue (issue #36). Reference data about real institutions,
+     * already public on the marketing page: readable by anyone, writable by
+     * nobody through a client.
      *
-     * Seeding goes through `npm run seed:schools`, and every read the app makes
-     * is server-side via firebase-admin, which bypasses these rules entirely.
-     * So `write: if false` costs us nothing and closes the console-adjacent
-     * path where a browser could rewrite what a university is called.
-     *
-     * WARNING: this rule is currently INERT. The catch-all below still grants
-     * read and write on every document until 2026-09-21, and Firestore grants
-     * access if ANY matching rule allows it -- a narrower rule cannot take
-     * permission back. This block starts doing something the day that wildcard
-     * is removed, which has to happen before it expires and locks the project
-     * out of its own client SDK.
+     * Seeding runs `npm run seed:schools`, which goes through the admin SDK and
+     * is not governed by this rule.
      */
     match /schools/{schoolId} {
       allow read: if true;
       allow write: if false;
     }
 
+    /*
+     * Everything else, `users` and its credential subcollections above all.
+     *
+     * This has to stay `if false` rather than growing a
+     * `request.auth.uid == uid` allowance. Students authenticate with Firebase
+     * phone auth, so such a rule would look reasonable and would hand every
+     * student direct write access to their own `access` map, `school_id`, and
+     * consent records -- all of which are evidence or enforcement that the
+     * server writes deliberately. The dashboard already edits them through
+     * server actions that check the session cookie. See the rule at the top of
+     * src/frontend/app/dashboard/actions.ts.
+     */
     match /{document=**} {
-      // This rule allows anyone with your database reference to view, edit,
-      // and delete all data in your database. It is useful for getting
-      // started, but it is configured to expire after 30 days because it
-      // leaves your app open to attackers. At that time, all client
-      // requests to your database will be denied.
-      //
-      // Make sure to write security rules for your app before that time, or
-      // else all client requests to your database will be denied until you
-      // update your rules.
-      allow read, write: if request.time < timestamp.date(2026, 9, 21);
+      allow read, write: if false;
     }
   }
 }

@@ -2,7 +2,7 @@
 
 Sources: [`lib/schools.ts`](../../src/frontend/lib/schools.ts),
 [`lib/timeZone.ts`](../../src/frontend/lib/timeZone.ts),
-[`scripts/schools.seed.ts`](../../src/frontend/scripts/schools.seed.ts)
+[`data/schools.seed.ts`](../../src/frontend/data/schools.seed.ts)
 
 Settles [issue #36](https://github.com/MatthewA15/ClassistantAI/issues/36).
 
@@ -36,24 +36,31 @@ two consents.
 
 ### Why not take it from Google
 
-The issue asked for it, and it was rejected on cost.
+The issue asked for it. It was not taken, and the honest reason is narrower
+than the one first written here.
 
-A real name needs the `profile` scope, and
-[`config.py`](../../src/backend/connectors-api/app/config.py) requires its scope
-list to stay byte-identical to
-[`GOOGLE_SCOPES`](../../src/frontend/lib/googleOAuth.ts). Adding one there
-breaks every grant that already exists: `google-auth` raises on
-`requested - granted`, so the connector would ask for a scope an existing
-refresh token never received and fail on refresh, silently, per student, until
-each of them reconnected.
+**The technical objection turned out not to exist.** An earlier draft of this
+doc argued that a real name needs the `profile` scope, that `config.py` pins a
+scope list which must stay byte-identical to
+[`GOOGLE_SCOPES`](../../src/frontend/lib/googleOAuth.ts), and that widening it
+would break refresh for every existing grant. @obaodelana pointed out on PR #42
+that `config.py` has not carried scopes since `ebfa577`, and checking the code
+it is worse than that for the argument: `firestore_creds.py` builds
+`Credentials(...)` with **no `scopes=` argument at all**, so `self._scopes` is
+`None` and google-auth's `requested - granted` check never runs. Nothing would
+break. The only surviving copy of the list on the Python side is
+`scripts/seed_credential.py`, a dev script.
 
-There is a safe version -- add it to the frontend only, since `exchangeCode`
-never validates the returned scope set and a granted superset refreshes fine --
-but it buys a name the student may not want to be called anyway, at the price of
-inverting an invariant two files state in bold. Asking is one field on a screen
-they are already on. [docs/design/12](12-onboarding-persistence.md) said a real
-registrar name would cost more than it is worth; that is still true, and this is
-the cheaper half of it delivered.
+So what is left is a product judgement, not a constraint:
+
+- The field is editable either way, and a good number of students would change
+  a registrar name to something shorter the first time they saw it.
+- It widens the consent screen for a value one text input already gets.
+
+That is a real reason but a weaker one, and it should be recorded as such. **If
+the agent later wants the legal name specifically -- for a registrar lookup, or
+to match a name on a portal -- adding `profile` to `GOOGLE_SCOPES` is now cheap
+and this decision should be revisited rather than cited.**
 
 ## `time_zone` is top level, and there is exactly one of it
 
@@ -109,7 +116,7 @@ three hours out and a Memorial student three and a half.
 ## The `schools` collection
 
 `data/schools.ts` was a TypeScript constant. It is now `schools/{id}` in
-Firestore, read by `lib/schools.ts` and seeded from `scripts/schools.seed.ts`.
+Firestore, read by `lib/schools.ts` and seeded from `data/schools.seed.ts`.
 
 Two reasons, both from the issue: a school can be added without a deploy, and
 the agent can turn a `school_id` into a name, a city, and a timezone without
@@ -130,13 +137,28 @@ anything useful to a student, and `timeZone` is stored per school rather than
 derived from the province code because **Newfoundland is UTC-3:30** -- any
 two-letter mapping puts every Memorial reminder half an hour out.
 
-### There is no fallback to the seed array, on purpose
+### The seed catalogue is the floor
 
-The obvious safety net is to serve the hardcoded list when Firestore is empty or
-unreachable. That net is a second copy of the data, free to disagree with the
-first, silently, on exactly the day somebody is debugging why a school vanished.
-`listSchools` returns `[]` instead and the picker says it could not load the
-list, which is a visible failure. A wrong list is not.
+When the collection comes back empty or unreadable, `listSchools` serves
+`SEED_SCHOOLS` from `data/schools.seed.ts` rather than an empty list.
+
+The first version refused to, arguing that a second copy of the data can
+silently disagree with the first and that an empty list is at least a *visible*
+failure. @obaodelana rejected that on PR #42, and was right: an empty list is
+not a neutral failure here. The school picker has nothing in it, the Get started
+CTA is gated on a school being picked, and a Firestore hiccup becomes lost
+signups. Stale beats absent when absent means the product does not work.
+
+The disagreement is made loud rather than prevented. Every fallthrough logs an
+error naming which case it hit -- an empty collection tells you to run the
+seeder, a failed read prints the error. Nothing serves the catalogue silently.
+
+This is also what lets `/` stay a prerendered static page. An earlier revision
+called `connection()` in the root layout to opt out of prerendering whenever the
+list came back empty, because a build container has no application default
+credentials and would otherwise have baked a hero with no campus chips into a
+static page for an hour. The fallback removes the condition that guard existed
+for, so the guard is gone.
 
 ### The catch sits outside the cache, and that placement is load-bearing
 
@@ -169,22 +191,18 @@ the browser, and neither can afford that module to reach for a database.
 3. Seed **before** deploying where you can. It is a performance concern now
    rather than a correctness one, for the reason below.
 
-### Why an unseeded build is no longer a broken site
+### Why an unseeded build is not a broken site
 
-It very nearly was. `/` is prerendered and the root layout wraps it, and
-`lib/firebaseAdmin.ts` notes that the *runtime* service account is the one
-holding `datastore.user` -- so a build container without ADC reads nothing and
-would have baked a hero with no campus chips. Not cosmetic: the Get started CTA
-is gated on a school being picked, so a chipless hero has no working path into
-onboarding at all, and ISR would have held it that way for an hour with no way
-to flush it, since the seeder's `revalidateTag` is a no-op from a terminal.
+`/` is prerendered and the root layout wraps it, and `lib/firebaseAdmin.ts`
+notes that the *runtime* service account is the one holding `datastore.user`.
+So a build container without ADC reads nothing -- and bakes the seeded
+catalogue, which is correct enough to start on, rather than an empty hero with
+no path into onboarding.
 
-The root layout calls `connection()` when the list comes back empty, which opts
-that render out of prerendering. An unseeded or unreachable build serves every
-route dynamically and re-reads on the next request instead of freezing a broken
-page. Once a build can see a seeded collection, `/` goes back to static with a
-1h revalidate. The cost is paid only where static generation would have been
-wrong.
+What that costs: a school added in the console is invisible on the static
+landing page until the 1h revalidate turns, and the seeder's `revalidateTag` is
+a no-op from a terminal so there is no way to flush it early. Seeding before a
+deploy avoids the window entirely.
 
 The seeder never deletes. A school in Firestore that is absent from the seed
 file is reported as an orphan and left alone, because the alternative is a
@@ -193,11 +211,13 @@ allow.
 
 ## Still open
 
-- **The rules block is inert.** `firestore.rules` now has a `schools` match with
-  `write: if false`, sitting under a catch-all that grants read and write on
-  everything until 2026-09-21. Firestore grants if *any* rule allows, so a
-  narrower rule cannot take permission back. That wildcard has to go before it
-  expires and locks the project out of its own client SDK.
+- ~~The rules block is inert.~~ **Fixed in this PR**, at @obaodelana's request.
+  The `match /{document=**}` that granted read and write on everything until
+  2026-09-21 is now `if false`, with `schools` open for reading above it. Safe
+  because nothing reads Firestore from a browser: every server reads through the
+  admin SDK, which bypasses rules, and `lib/firebaseClient.ts` loads
+  `firebase/app` and `firebase/auth` only. It also removes an expiry three weeks
+  out that would have failed closed with no warning.
 - **Nothing reads `time_zone` yet.** The agent's prompt carries no student
   context at all, so the frontend now writes three fields the agent side still
   has to pick up. Note that `POST /users/{user_id}/calendar/events` still

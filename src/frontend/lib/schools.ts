@@ -3,6 +3,7 @@ import "server-only";
 import { unstable_cache } from "next/cache";
 
 import type { School, SchoolStatus } from "@/data/schools";
+import { SEED_SCHOOLS } from "@/data/schools.seed";
 import { firestore } from "@/lib/firebaseAdmin";
 
 /**
@@ -12,15 +13,22 @@ import { firestore } from "@/lib/firebaseAdmin";
  * Issue #36 moved this out of a TypeScript constant so that a school can be
  * added or corrected without a deploy, and so the agent can turn the
  * `school_id` on a user document into a real name, city, and timezone. The
- * catalogue is seeded from scripts/schools.seed.ts by `npm run seed:schools`.
+ * catalogue is seeded from data/schools.seed.ts by `npm run seed:schools`.
  *
- * ## Why there is no fallback to the seed array
+ * ## The seed catalogue is the floor, and the fallthrough is loud
  *
- * There deliberately is not one. A hardcoded list that stands in when Firestore
- * is empty or unreachable is a second copy of the data that disagrees with the
- * first, silently, on exactly the days someone is debugging why a school
- * vanished. An empty list is a visible failure and a wrong list is not, so this
- * returns `[]` and the surfaces above it say they could not load the schools.
+ * When the collection comes back empty or unreadable, `listSchools` serves
+ * `SEED_SCHOOLS` from data/schools.seed.ts rather than an empty list.
+ *
+ * The first version of this refused to, on the grounds that a second copy of
+ * the data can silently disagree with the first. That is a real cost and it is
+ * the wrong one to optimise for: an empty list is not a neutral failure here,
+ * it is a school picker with nothing in it and a Get started button that cannot
+ * be pressed, so a Firestore hiccup turns into lost signups (@obaodelana on
+ * PR #42). Stale beats absent when absent means the product does not work.
+ *
+ * The disagreement is made loud instead of prevented: every fallthrough logs an
+ * error naming what happened. Nothing silently serves the catalogue.
  *
  * ## Why it is cached
  *
@@ -113,6 +121,13 @@ const cachedSchools = unstable_cache(readSchools, ["schools-list"], {
   tags: [SCHOOLS_TAG],
 });
 
+/** The seed catalogue, sorted the same way a Firestore read would be, so the
+ *  fallback and the real thing are indistinguishable to every caller except in
+ *  how fresh they are. */
+const SEEDED: School[] = [...SEED_SCHOOLS].sort(
+  (a, b) => STATUS_RANK[a.status] - STATUS_RANK[b.status] || a.name.localeCompare(b.name),
+);
+
 /**
  * Every school, cached. This is what the app should call.
  *
@@ -121,31 +136,39 @@ const cachedSchools = unstable_cache(readSchools, ["schools-list"], {
  * filtering it in memory costs less than the indexed queries the alternatives
  * would need.
  *
+ * Never returns an empty array. See the header for why stale beats absent.
+ *
  * ## The catch is OUTSIDE the cache, and that placement is the point
  *
- * `readSchools` throws rather than returning `[]`, and this function turns the
- * throw into `[]` after `unstable_cache` has already declined to store it.
+ * `readSchools` throws rather than returning a fallback, and this function
+ * handles the throw after `unstable_cache` has already declined to store it.
  * Catching one level down instead -- inside the cached function -- looks
  * identical and is a deployment hazard: `unstable_cache` stores whatever it is
- * handed, so a build machine or a cold instance that could not reach Firestore
- * for one second would bake an empty school list in for the next hour and take
- * the landing page's campus list and the whole picker with it. A thrown error
- * is not cached, so the next request simply tries again.
+ * handed, so a cold instance that could not reach Firestore for one second
+ * would pin the seeded list in place for the next hour, long after Firestore
+ * came back and started disagreeing with it. A thrown error is not cached, so
+ * the next request reads for real.
  *
- * `[]` rather than a rethrow, because this runs in the root layout: a Firestore
+ * Neither branch rethrows, because this runs in the root layout: a Firestore
  * hiccup propagating from here would take down the legal pages and the
- * dashboard along with the picker, none of which need this list to be useful.
- * The surfaces that do need it check for empty and say so.
+ * dashboard along with the picker, none of which need this list at all.
  */
 export async function listSchools(): Promise<School[]> {
   try {
-    return await cachedSchools();
+    const schools = await cachedSchools();
+    if (schools.length > 0) return schools;
+    // A successful read of an empty collection, which means nobody has run
+    // `npm run seed:schools -- --commit` against this project yet.
+    console.error(
+      "schools: the collection is empty, serving the seeded catalogue. " +
+        "Run `npm run seed:schools -- --commit` to populate it.",
+    );
   } catch (err) {
-    console.error("schools: read failed", {
+    console.error("schools: read failed, serving the seeded catalogue", {
       error: err instanceof Error ? err.message : "unknown",
     });
-    return [];
   }
+  return SEEDED;
 }
 
 /**

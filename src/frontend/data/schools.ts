@@ -5,7 +5,7 @@
  *
  * It used to be a `SCHOOLS` constant in this file, and it is now the `schools`
  * collection in Firestore, read by lib/schools.ts and seeded from
- * scripts/schools.seed.ts. Issue #36 moved it so that a school can be added
+ * data/schools.seed.ts. Issue #36 moved it so that a school can be added
  * without a deploy, and so the agent can resolve a `school_id` into a real name
  * and location without a copy of this list on its side.
  *
@@ -16,7 +16,7 @@
  * prop, and neither can afford this module to reach for a database.
  *
  * So the rule is: this file holds no schools, and nothing in it imports
- * scripts/schools.seed.ts. The eligibility rules that govern which schools may
+ * data/schools.seed.ts. The eligibility rules that govern which schools may
  * exist at all live with the data, in the seed file's header and in
  * docs/design/05-schools-data.md.
  */

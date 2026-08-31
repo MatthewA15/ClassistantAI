@@ -92,19 +92,20 @@ export default async function SettingsPage() {
             />
             {/*
               Three states, not two. `school` is undefined both when the student
-              has no school and when the catalogue could not be read, and
-              collapsing those told a fully onboarded student "Not set" about a
-              school sitting on their own document. `schoolId` is what says
-              which of the two it is.
+              has no school and when their `school_id` is not in the catalogue,
+              and collapsing those told a fully onboarded student "Not set"
+              about a school sitting on their own document. `schoolId` is what
+              says which of the two it is. The second case now means a school
+              was removed or renamed, not that the list failed to load.
             */}
             <DataRow
               label="School"
-              value={school?.name ?? (account.schoolId ? "Could not load" : "Not set")}
+              value={school?.name ?? (account.schoolId ? "Unrecognised" : "Not set")}
               hint={
                 school
                   ? `Taken from your @${school.emailDomain} address, so it follows the account rather than being picked.`
                   : account.schoolId
-                    ? "We could not reach the school list just now. Your account is unaffected."
+                    ? `Your account says ${account.schoolId}, which is not in the school list. Your account is unaffected; tell us and we will fix the list.`
                     : undefined
               }
             />

@@ -1,20 +1,26 @@
 import type { School } from "@/data/schools";
 
 /**
- * The verified school catalogue, and the input to `npm run seed:schools`.
+ * The verified school catalogue: the input to `npm run seed:schools`, and the
+ * fallback the app serves when Firestore gives it nothing.
  *
- * ## This file is not read at runtime
+ * ## Firestore is the source of truth, this is the floor
  *
- * Firestore's `schools` collection is the source of truth the app reads from
- * (lib/schools.ts). This array is what that collection is *seeded* from, which
- * is why it lives under scripts/ rather than data/: importing it from a page
- * would recreate the second, silently disagreeing copy that moving to Firestore
- * was meant to remove. Nothing outside the seeder may import it.
+ * `lib/schools.ts` reads the `schools` collection, and whatever it finds there
+ * wins. This array is used in exactly one case: the collection came back empty
+ * or unreadable. An empty school picker means a student cannot start at all,
+ * and losing a signup to a Firestore hiccup is a worse outcome than serving a
+ * list that might be a few days behind the console (@obaodelana on PR #42).
  *
- * Editing a school in the Firestore console is therefore a legitimate way to
- * change what students see, and issue #36 asked for exactly that. What it costs
- * is the review gate below, so an edit made in the console should be brought
- * back here in the same week, or the next seed run will quietly revert it.
+ * The cost is a second copy that can disagree with the first, so the disagreement
+ * is made loud rather than silent: `listSchools` logs an error every time it
+ * falls through to this, and the log says the catalogue is being served.
+ *
+ * Editing a school in the Firestore console is a legitimate way to change what
+ * students see, and issue #36 asked for exactly that. What it costs is the
+ * review gate below, so an edit made in the console should be brought back here
+ * in the same week, or the next seed run will quietly revert it -- and until it
+ * is, this fallback would serve the pre-edit value if Firestore ever went down.
  *
  * ## Rules for this list (see docs/design/05-schools-data.md)
  *

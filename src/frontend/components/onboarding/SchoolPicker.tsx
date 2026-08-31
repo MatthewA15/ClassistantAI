@@ -121,26 +121,14 @@ export function SchoolPicker({
           );
         })}
 
-        {/*
-          Two different empty states, and telling them apart is the whole reason
-          lib/schools.ts refuses to fall back to a hardcoded list. An empty
-          collection or a failed read is our problem, and saying "no match for
-          Brock" when we never loaded a list at all would send the student off
-          to check their spelling for a bug on our side.
-        */}
+        {/* Only one empty state to render. `listSchools` falls back to the
+            seeded catalogue rather than returning nothing, so a student can
+            never reach this screen with no schools to search -- which means
+            "no results" always means what it says, and never a failed read. */}
         {results.length === 0 ? (
           <li className="rounded-xl border border-dashed border-line bg-paper p-5 text-center text-[0.88rem] text-body">
-            {schools.length === 0 ? (
-              <>
-                We could not load the school list just now. Reload the page, and if it keeps
-                happening it is our end, not yours.
-              </>
-            ) : (
-              <>
-                No match for &ldquo;{query}&rdquo;. Classistant only works where student email
-                runs on Google, so the list is short on purpose.
-              </>
-            )}
+            No match for &ldquo;{query}&rdquo;. Classistant only works where student email runs
+            on Google, so the list is short on purpose.
           </li>
         ) : null}
       </ul>

@@ -104,7 +104,7 @@ export function resolveTimeZone(
     console.warn("timeZone: rejected an unrecognised zone", { value });
   }
 
-  // Canonicalised too. These come from scripts/schools.seed.ts, which is
+  // Canonicalised too. These come from data/schools.seed.ts, which is
   // reviewed, but a school edited in the Firestore console is not.
   const campus = schoolTimeZone ? canonicalTimeZone(schoolTimeZone) : null;
   return campus ?? FALLBACK_TIME_ZONE;

@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { Bricolage_Grotesque, Hanken_Grotesk } from "next/font/google";
-import { connection } from "next/server";
 import { SchoolThemeProvider } from "@/components/theme/SchoolTheme";
 import { listSchools } from "@/lib/schools";
 import "./globals.css";
@@ -57,26 +56,21 @@ export const viewport: Viewport = {
  * to every client component through one context instead of five prop chains.
  */
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const schools = await listSchools();
-
   /*
-   * An empty list must never be baked into a static page.
-   *
-   * `/` is prerendered, and this layout wraps it. A build container without
-   * application default credentials -- which is the normal case, since
+   * Never empty. `listSchools` serves the seeded catalogue when Firestore gives
+   * it nothing, which is what lets `/` stay a prerendered static page: a build
+   * container without application default credentials -- the normal case, since
    * lib/firebaseAdmin.ts notes it is the *runtime* service account that holds
-   * `datastore.user` -- reads nothing, and the hero would ship with no campus
-   * chips. That is not cosmetic: the Get started CTA is gated on a school being
-   * picked, so a chipless hero has no working path into onboarding at all, and
-   * ISR would hold it that way for an hour with no way to flush it (the
-   * seeder's `revalidateTag` is a no-op from a terminal).
+   * `datastore.user` -- bakes the seeded list rather than an empty hero.
    *
-   * `connection()` opts this render out of prerendering, so the page is served
-   * dynamically instead and the very next request re-reads. It costs static
-   * generation only in the case where static generation would have been wrong,
-   * and it un-costs it as soon as a build can see a seeded collection.
+   * That distinction is load-bearing. The Get started CTA is gated on a school
+   * being picked, so a hero with no campus chips has no working path into
+   * onboarding at all, and ISR would have held it that way for an hour with no
+   * way to flush it. An earlier revision solved that by calling `connection()`
+   * to opt out of prerendering whenever the list came back empty; the fallback
+   * removes the condition that guard existed for, so it is gone.
    */
-  if (schools.length === 0) await connection();
+  const schools = await listSchools();
 
   return (
     <html lang="en-CA" className={`${bodyFace.variable} ${displayFace.variable}`}>

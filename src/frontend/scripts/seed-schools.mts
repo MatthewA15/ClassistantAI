@@ -6,7 +6,7 @@
  *
  * Issue #36 made Firestore the source of truth for schools so they can be added
  * without a deploy. This is how the collection is created in the first place,
- * and how a change made in scripts/schools.seed.ts reaches it afterwards.
+ * and how a change made in data/schools.seed.ts reaches it afterwards.
  *
  * ## Three deliberate properties
  *
@@ -28,7 +28,7 @@ import { revalidateTag } from "next/cache";
 import { SCHOOLS_COLLECTION, SCHOOLS_TAG, readSchools, writeSchool } from "@/lib/schools";
 import { firestore } from "@/lib/firebaseAdmin";
 import { setStampedRef } from "@/lib/users";
-import { SEED_SCHOOLS } from "@/scripts/schools.seed";
+import { SEED_SCHOOLS } from "@/data/schools.seed";
 
 const commit = process.argv.includes("--commit");
 
@@ -63,7 +63,7 @@ if (orphans.length > 0) {
   // behind, and only a human can tell those two apart.
   console.log(
     `\n  ${orphans.length} school(s) in Firestore are not in the seed file. ` +
-      "Left untouched -- add them to scripts/schools.seed.ts, or delete them by hand:",
+      "Left untouched -- add them to data/schools.seed.ts, or delete them by hand:",
   );
   for (const school of orphans) console.log(`    orphan  ${school.id.padEnd(14)} ${school.name}`);
 }

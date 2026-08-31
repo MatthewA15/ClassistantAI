@@ -1,6 +1,6 @@
 # 05. Schools data
 
-Source: [`scripts/schools.seed.ts`](../../src/frontend/scripts/schools.seed.ts)
+Source: [`data/schools.seed.ts`](../../src/frontend/data/schools.seed.ts)
 
 > **The list moved.** Schools live in the `schools` collection in Firestore now,
 > not in a TypeScript constant. The eligibility rules below are unchanged and
@@ -82,7 +82,7 @@ mail platforms between academic years and they do it quietly. An entry that was
 correct last September is not evidence about this September.
 
 Adding a school is four things now: confirm on the school's IT pages, add the
-entry to `scripts/schools.seed.ts` with its `source`, flip `status` to `live`,
+entry to `data/schools.seed.ts` with its `source`, flip `status` to `live`,
 and run `npm run seed:schools -- --commit`. The landing page count and the
 marquee update themselves once the collection has it.
 
