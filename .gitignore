@@ -12,3 +12,6 @@ client_secret*.json
 
 # OS
 .DS_Store
+
+# Obscura binary
+obscura*
