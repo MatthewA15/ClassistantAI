@@ -124,7 +124,7 @@ async def test_password_scrubbed_even_in_nested_result():
 async def test_scrub_is_noop_without_injection():
     tool, ctx = FakeTool(), FakeToolContext()
     result = {"ok": True, "page": "nothing secret here"}
-    await callbacks.scrub_credentials(tool, args={}, tool_context=ctx, result=result)
+    out = await callbacks.scrub_credentials(tool, {}, ctx, result)
     assert result == {"ok": True, "page": "nothing secret here"}
 
 

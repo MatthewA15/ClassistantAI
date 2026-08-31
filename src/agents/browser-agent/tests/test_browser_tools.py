@@ -57,6 +57,22 @@ def test_spawn_args_place_storage_dir_before_mcp(record_toolsets):
     ]
 
 
+def test_mcp_timeout_lands_on_connection_params(record_toolsets):
+    """StdioConnectionParams.timeout doubles as the per-call read timeout;
+    the 5s default kills real page loads mid-flight. Assert ours is set."""
+    browser_tools.get_or_create_toolset("uid-1")
+    conn = record_toolsets.instances[0].kwargs["connection_params"]
+    assert conn.timeout == browser_tools._MCP_TIMEOUT
+    assert conn.timeout > 5  # not the deadly default
+
+
+def test_mcp_timeout_env_override(record_toolsets, monkeypatch):
+    monkeypatch.setattr(browser_tools, "_MCP_TIMEOUT", 120.0)
+    browser_tools.get_or_create_toolset("uid-1")
+    conn = record_toolsets.instances[0].kwargs["connection_params"]
+    assert conn.timeout == 120.0
+
+
 def test_stealth_off_when_env_false(record_toolsets, monkeypatch):
     """OBSCURA_STEALTH=false drops --stealth from the spawn args."""
     import app.browser_tools as bt

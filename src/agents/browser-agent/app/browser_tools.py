@@ -35,10 +35,10 @@ logger = logging.getLogger(__name__)
 
 OBSCURA_BIN = os.environ.get("OBSCURA_BIN", "obscura")
 _STORAGE_BASE = os.environ.get("OBSCURA_STORAGE_BASE", "/mnt/cookie-storage")
-
 # Stealth mode (consistent browser fingerprint; with the `stealth` build,
 # TLS impersonation + tracker blocking)
 _STEALTH = os.environ.get("OBSCURA_STEALTH", "true").lower() != "false"
+_MCP_TIMEOUT = float(os.environ.get("OBSCURA_MCP_TIMEOUT", "90"))
 
 # The user_id to serve when a request carries none (local dev only).
 _DEV_USER_ID = "dev"
@@ -83,6 +83,7 @@ def get_or_create_toolset(user_id: str) -> McpToolset:
                         "mcp",
                     ],
                 ),
+                timeout=_MCP_TIMEOUT,
             ),
             tool_list_cache_ttl_seconds=3600,
         )
