@@ -28,7 +28,7 @@ Run tests: `pytest` from this directory (mocks Firestore/KMS, no live GCP access
 4. **KMS**: create keyring `classistant-keyring` and key `classistant-key` (region: TODO(matthew) — not yet confirmed, see `.env.example`). Grant this service's SA `roles/cloudkms.cryptoKeyDecrypter` on the refresh-token key only — never on the school-password key.
 5. **Firestore**: `users/{uid}/credentials/{credential_type}` subcollection (frontend writes it during login/onboarding); this service only ever *reads* the `google_refresh_token` document from it. Grant the service account **`roles/datastore.user`** (read **and write**) -- not `roles/datastore.viewer`.
 
-   **Calls is the first write path this service has ever had.** Gmail, Calendar, Drive and Docs only read Firestore, so `roles/datastore.viewer` was enough until `POST /users/{uid}/calls` shipped, and that is what was originally deployed. The calls endpoints write `users/{uid}/call_runs/{run_id}`. With viewer-only rights the symptom is deceptive: reads succeed, **the phone call is still placed and still billed**, and only the record fails with `PermissionDenied: 403 Missing or insufficient permissions`. That is deliberately not an error to the caller -- the response is still `201` with `persisted: false` (see [`API_CONTRACT.md`](API_CONTRACT.md)) -- so after deploying to a new project, check `persisted` rather than waiting for a 500 that will not come.
+   **Calls is the first write path this service has ever had.** Gmail, Calendar, Drive and Docs only read Firestore, so `roles/datastore.viewer` was enough until `POST /users/{uid}/calls` shipped, and that is what was originally deployed. The calls endpoints write `call_runs/{run_id}`, a top-level collection. With viewer-only rights the symptom is deceptive: reads succeed, **the phone call is still placed and still billed**, and only the record fails with `PermissionDenied: 403 Missing or insufficient permissions`. That is deliberately not an error to the caller -- the response is still `201` with `persisted: false` (see [`API_CONTRACT.md`](API_CONTRACT.md)) -- so after deploying to a new project, check `persisted` rather than waiting for a 500 that will not come.
 
 ## Deploy to Cloud Run
 
@@ -61,13 +61,32 @@ wins.
 users/{firebase_uid}                                     <- profile, consent, access switches
 users/{firebase_uid}/credentials/google_refresh_token     <- the only credential this service reads
 users/{firebase_uid}/credentials/school_password          <- exists; this service must never touch it
-users/{firebase_uid}/call_runs/{run_id}                   <- the only document this service WRITES
+```
+
+Call runs live outside the user document, in a top-level collection:
+
+```
+call_runs/{run_id}                                       <- the only document this service WRITES
 ```
 
 `call_runs` is this service's own record of each phone call it placed, and the
 only thing it writes anywhere -- hence the `roles/datastore.user` requirement
 above. It is not part of the credential contract and the frontend does not
 write it.
+
+Each document carries a **`user_id`** field naming its owner. Because the
+collection is top level, that field is the only thing that makes a run a given
+student's: the document's path no longer proves it. Every read compares it
+against the `{user_id}` in the request path, and a mismatch answers `404`
+exactly as a missing run does.
+
+`GET /users/{uid}/calls` filters on `user_id` and orders by `created_at`
+descending, which **requires a composite index on `call_runs` (`user_id`
+ascending, `created_at` descending)**. Firestore builds single-field indexes on
+its own but not composite ones, so the list endpoint raises
+`FailedPrecondition: The query requires an index` the first time it runs in a
+project that lacks it. The error message links straight to the console page
+that creates it.
 
 `{firebase_uid}` is the **Firebase Auth uid**, and it is the same `{user_id}`
 that every `/users/{user_id}/...` endpoint takes. Not the Google `sub` — that

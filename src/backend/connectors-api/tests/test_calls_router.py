@@ -163,9 +163,22 @@ class _Collection:
         self._order = None
         self._descending = False
         self._limit = None
+        self._filters: list[tuple] = []
 
     def document(self, document_id=None) -> _Document:
         return _Document(self._db, self._path + (_check_document_id(document_id),))
+
+    def where(self, field_path=None, op_string=None, value=None, *, filter=None):
+        """Only the `filter=FieldFilter(...)` form, which is what the router
+        uses -- the positional form is deprecated in the real client and
+        accepting it here would let deprecated code pass its tests.
+        """
+        if filter is None:
+            raise TypeError("pass a FieldFilter via filter=, not positionally")
+        if filter.op_string != "==":
+            raise NotImplementedError(f"op {filter.op_string!r} not faked")
+        self._filters.append((filter.field_path, filter.value))
+        return self
 
     def order_by(self, field_path: str, direction=None):
         self._order = field_path
@@ -182,6 +195,7 @@ class _Collection:
             (path, data)
             for path, data in self._db.documents.items()
             if path[:-1] == self._path
+            and all(data.get(field) == value for field, value in self._filters)
         ]
         if self._order:
             children.sort(
@@ -215,8 +229,21 @@ class _FakeFirestore:
     def user_path(self, user_id: str = USER) -> tuple:
         return ("users", user_id)
 
-    def run_path(self, run_id: str = RUN_ID, user_id: str = USER) -> tuple:
-        return ("users", user_id, "call_runs", run_id)
+    def run_path(self, run_id: str = RUN_ID) -> tuple:
+        # Top-level now: ownership lives in the document's user_id field,
+        # not in its path.
+        return ("call_runs", run_id)
+
+
+def _run(**overrides) -> dict:
+    """A stored call_runs document, owned by USER unless overridden.
+
+    `user_id` is what makes the run this student's now that the collection is
+    top level, so a fixture without it is a run nobody can read.
+    """
+    doc = {"run_id": RUN_ID, "user_id": USER}
+    doc.update(overrides)
+    return doc
 
 
 def _user(**overrides) -> dict:
@@ -437,7 +464,7 @@ def test_polling_a_run_the_student_does_not_own_is_a_404(db, calle, client):
 
 
 def test_polling_returns_the_flattened_outcome(db, calle, client):
-    db.documents[db.run_path()] = {"run_id": RUN_ID, "goal": GOAL}
+    db.documents[db.run_path()] = _run(goal=GOAL)
 
     body = client.get(f"{ENDPOINT}/{RUN_ID}").json()
 
@@ -458,7 +485,7 @@ def test_polling_returns_the_flattened_outcome(db, calle, client):
 def test_a_running_call_is_marked_in_progress_with_a_poll_interval(
     db, calle, client
 ):
-    db.documents[db.run_path()] = {"run_id": RUN_ID}
+    db.documents[db.run_path()] = _run()
     calle.run_payload = IN_PROGRESS_PAYLOAD
 
     body = client.get(f"{ENDPOINT}/{RUN_ID}").json()
@@ -473,7 +500,7 @@ def test_a_running_call_is_marked_in_progress_with_a_poll_interval(
 
 
 def test_activity_entries_are_projected_down_to_four_fields(db, calle, client):
-    db.documents[db.run_path()] = {"run_id": RUN_ID}
+    db.documents[db.run_path()] = _run()
 
     entry = client.get(f"{ENDPOINT}/{RUN_ID}").json()["activity"][0]
 
@@ -482,7 +509,7 @@ def test_activity_entries_are_projected_down_to_four_fields(db, calle, client):
 
 def test_no_response_ever_carries_the_students_full_number(db, calle, client):
     """The payload CALL-E returns contains both; neither may come back out."""
-    db.documents[db.run_path()] = {"run_id": RUN_ID}
+    db.documents[db.run_path()] = _run()
 
     response = client.get(f"{ENDPOINT}/{RUN_ID}")
 
@@ -496,7 +523,7 @@ def test_no_response_ever_carries_the_students_full_number(db, calle, client):
 def test_polling_merges_terminal_state_onto_the_call_run_document(
     db, calle, client
 ):
-    db.documents[db.run_path()] = {"run_id": RUN_ID, "goal": GOAL}
+    db.documents[db.run_path()] = _run(goal=GOAL)
 
     client.get(f"{ENDPOINT}/{RUN_ID}")
 
@@ -513,7 +540,7 @@ def test_polling_merges_terminal_state_onto_the_call_run_document(
 
 
 def test_the_cursor_and_limit_reach_calle(db, calle, client):
-    db.documents[db.run_path()] = {"run_id": RUN_ID}
+    db.documents[db.run_path()] = _run()
 
     client.get(f"{ENDPOINT}/{RUN_ID}", params={"cursor": "c-1", "limit": 25})
 
@@ -521,7 +548,7 @@ def test_the_cursor_and_limit_reach_calle(db, calle, client):
 
 
 def test_a_limit_outside_the_allowed_range_is_rejected(db, calle, client):
-    db.documents[db.run_path()] = {"run_id": RUN_ID}
+    db.documents[db.run_path()] = _run()
 
     response = client.get(f"{ENDPOINT}/{RUN_ID}", params={"limit": 500})
 
@@ -535,13 +562,10 @@ def test_a_limit_outside_the_allowed_range_is_rejected(db, calle, client):
 
 def test_listing_returns_most_recent_first(db, calle, client):
     for run_id, created in (("run-old", 1), ("run-new", 3), ("run-mid", 2)):
-        db.documents[db.run_path(run_id)] = {
-            "run_id": run_id,
-            "goal": GOAL,
-            "status": "COMPLETED",
-            "to_phone_masked": MASKED,
-            "created_at": created,
-        }
+        db.documents[db.run_path(run_id)] = _run(
+            run_id=run_id, goal=GOAL, status="COMPLETED",
+            to_phone_masked=MASKED, created_at=created,
+        )
 
     body = client.get(ENDPOINT).json()
 
@@ -556,10 +580,9 @@ def test_listing_returns_most_recent_first(db, calle, client):
 
 def test_listing_honours_max_results(db, calle, client):
     for index in range(5):
-        db.documents[db.run_path(f"run-{index}")] = {
-            "run_id": f"run-{index}",
-            "created_at": index,
-        }
+        db.documents[db.run_path(f"run-{index}")] = _run(
+            run_id=f"run-{index}", created_at=index,
+        )
 
     body = client.get(ENDPOINT, params={"max_results": 2}).json()
 
@@ -571,13 +594,9 @@ def test_listing_404s_for_an_unknown_user(db, calle, client):
 
 
 def test_listing_never_carries_a_full_number(db, calle, client):
-    db.documents[db.run_path()] = {
-        "run_id": RUN_ID,
-        "goal": GOAL,
-        "status": "started",
-        "to_phone_masked": MASKED,
-        "created_at": 1,
-    }
+    db.documents[db.run_path()] = _run(
+        goal=GOAL, status="started", to_phone_masked=MASKED, created_at=1,
+    )
 
     response = client.get(ENDPOINT)
 
@@ -636,7 +655,7 @@ def test_a_slashed_run_id_is_not_addressable_on_the_detail_route(db, calle, clie
     directly would need the id as a query parameter rather than a path
     segment, which is a separate change and not one to make speculatively.
     """
-    db.documents[db.run_path("runs%2Fabc123")] = {"run_id": RESOURCE_RUN_ID}
+    db.documents[db.run_path("runs%2Fabc123")] = _run(run_id=RESOURCE_RUN_ID)
 
     assert client.get(f"{ENDPOINT}/{RESOURCE_RUN_ID}").status_code == 404
     assert calle.polled == []
@@ -667,12 +686,10 @@ def test_a_real_calle_run_id_is_stored_unchanged(db, calle, client):
 
 
 def test_a_slashed_run_id_is_listed_under_its_real_id(db, calle, client):
-    db.documents[db.run_path("runs%2Fabc123")] = {
-        "run_id": RESOURCE_RUN_ID,
-        "status": "COMPLETED",
-        "to_phone_masked": MASKED,
-        "created_at": 1,
-    }
+    db.documents[db.run_path("runs%2Fabc123")] = _run(
+        run_id=RESOURCE_RUN_ID, status="COMPLETED",
+        to_phone_masked=MASKED, created_at=1,
+    )
 
     body = client.get(ENDPOINT).json()
 
@@ -765,7 +782,7 @@ def test_an_unpersisted_run_404s_on_the_detail_route(db, calle, client):
 
 def test_a_failed_status_cache_still_returns_calles_answer(db, calle, client):
     """Polling must not fail because we could not memoise the result."""
-    db.documents[db.run_path()] = {"run_id": RUN_ID, "goal": GOAL}
+    db.documents[db.run_path()] = _run(goal=GOAL)
     db.write_error = _denied()
 
     response = client.get(f"{ENDPOINT}/{RUN_ID}")
@@ -773,3 +790,69 @@ def test_a_failed_status_cache_still_returns_calles_answer(db, calle, client):
     assert response.status_code == 200
     assert response.json()["summary"] == "The petition was approved on Aug 28."
     assert PHONE not in response.text
+
+
+# --------------------------------------------------------------------------
+# Ownership in a top-level collection
+#
+# call_runs is no longer a subcollection under the user, so a run's path no
+# longer proves whose it is -- the `user_id` field on the document is the only
+# thing that does. Every read has to check it, and these are the tests that
+# say so.
+# --------------------------------------------------------------------------
+
+OTHER_USER = "firebase-uid-someone-else"
+
+
+def test_the_stored_run_records_its_owner(db, calle, client):
+    client.post(ENDPOINT, json={"goal": GOAL})
+
+    stored = _written(db, db.run_path())[0]
+    assert stored["user_id"] == USER, (
+        "without user_id the run belongs to nobody and is unreadable"
+    )
+
+
+def test_another_students_run_is_a_404_and_not_a_403(db, calle, client):
+    """The security property, in its strongest form.
+
+    A 403 would confirm the run id is real, which is exactly what someone
+    guessing ids wants to learn. So the answer for someone else's run has to
+    be byte-identical to the answer for a run that never existed.
+    """
+    db.documents[db.run_path()] = _run(user_id=OTHER_USER)
+
+    theirs = client.get(f"{ENDPOINT}/{RUN_ID}")
+    nonexistent = client.get(f"{ENDPOINT}/never-existed")
+
+    assert theirs.status_code == 404
+    assert theirs.status_code != 403
+    assert nonexistent.status_code == 404
+    # Same status, same body shape, same wording -- nothing distinguishes them.
+    assert theirs.json()["detail"].replace(RUN_ID, "X") == (
+        nonexistent.json()["detail"].replace("never-existed", "X")
+    )
+    assert calle.polled == [], "CALL-E must not be consulted for a run we do not own"
+
+
+def test_another_students_run_is_not_overwritten_by_a_failed_poll(db, calle, client):
+    """A 404 must not have written anything on its way out."""
+    db.documents[db.run_path()] = _run(user_id=OTHER_USER)
+
+    client.get(f"{ENDPOINT}/{RUN_ID}")
+
+    assert db.writes == []
+    assert db.documents[db.run_path()]["user_id"] == OTHER_USER
+
+
+def test_listing_shows_only_this_students_runs(db, calle, client):
+    db.documents[db.run_path("mine")] = _run(run_id="mine", created_at=2)
+    db.documents[db.run_path("theirs")] = _run(
+        run_id="theirs", user_id=OTHER_USER, created_at=3
+    )
+
+    body = client.get(ENDPOINT).json()
+
+    # "theirs" is newer, so it would sort first if the filter were missing.
+    assert [call["run_id"] for call in body["calls"]] == ["mine"]
+    assert body["count"] == 1

@@ -41,6 +41,7 @@ from urllib.parse import quote, unquote
 
 from fastapi import APIRouter, HTTPException, Query
 from google.cloud import firestore
+from google.cloud.firestore_v1.base_query import FieldFilter
 from pydantic import BaseModel, Field
 
 from app.services import calle_mcp
@@ -54,7 +55,10 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/users/{user_id}/calls", tags=["calls"])
 
-CALL_RUNS_SUBCOLLECTION = "call_runs"
+# Top-level, not a subcollection under the user. Ownership therefore is
+# not implied by the document path any more -- it is the `user_id` field
+# on each document, and every read has to check it (see `_owned_run`).
+CALL_RUNS_COLLECTION = "call_runs"
 # The dashboard switch that turns calling off. Absent means allowed: the
 # switch ships after this endpoint, and an older user document must not read
 # as "denied" (see data/access.ts on the frontend).
@@ -128,14 +132,35 @@ def _user_doc(user_id: str) -> dict:
     return snapshot.to_dict() or {}
 
 
-def _call_runs(user_id: str):
-    """users/{user_id}/call_runs -- this service's own record of each call."""
-    return (
-        _firestore_client()
-        .collection(USERS_COLLECTION)
-        .document(user_id)
-        .collection(CALL_RUNS_SUBCOLLECTION)
-    )
+def _call_runs():
+    """The top-level call_runs collection -- one document per placed call.
+
+    Every document carries a `user_id` field naming its owner. That field is
+    the only thing that ties a run to a student now, so nothing may read a
+    run without checking it.
+    """
+    return _firestore_client().collection(CALL_RUNS_COLLECTION)
+
+
+def _owned_run(user_id: str, run_id: str):
+    """The run's document reference, or a 404 if it is not this student's.
+
+    Ownership used to be implied by the document's position under the user;
+    in a top-level collection it has to be checked explicitly against the
+    stored `user_id`.
+
+    A run belonging to someone else answers exactly as one that never
+    existed: same 404, same message. Not a 403 -- distinguishing the two
+    would confirm that a run id is real, which is precisely what someone
+    guessing ids is trying to learn.
+    """
+    doc_ref = _call_runs().document(_run_document_id(run_id))
+    snapshot = doc_ref.get()
+    if not snapshot.exists or (snapshot.to_dict() or {}).get("user_id") != user_id:
+        raise HTTPException(
+            404, f"No call run {run_id!r} for user_id={user_id!r}."
+        )
+    return doc_ref
 
 
 def _calls_allowed(user: dict) -> bool:
@@ -322,16 +347,20 @@ def start_call(user_id: str, call: CallIn):
     # calls shipped, and its service account had roles/datastore.viewer.)
     #
     # The consequence, accepted knowingly: an unpersisted run has no
-    # users/{user_id}/call_runs document, so GET /calls/{run_id} will 404 for
-    # it -- ownership is checked against Firestore, and a run we cannot prove
+    # call_runs document, so GET /calls/{run_id} will 404 for it --
+    # ownership is checked against Firestore, and a run we cannot prove
     # belongs to this student must not be readable by them. The caller still
     # holds the run_id and `persisted: false` says why. A later 404 is a much
     # smaller harm than never learning the id of a call that is happening.
     persisted = True
     try:
-        _call_runs(user_id).document(_run_document_id(run_id)).set(
+        _call_runs().document(_run_document_id(run_id)).set(
             {
                 "run_id": run_id,
+                # The owner. In a top-level collection this field is the only
+                # thing that makes the run this student's, so a run written
+                # without it is unreadable by anyone.
+                "user_id": user_id,
                 "plan_id": started.get("plan_id"),
                 "goal": call.goal,
                 "status": "started",
@@ -376,11 +405,7 @@ def get_call_run(
     """
     # Ownership first, and before CALL-E is touched: a run_id belonging to
     # another student must be indistinguishable from one that never existed.
-    doc_ref = _call_runs(user_id).document(_run_document_id(run_id))
-    if not doc_ref.get().exists:
-        raise HTTPException(
-            404, f"No call run {run_id!r} for user_id={user_id!r}."
-        )
+    doc_ref = _owned_run(user_id, run_id)
 
     payload = calle_mcp.get_call_run(run_id, cursor=cursor, limit=limit)
     response = _call_run_response(run_id, payload)
@@ -418,8 +443,18 @@ def list_calls(user_id: str, max_results: int = Query(10, le=50)):
     """This student's calls, most recent first."""
     _user_doc(user_id)  # 404 for an unknown user, like every other endpoint
 
+    # REQUIRES A FIRESTORE COMPOSITE INDEX on the call_runs collection:
+    #   user_id ASCENDING, created_at DESCENDING
+    # Firestore auto-creates single-field indexes but not composite ones, and
+    # this query filters on one field while ordering by another. The previous
+    # subcollection version needed no index at all -- it was a single-field
+    # sort within one user's own subcollection. Without the index this raises
+    # FailedPrecondition ("The query requires an index") the FIRST time it
+    # runs against real Firestore; the error carries a console link that
+    # creates it. Nothing here will catch that at build or test time.
     snapshots = (
-        _call_runs(user_id)
+        _call_runs()
+        .where(filter=FieldFilter("user_id", "==", user_id))
         .order_by("created_at", direction=firestore.Query.DESCENDING)
         .limit(max_results)
         .stream()
