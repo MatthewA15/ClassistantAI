@@ -20,6 +20,8 @@
  * their own timezone is a rule they can verify by looking at it.
  */
 
+import { FALLBACK_TIME_ZONE } from "@/lib/timeZone";
+
 /** Stored as one map on the user document. Snake case to match every other
  *  field there; the TypeScript shape below is camel. */
 export const NOTIFICATIONS_FIELD = "notifications";
@@ -48,10 +50,19 @@ export type NotificationPrefs = {
    *  not cancelled, which is the reader's job and not this file's. */
   digestHour: number | null;
   /**
-   * IANA zone the two clocks above are read in. Captured from the browser
-   * rather than derived from the phone number: an area code says where a number
-   * was issued, not where its owner is now, and a student from Toronto studying
-   * in Alberta would get woken up an hour early by that inference.
+   * IANA zone the two clocks above are read in.
+   *
+   * NOT stored in this map. It is `time_zone` at the top level of the user
+   * document, and it is passed in here so the hours have something to be
+   * rendered against. Issue #36 moved it out: the agent schedules against it
+   * and should not have to reach into a preferences map to find it, and two
+   * copies of a timezone on one document is a bug with a clock on it. See
+   * lib/timeZone.ts.
+   *
+   * Captured from the browser rather than derived from the phone number: an
+   * area code says where a number was issued, not where its owner is now, and a
+   * student from Toronto studying in Alberta would get woken up an hour early
+   * by that inference.
    */
   timezone: string;
 };
@@ -74,7 +85,7 @@ export function defaultNotifications(): NotificationPrefs {
     quietEnd: 8,
     calls: true,
     digestHour: null,
-    timezone: "America/Toronto",
+    timezone: FALLBACK_TIME_ZONE,
   };
 }
 
@@ -117,8 +128,13 @@ export function inQuietHours(prefs: NotificationPrefs, hour: number): boolean {
  * and treating that as "no preferences at all" would silently discard the ones
  * they did set.
  */
-export function readNotifications(raw: unknown): NotificationPrefs {
+export function readNotifications(raw: unknown, timeZone?: string | null): NotificationPrefs {
   const base = defaultNotifications();
+  // Taken from the caller, which read it off the top level of the document.
+  // A pre-#36 document has neither that field nor the one that used to be in
+  // this map, and both cases land on the default rather than on nothing.
+  if (timeZone) base.timezone = timeZone;
+
   if (typeof raw !== "object" || raw === null) return base;
   const data = raw as Record<string, unknown>;
 
@@ -137,18 +153,39 @@ export function readNotifications(raw: unknown): NotificationPrefs {
     quietEnd: hour("quiet_end", base.quietEnd),
     calls: typeof data.calls === "boolean" ? data.calls : base.calls,
     digestHour: hour("digest_hour", base.digestHour),
-    timezone: typeof data.timezone === "string" && data.timezone ? data.timezone : base.timezone,
+    /*
+     * The pre-#36 key, read as a fallback and only as a fallback.
+     *
+     * An earlier version of this dropped it, on the reasoning that letting the
+     * stale copy win would defeat the migration. That reasoning does not
+     * survive the control flow directly above: `base.timezone` has ALREADY been
+     * overwritten with the top-level `time_zone` when the caller had one, so
+     * the top-level field wins here whenever it exists. The only documents this
+     * line can decide are the ones with no top-level field at all -- which is
+     * every account that set a zone before this change, and dropping it reset
+     * all of them to Toronto without anyone touching a control. A student in
+     * Vancouver would have had their quiet hours silently move three hours.
+     *
+     * So it stays until those documents are backfilled. It is dead weight for
+     * anyone who has saved since, and harmless for them, because they cannot
+     * reach it.
+     */
+    timezone:
+      timeZone ??
+      (typeof data.timezone === "string" && data.timezone ? data.timezone : base.timezone),
   };
 }
 
 /** The inverse, for the write path. Kept beside the reader so the two field
- *  name lists cannot drift apart unnoticed. */
+ *  name lists cannot drift apart unnoticed.
+ *
+ *  No `timezone` key: it is written to the top level of the document by
+ *  `updateTimeZone`, not into this map. */
 export function writeNotifications(prefs: NotificationPrefs): Record<string, unknown> {
   return {
     quiet_start: prefs.quietStart,
     quiet_end: prefs.quietEnd,
     calls: prefs.calls,
     digest_hour: prefs.digestHour,
-    timezone: prefs.timezone,
   };
 }
