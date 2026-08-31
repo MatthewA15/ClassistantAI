@@ -17,19 +17,28 @@ rules_version='2'
  * and the day somebody does add a client read they will get a permission error
  * rather than silently shipping open access to the `users` collection.
  *
- * ## What this replaced
+ * ## What this replaced, and a correction worth keeping
  *
- * A `match /{document=**}` granting read AND write to anyone until
- * 2026-09-21 -- the default sandbox rule, left in place. That was open access
- * to every student's document: profile, phone number, consent evidence, and the
- * sealed credential subcollection. The envelope encryption in
- * docs/ENCRYPTION_CONTRACT.md meant a reader could not open a password, but
- * everything around it was readable and all of it was writable.
+ * This FILE used to hold the default sandbox rule: `match /{document=**}`
+ * granting read and write to anyone until 2026-09-21. Read literally that is
+ * open access to every student's profile, phone number, and consent evidence,
+ * three weeks from an expiry that fails closed.
  *
- * It was also three weeks from expiring, and expiry fails closed, which would
- * have locked the client SDK out with no warning.
+ * It was never deployed. The live ruleset on `classisstant` as of 2026-08-25
+ * was already `allow read, write: if false` on everything, so production was
+ * locked down the whole time and the file was simply stale. PR #42 originally
+ * reported this the other way round, which was wrong.
  *
- * Requested by @obaodelana on PR #42.
+ * That divergence was the actual hazard: the repo said something far more
+ * permissive than production, so the next person to run
+ * `firebase deploy --only firestore:rules` from a checkout would have opened
+ * the entire database without meaning to. Keeping this file equal to what is
+ * deployed is the point of it existing.
+ *
+ * The only behavioural change from the deployed state is the `schools` block
+ * below, which @obaodelana asked for on PR #42. Nothing in the product needs it
+ * today -- every reader uses the admin SDK -- so it exists for a future
+ * client-side read of what is already public marketing data.
  */
 service cloud.firestore {
   match /databases/{database}/documents {
