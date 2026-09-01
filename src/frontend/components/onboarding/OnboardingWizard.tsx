@@ -21,6 +21,11 @@ import { Shell } from "@/components/onboarding/shell";
 import { LogoMark } from "@/components/brand/LogoMark";
 import { useSchoolTheme, useSchools } from "@/components/theme/SchoolTheme";
 import { ACCESS_ITEMS, defaultAccess, type AccessKey } from "@/data/access";
+import {
+  CLASSY_SMS_HREF,
+  CLASSY_TEL_DISPLAY,
+  CLASSY_VCARD_HREF,
+} from "@/data/classy";
 import { CONSENT_COPY } from "@/data/consent";
 import { getSchool, type School } from "@/data/schools";
 import { cn } from "@/lib/cn";
@@ -1237,6 +1242,8 @@ function DoneScreen({ name, phone, school }: { name: string; phone: string; scho
         deadline it found.
       </p>
 
+      <TextClassyCard />
+
       <div className="mt-8 rounded-2xl bg-paper p-6 text-left ring-1 ring-line">
         <ul className="flex flex-col gap-3">
           {[
@@ -1262,10 +1269,13 @@ function DoneScreen({ name, phone, school }: { name: string; phone: string; scho
         next: it is where the switches they set two screens ago live, and where
         the first entries of the activity feed will appear.
       */}
+      {/* Both demoted to outline and text. The filled button on this screen is
+          "Text Classy" now, and two solid brand buttons on one screen is two
+          answers to "what do I do next". */}
       <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
         <Link
           href="/dashboard"
-          className="inline-block rounded-xl bg-brand-600 px-6 py-3 text-[0.93rem] font-semibold text-white transition-colors hover:bg-brand-700"
+          className="inline-block rounded-xl border border-line bg-white px-6 py-3 text-[0.93rem] font-semibold text-ink-900 transition-colors hover:bg-sky-50"
         >
           Open my dashboard
         </Link>
@@ -1277,6 +1287,116 @@ function DoneScreen({ name, phone, school }: { name: string; phone: string; scho
         </Link>
       </div>
     </div>
+  );
+}
+
+/**
+ * The thing to do next: text Classy.
+ *
+ * ## Why this is on the done screen at all
+ *
+ * Onboarding ended by promising a text in about ten minutes, and that promise
+ * is one-way: the student waits, and until it lands nothing they just did has
+ * produced anything. This is the other direction, and it works immediately. The
+ * product is a thread in Messages; the site is where you sign up for it. Ending
+ * signup with a link into the actual product is the shortest path from "I filled
+ * in a form" to "I have used this".
+ *
+ * ## Why the number is set in type rather than hidden in a button
+ *
+ * `sms:` does nothing on a laptop, which is where a good share of this signup
+ * happens: Chrome offers to pick a handler, most desktops have none, and the
+ * press appears to fail. So the number is the element, at display size, legible
+ * and copyable, and the button is the shortcut for the phones where a shortcut
+ * exists. On a desktop the student reads it and picks up their phone, which is
+ * the correct outcome and not a fallback.
+ *
+ * That is also why the number is not `tel:`. It is a Twilio messaging number and
+ * calling it is not the product.
+ *
+ * ## The contact card is here and not earlier
+ *
+ * public/classy.vcf has existed since #41 and nothing has ever linked to it,
+ * which made a fixed photo and a fixed TEL (708c583) improvements to a file no
+ * student could reach. This is the moment it is worth saving: a card imported
+ * before the first message means every reply arrives from "Classy" with a face,
+ * instead of from an unknown ten digit number that reads like spam.
+ */
+function TextClassyCard() {
+  return (
+    <div className="mt-8 rounded-2xl bg-sky-50 p-6 ring-1 ring-sky-200 sm:p-7">
+      <p className="text-[0.75rem] font-semibold uppercase tracking-[0.14em] text-brand-600">
+        Say hello
+      </p>
+
+      {/* The number carries the card, so it is the biggest thing on it. Tabular
+          figures because grouped digits at this size are read, not skimmed, and
+          proportional ones make 400 and 7007 different widths. */}
+      <a
+        href={CLASSY_SMS_HREF}
+        className="mt-2 block font-display text-[1.75rem] font-extrabold leading-tight tracking-[-0.02em] text-ink-900 tabular-nums transition-colors hover:text-brand-700 sm:text-[2.1rem]"
+      >
+        {CLASSY_TEL_DISPLAY}
+      </a>
+
+      <p className="mx-auto mt-3 max-w-sm text-[0.9rem] leading-[1.6] text-body">
+        Text it anything. Try{" "}
+        <span className="font-semibold text-ink-900">&ldquo;what is due this week?&rdquo;</span>
+      </p>
+
+      <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+        <a
+          href={CLASSY_SMS_HREF}
+          className="inline-flex items-center gap-2.5 rounded-xl bg-brand-600 px-6 py-3.5 text-[0.95rem] font-semibold text-white shadow-[0_12px_28px_-14px_var(--color-brand-600)] transition-colors hover:bg-brand-700"
+        >
+          <ChatGlyph />
+          Text Classy
+        </a>
+
+        {/*
+          A plain anchor with `download`, not a Link. It is a static file rather
+          than a route, and without the attribute a browser that decides it can
+          render text/vcard shows the base64 photo as a wall of characters.
+
+          `download` is only a hint on a cross-origin URL; this one is same
+          origin, so it is honoured. iOS Safari ignores it either way and opens
+          the card in Contacts, which is the outcome we wanted anyway.
+        */}
+        <a
+          href={CLASSY_VCARD_HREF}
+          download="classy.vcf"
+          className="inline-flex items-center gap-2.5 rounded-xl border border-line bg-white px-5 py-3.5 text-[0.93rem] font-semibold text-ink-900 transition-colors hover:bg-white/60"
+        >
+          <ContactGlyph />
+          Save the contact
+        </a>
+      </div>
+    </div>
+  );
+}
+
+function ChatGlyph() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true" fill="none">
+      <path
+        d="M15.5 8.6c0 3.2-2.9 5.8-6.5 5.8-.75 0-1.47-.11-2.14-.32l-3.36 1.17.9-2.86A5.5 5.5 0 0 1 2.5 8.6C2.5 5.4 5.4 2.8 9 2.8s6.5 2.6 6.5 5.8Z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function ContactGlyph() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true" fill="none">
+      <g stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="2.6" y="3.2" width="12.8" height="11.6" rx="2.4" />
+        <circle cx="7.4" cy="8" r="1.9" />
+        <path d="M4.6 12.6c.5-1.4 1.6-2.1 2.8-2.1s2.3.7 2.8 2.1M11.8 7.4h1.8M11.8 10.2h1.8" />
+      </g>
+    </svg>
   );
 }
 
