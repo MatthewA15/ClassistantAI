@@ -1,0 +1,17 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Env / secrets
+.env
+
+# OS
+.DS_Store
+
+# Google ADK
+.adk/
+
+# SA key
+classisstant-e6f742b848c1.json

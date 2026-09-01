@@ -15,3 +15,6 @@ client_secret*.json
 
 # Local task scaffolding, not part of any service
 DOCS_MARKDOWN_PROMPT.md
+
+# Obscura binary
+obscura*

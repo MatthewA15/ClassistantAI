@@ -1,0 +1,6 @@
+google-adk[mcp]==2.8.0
+google-cloud-firestore==2.29.0
+google-cloud-kms==3.16.0
+sqlalchemy==2.0.52
+cryptography>=42
+cachetools>=5.4
