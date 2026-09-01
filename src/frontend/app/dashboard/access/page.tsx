@@ -10,6 +10,7 @@ import { Badge, Card, CardHead, DataRow } from "@/components/dashboard/ui";
 import { readAccess } from "@/data/access";
 import { getSchool } from "@/data/schools";
 import { getSession } from "@/lib/authSession";
+import { listSchools } from "@/lib/schools";
 import { getAccount, hasPortalPassword } from "@/lib/users";
 
 export const metadata: Metadata = { title: "Access" };
@@ -47,7 +48,9 @@ export default async function AccessPage() {
   if (!account) redirect("/onboarding");
 
   const portalSealed = await hasPortalPassword(session.uid);
-  const school = account.schoolId ? getSchool(account.schoolId) : undefined;
+  const school = account.schoolId
+    ? getSchool(await listSchools(), account.schoolId)
+    : undefined;
 
   return (
     <>

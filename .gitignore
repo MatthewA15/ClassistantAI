@@ -13,5 +13,8 @@ client_secret*.json
 # OS
 .DS_Store
 
+# Local task scaffolding, not part of any service
+DOCS_MARKDOWN_PROMPT.md
+
 # Obscura binary
 obscura*

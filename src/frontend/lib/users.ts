@@ -56,6 +56,10 @@ export type UserProfile = {
   name: string;
   phoneNumber: string;
   schoolId: string;
+  /** IANA zone, validated by lib/timeZone.ts before it gets here. Top level
+   *  rather than inside the notifications map, because the agent schedules
+   *  every reminder against it. See that file's header. */
+  timeZone: string;
   /** Optional second Google account for mail/Drive/Calendar. */
   serviceEmail?: string;
   consent: {
@@ -124,6 +128,7 @@ export async function upsertUser(profile: UserProfile): Promise<void> {
     email: profile.email,
     phone_number: profile.phoneNumber,
     school_id: profile.schoolId,
+    time_zone: profile.timeZone,
     service_email: profile.serviceEmail,
     consent: profile.consent,
     access: profile.access,
@@ -287,13 +292,18 @@ export async function markOnboardingComplete(userId: string): Promise<void> {
  */
 export type AccountRecord = {
   userId: string;
-  /** The nickname, or whatever onboarding fell back to. Never null once
-   *  onboarding is complete, because upsertUser defaults it to the local part
-   *  of the address. */
+  /** What the student said to call them. Required at onboarding since #36, so
+   *  it is non-null for anyone who signed up after that; accounts from before
+   *  the requirement can still have none, and the dashboard asks rather than
+   *  filling one in from the address. */
   name: string | null;
   email: string | null;
   phoneNumber: string | null;
   schoolId: string | null;
+  /** IANA zone. Null only on a document written before #36, or one whose
+   *  onboarding never finished; the settings page fills it from the browser on
+   *  the next save. */
+  timeZone: string | null;
   /** The portal login name. Not a credential: it is an identifier the school
    *  hands out, which is why it sits on this document. See recordSchoolUsername. */
   schoolUsername: string | null;
@@ -349,6 +359,7 @@ export async function getAccount(uid: string): Promise<AccountRecord | null> {
     email: typeof data.email === "string" ? data.email : null,
     phoneNumber: typeof data.phone_number === "string" ? data.phone_number : null,
     schoolId: typeof data.school_id === "string" ? data.school_id : null,
+    timeZone: typeof data.time_zone === "string" ? data.time_zone : null,
     schoolUsername: typeof data.school_username === "string" ? data.school_username : null,
     googleSub: typeof data.google_sub === "string" ? data.google_sub : null,
     googleConnected: Boolean(data.google_connected_at),
@@ -406,6 +417,19 @@ export async function updateNotificationPrefs(
  */
 export async function updateDisplayName(uid: string, name: string): Promise<void> {
   await setStamped("users", uid, { name });
+}
+
+/**
+ * Records the zone the student's browser is reporting.
+ *
+ * Written from the settings form rather than asked for, because a student who
+ * moves provinces mid-term will change their quiet hours long before it occurs
+ * to them that the zone behind those hours is now wrong. The value is validated
+ * by `resolveTimeZone` first: this is the field every reminder is scheduled
+ * against, and it arrives from a hidden input.
+ */
+export async function updateTimeZone(uid: string, timeZone: string): Promise<void> {
+  await setStamped("users", uid, { time_zone: timeZone });
 }
 
 /** Records the student's current answer on marketing email. Written beside the

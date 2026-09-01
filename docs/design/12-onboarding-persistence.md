@@ -191,10 +191,15 @@ connector endpoint. One id end to end, nothing to join.
 
 The connector requests no `profile` scope and returns no name from
 `/auth/callback`, so nothing in this system ever learns what the registrar calls
-them. `name` is the nickname they chose, falling back to the local part of their
-address, and the UI says so rather than pretending. A real name would cost a
-`profile` scope on both sides plus a new response field on a frozen endpoint,
-for a value nobody currently reads.
+them. `name` is what the student typed when asked.
+
+**Updated by #36.** This used to fall back to the local part of the address when
+they skipped the field, on the reasoning that a real name would cost a `profile`
+scope on both sides "for a value nobody currently reads". Something reads it
+now: the agent greets students by it, and the fallback produced "Hey jokafor3".
+The field is required at onboarding rather than defaulted, and the scope is
+still not worth taking. See
+[21 User properties and schools](21-user-properties-and-schools.md).
 
 ### Consent is not a boolean
 
