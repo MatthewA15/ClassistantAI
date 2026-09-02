@@ -18,6 +18,7 @@ import json
 import random
 import uuid
 import logging
+from functools import lru_cache
 
 from constants import (
     TWILIO_AUTH_TOKEN,
@@ -31,6 +32,40 @@ from constants import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class _UnrecognisedSender(Exception):
+    """Raised when no Firestore user matches an inbound phone number.
+
+    Deliberately an exception so ``lru_cache`` does **not** cache it —
+    unrecognised senders should always re-query Firestore, allowing them to
+    be picked up the moment they finish signing up.
+    """
+
+
+@lru_cache(maxsize=100)
+def _resolve_user_id(phone_number: str) -> str:
+    """Look up the Firestore user id for ``phone_number``.
+
+    Results are cached with ``lru_cache(maxsize=100)``. Because
+    ``lru_cache`` never caches raised exceptions, an unrecognised sender
+    (no matching document) always falls through to Firestore on the next
+    call, so the moment onboarding completes the next inbound SMS is
+    recognised.
+
+    Raises:
+        _UnrecognisedSender: if no user document has this phone number.
+    """
+    user_query = (
+        db.collection("users")
+        .where(filter=FieldFilter("phone_number", "==", phone_number))
+        .limit(1)
+        .stream()
+    )
+    user_doc = next(user_query, None)
+    if user_doc is None:
+        raise _UnrecognisedSender(phone_number)
+    return user_doc.id
 
 
 def _get_validated_url(req: https_fn.Request) -> str:
@@ -74,16 +109,9 @@ def twilio_webhook(req: https_fn.Request) -> https_fn.Response:
 
     logger.debug("Looking for user with given phone number in db.")
 
-    # Look up the sender in Firestore. If they haven't finished onboarding,
-    # reply with a friendly nudge to sign up instead of forwarding the text.
-    user_query = (
-        db.collection("users")
-        .where(filter=FieldFilter("phone_number", "==", phone_number))
-        .limit(1)
-        .stream()
-    )
-
-    if (user_doc := next(user_query, None)) is None:
+    try:
+        user_id = _resolve_user_id(phone_number)
+    except _UnrecognisedSender:
         logger.info("Unrecognised sender; nudging to sign up.")
 
         nudge = random.choice(SIGNUP_NUDGES).format(url=SITE_URL)
@@ -91,9 +119,8 @@ def twilio_webhook(req: https_fn.Request) -> https_fn.Response:
         resp.message(nudge)
 
         return https_fn.Response(str(resp))
-    else:
-        user_id = user_doc.id
-        logger.debug("User with given phone number is " + user_id)
+
+    logger.debug("User with given phone number is " + user_id)
 
     # Deterministic session id per sender per calendar day: uuid5 (SHA-1) of
     # ``phone_number:date`` under a fixed namespace yields a consistent UUID

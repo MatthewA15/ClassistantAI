@@ -17,6 +17,7 @@ from db import db
 import logging
 import time
 from datetime import datetime, timezone
+from functools import lru_cache
 
 from constants import (
     TWILIO_ACCOUNT_SID,
@@ -46,6 +47,36 @@ def _json_response(model, status: int) -> https_fn.Response:
 
 
 # Statuses that mean the message has left Twilio's hands (success or failure).
+class _UserNotFound(Exception):
+    """Raised when a user document or phone number is missing."""
+
+
+class _NoPhoneNumber(Exception):
+    """Raised when the user document exists but has no phone number."""
+
+
+@lru_cache(maxsize=100)
+def _resolve_phone_number(user_id: str) -> str:
+    """Look up the phone number for ``user_id`` from Firestore.
+
+    Results are cached with ``lru_cache(maxsize=100)``. Because
+    ``lru_cache`` never caches raised exceptions, the not-found cases
+    (missing document or missing phone number field) always fall through
+    to Firestore again on the next call.
+
+    Raises:
+        _UserNotFound: if the user document does not exist.
+        _NoPhoneNumber: if the document exists but has no phone number.
+    """
+    user_snap = db.collection("users").document(user_id).get()
+    if not user_snap.exists:
+        raise _UserNotFound(user_id)
+    phone_number = (user_snap.to_dict() or {}).get("phone_number")
+    if not phone_number:
+        raise _NoPhoneNumber(user_id)
+    return phone_number
+
+
 _TERMINAL_STATUSES = {
     # Success
     MessageInstance.Status.SENT,
@@ -108,17 +139,12 @@ def send_message(req: https_fn.Request) -> https_fn.Response:
     except ValidationError as e:
         return https_fn.Response(e.json(), status=400, mimetype="application/json")
 
-    # Look up the user document to resolve their phone number.
-    user_ref = db.collection("users").document(payload.user_id)
-    user_snap = user_ref.get()
-
-    if not user_snap.exists:
+    try:
+        phone_number = _resolve_phone_number(payload.user_id)
+    except _UserNotFound:
         logger.info("send_message: user '%s' not found.", payload.user_id)
         return _json_response(ErrorResponse(error="Not found. No user exists for the given user_id."), 404)
-
-    user_data = user_snap.to_dict()
-    phone_number = (user_data or {}).get("phone_number")
-    if not phone_number:
+    except _NoPhoneNumber:
         logger.info(
             "send_message: user '%s' has no phone_number field.",
             payload.user_id,

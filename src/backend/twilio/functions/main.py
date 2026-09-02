@@ -13,3 +13,4 @@ initialize_app()
 # owns its own ``@https_fn.on_request`` decorator definition. `
 from webhook import twilio_webhook  # noqa: F401
 from send import send_message  # noqa: F401
+from onboarding import on_user_created  # noqa: F401
