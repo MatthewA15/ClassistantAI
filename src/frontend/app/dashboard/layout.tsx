@@ -41,8 +41,8 @@ export const dynamic = "force-dynamic";
  *
  * Signed in but unfinished goes to /onboarding, and that is the case worth
  * naming: a student who verified a number and closed the tab holds a perfectly
- * valid session and an account with no school, no Google grant, and no portal
- * password. Every card on every page here would be empty, and several of the
+ * valid session and an account with no school, no Google grant, and no
+ * consents. Every card on every page here would be empty, and several of the
  * controls would be writing preferences onto an account that does not do
  * anything yet. Sending them back to the flow that fills it is both the more
  * useful answer and the one that keeps the pages below from needing a "what if

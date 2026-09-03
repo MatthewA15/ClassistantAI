@@ -30,7 +30,14 @@ import {
  * establishing an identity for the first time and everything after it is a
  * step; this is a returning student who already has an account and wants to be
  * somewhere else within two taps. It ends in a redirect, and the wizard's
- * version cannot, because for it the number is step one of four.
+ * version cannot, because for it the number is step one of three.
+ *
+ * Two callers now: /signin, and /portal-login, which Classy texts to a student
+ * when it needs their school login. The second one arrives with the number
+ * already known (it is the number the text went to) and wants the student back
+ * on its own page afterwards, so both of those are props. Neither is trusted
+ * for anything: the prefill is convenience and the code still has to arrive,
+ * and the destination is a path the caller wrote, not one from the URL.
  */
 
 /** Where the invisible reCAPTCHA mounts. A different id from the wizard's, so
@@ -55,8 +62,22 @@ type SessionResponse = {
   error?: string;
 };
 
-export function PhoneSignIn() {
-  const [phone, setPhone] = useState("");
+export function PhoneSignIn({
+  initialPhone = "",
+  next,
+}: {
+  /** A number to start the field with, run through `formatPhone` on the way in
+   *  so anything from a raw E.164 to garbage becomes at most ten digits. A
+   *  prefill only: it proves nothing, and the code still has to be delivered to
+   *  it and typed back. */
+  initialPhone?: string;
+  /** Where a finished account lands once signed in. Defaults to the dashboard.
+   *  An account that never finished onboarding goes back to onboarding whatever
+   *  this says, because there is nothing for it to do anywhere else yet. Must
+   *  be a path this code wrote, never one read from the request. */
+  next?: string;
+} = {}) {
+  const [phone, setPhone] = useState(() => formatPhone(initialPhone));
   const [code, setCode] = useState("");
   const [pending, setPending] = useState<PendingVerification | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -116,7 +137,7 @@ export function PhoneSignIn() {
        */
       window.location.assign(
         data.onboardingComplete
-          ? "/dashboard"
+          ? (next ?? "/dashboard")
           : `/onboarding${data.schoolId ? `?school=${encodeURIComponent(data.schoolId)}` : ""}`,
       );
     } catch (err) {

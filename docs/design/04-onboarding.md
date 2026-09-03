@@ -3,6 +3,13 @@
 Sources: [`app/onboarding/`](../../src/frontend/app/onboarding/),
 [`components/onboarding/`](../../src/frontend/components/onboarding/)
 
+> **Partly superseded.** The portal password step described below left
+> onboarding on 2026-09-03 (issue #54). It is asked for at `/portal-login`
+> when Classy first needs it, and [23](23-portal-login-handoff.md) has the
+> reasoning. The order of the remaining screens is number, Google, switches;
+> [15](15-firebase-auth.md) covers why the number moved to the front. The
+> rest of this document still describes the shape of the flow.
+
 ## Four screens, down from six
 
 The school is chosen in the hero and arrives as `?school=`, so onboarding starts

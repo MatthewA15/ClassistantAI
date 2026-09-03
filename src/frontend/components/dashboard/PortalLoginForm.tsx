@@ -4,7 +4,7 @@ import { useActionState, useState } from "react";
 
 import { savePortalLogin } from "@/app/dashboard/actions";
 import { SaveState, buttonClass } from "@/components/dashboard/ui";
-import { Field, TextInput } from "@/components/onboarding/fields";
+import { PortalLoginFields } from "@/components/portal/PortalLoginFields";
 
 /**
  * Replacing the school portal login.
@@ -100,43 +100,16 @@ export function PortalLoginForm({
         leave you in.
       </p>
 
-      <Field
-        label="Portal username or student number"
-        htmlFor="portal-user"
-        error={errors.portalUser}
-        hint="Some schools use a username here, others your student number."
-      >
-        <TextInput
-          id="portal-user"
-          name="portalUser"
-          defaultValue={username ?? ""}
-          autoComplete="off"
-          invalid={Boolean(errors.portalUser)}
-        />
-      </Field>
-
-      <Field label="New portal password" htmlFor="portal-password" error={errors.portalPassword}>
-        <div className="relative">
-          <TextInput
-            id="portal-password"
-            name="portalPassword"
-            type={show ? "text" : "password"}
-            // new-password, so a browser does not offer a saved credential from
-            // an unrelated site into a field that gets sealed and never read
-            // back.
-            autoComplete="new-password"
-            className="pr-20"
-            invalid={Boolean(errors.portalPassword)}
-          />
-          <button
-            type="button"
-            onClick={() => setShow((v) => !v)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md px-2 py-1 text-[0.78rem] font-semibold text-brand-600 hover:bg-sky-100"
-          >
-            {show ? "Hide" : "Show"}
-          </button>
-        </div>
-      </Field>
+      {/* The same two fields /portal-login shows. "New" on the label because
+          this form only ever opens over an existing login, or over the absence
+          of one, and either way the student is not confirming a value. */}
+      <PortalLoginFields
+        defaultUsername={username ?? ""}
+        errors={errors}
+        show={show}
+        onToggleShow={() => setShow((v) => !v)}
+        passwordLabel={hasPassword ? "New portal password" : "Portal password"}
+      />
 
       <SaveState state={state} />
 

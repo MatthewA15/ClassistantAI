@@ -29,6 +29,8 @@ Read these before changing something that looks arbitrary. Most of it is not.
 | [20 The signed-in area](20-dashboard.md) | The four dashboard pages, the second front door at /signin, the two kinds of promise a control can make, and why the task history is empty |
 | [21 User properties and schools](21-user-properties-and-schools.md) | The three fields the agent reads, why the name is asked for rather than taken from Google, and the schools collection |
 | [22 Texting Classy](22-text-classy.md) | The number on the done screen, why it is typeset rather than buried in a button, no prefilled body, and the three places the number is hand-synced |
+| [23 Portal login hand-off](23-portal-login-handoff.md) | Why the portal password left onboarding, the page Classy texts instead, what the phone param does and does not prove, and why the store stayed sealed rather than going ephemeral |
+| [24 Every calendar](24-every-calendar.md) | Why Classy only saw the primary calendar, the one read-only scope that fixes it, the connector half, who has to reconnect, and the sync rule that quietly expired |
 
 ## Ground rules that apply everywhere
 
