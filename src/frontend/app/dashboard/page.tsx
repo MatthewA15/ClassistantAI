@@ -115,10 +115,13 @@ export default async function OverviewPage() {
           note={
             portalSealed
               ? "Your password is encrypted under a key we can lock and cannot open."
-              : "Without it, Classistant cannot check your portal overnight."
+              : "Without it, Classistant cannot check your portal overnight. Classy will text you a link when it needs it, or add it now."
           }
           href="/dashboard/access"
-          hrefLabel="Replace it"
+          // "Missing" is the normal state for a new account now, not a broken
+          // one: onboarding stopped asking for the portal login (#54), so this
+          // tile is where a student who wants to get ahead of the text can.
+          hrefLabel={portalSealed ? "Replace it" : "Add it"}
         />
 
         <Tile

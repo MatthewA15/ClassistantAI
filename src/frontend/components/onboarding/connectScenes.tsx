@@ -5,14 +5,18 @@ import { schoolInitials } from "@/data/schools";
 import { useSceneClock } from "@/components/landing/sceneParts";
 
 /**
- * Two looping scenes for step one of onboarding.
+ * Two looping scenes, drawn for two asks that sound alarming written down.
  *
- * Step one asks a student to do something that sounds alarming written down:
- * hand a website their school login. The copy answered that in one sentence,
- * and a sentence is the weakest form the answer can take. These show it.
+ * Each asks a student to hand a website a school login. The copy answered that
+ * in one sentence, and a sentence is the weakest form the answer can take.
+ * These show it.
  *
- *   ConnectScene         what to type, then what Google will ask them to allow
- *   SealedPasswordScene  why "Classistant never sees your password" is true
+ *   ConnectScene         what to type, then what Google will ask them to allow.
+ *                        On the Google step of onboarding.
+ *   SealedPasswordScene  why "Classistant never sees your password" is true.
+ *                        On /portal-login, where the portal password is asked
+ *                        for since #54 took it out of onboarding. It was drawn
+ *                        for that ask and went with it.
  *
  * They follow the machinery in components/landing/sceneParts: one clock per
  * scene, views derived from the current time. Beats keep getting re-cut during

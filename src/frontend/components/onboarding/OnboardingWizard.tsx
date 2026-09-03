@@ -10,11 +10,7 @@ import {
   type Identity,
 } from "@/app/onboarding/actions";
 import { SchoolPicker } from "@/components/onboarding/SchoolPicker";
-import {
-  ConnectScene,
-  SceneCard,
-  SealedPasswordScene,
-} from "@/components/onboarding/connectScenes";
+import { ConnectScene, SceneCard } from "@/components/onboarding/connectScenes";
 import { Choice, Field, TextInput, formatPhone } from "@/components/onboarding/fields";
 import { PhoneVerifyScene } from "@/components/onboarding/phoneScenes";
 import { Shell } from "@/components/onboarding/shell";
@@ -39,13 +35,12 @@ import {
 } from "@/lib/firebaseClient";
 
 /**
- * Four screens. The school is already chosen in the hero and arrives as
+ * Three screens. The school is already chosen in the hero and arrives as
  * ?school=, so this starts at the number.
  *
- * Order: verify your number, connect Google, portal password, choose what it
- * may touch.
+ * Order: verify your number, connect Google, choose what it may touch.
  *
- * Three deliberate placements:
+ * Two deliberate placements, and one deliberate absence:
  *
  * The **phone number is first**, which is the reverse of where it used to be.
  * It used to sit last, behind the Finish button, on the reasoning that a field
@@ -56,31 +51,32 @@ import {
  * after it is attached to a verified person rather than to a session that could
  * be anyone.
  *
- * The **portal password comes after Google**, not before. Google has just
- * demonstrated a normal consent flow at that point, which is the best possible
- * moment to ask for something less normal. It is still needed despite the OAuth
- * grant: OAuth authorises mail, calendar, and Drive, but it does not create a
- * session on the school's LMS, and the agent has to sign in there overnight
- * while the student is asleep and cannot approve anything.
- *
  * The **access switches come last**, after the grant rather than before it.
  * Google's consent screen is all or nothing, so a student cannot narrow it
  * there; the only place a real choice can be offered is afterwards, and the
  * Google step says so in as many words before sending them.
+ *
+ * **There is no portal password step.** There was one, between Google and the
+ * switches, and it was the biggest ask in the flow: a second login, typed into
+ * a site the student met four minutes ago, before anything had been done for
+ * them. Issue #54 took it out. The password is still needed, for the reason it
+ * always was (OAuth authorises mail, calendar and Drive and creates no session
+ * on the school's LMS), but it is asked for at /portal-login when Classy first
+ * needs it, from a student who is already getting texts and has a reason to say
+ * yes. See docs/design/23-portal-login-handoff.md.
  */
 
-/** The heading on each screen. Four screens, but three PHASES: see shell.tsx. */
+/** The heading on each screen. Three screens, and three PHASES: see shell.tsx. */
 const STEP_TITLES = [
   "What is your number?",
   "Connect your school account",
-  "Let it work while you sleep",
   "Choose what it can touch",
 ];
 
-/** Screens 0 to 2 are all logging in; the last one is the reward. The three
+/** Screens 0 and 1 are both logging in; the last one is the reward. The three
  *  phases they map onto, and the card that draws them, live in
  *  components/onboarding/shell.tsx so the loading boundary can render them too. */
-const phaseForStep = (step: number) => (step <= 2 ? 1 : 2);
+const phaseForStep = (step: number) => (step <= 1 ? 1 : 2);
 
 /**
  * Shape check for the number, so the button can gate on it.
@@ -150,7 +146,7 @@ export function OnboardingWizard({ connected }: { connected: ConnectedAccount | 
    *
    *   nothing            step 0, the number
    *   number verified    step 1, connect Google
-   *   grant complete     step 2, the portal password
+   *   grant complete     step 2, the switches and the finish
    *
    * Coming back from the consent screen is the third case, which is why a
    * student never re-does a step they finished before leaving the page.
@@ -221,10 +217,6 @@ export function OnboardingWizard({ connected }: { connected: ConnectedAccount | 
 
   /** The part before the @, which is all the field lets them edit. */
   const localPart = schoolEmail.replace(/@.*$/, "");
-
-  const [portalUser, setPortalUser] = useState("");
-  const [portalPassword, setPortalPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
 
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [acceptMarketing, setAcceptMarketing] = useState(false);
@@ -643,8 +635,9 @@ export function OnboardingWizard({ connected }: { connected: ConnectedAccount | 
           <div className="mt-7 flex flex-col gap-5">
             {/* Reason left, demonstration right, at the same half width as
                 every other scene in the wizard. These two used to share a row
-                with SealedPasswordScene, which is where that size comes from;
-                giving each its own step is not a reason to double it. */}
+                with the sealed-envelope scene (now on /portal-login), which is
+                where that size comes from; having the row to itself is not a
+                reason to double it. */}
             <div className="grid items-center gap-5 sm:grid-cols-2">
               <div className="flex flex-col gap-3">
                 <p className="text-[1.05rem] font-semibold leading-[1.45] text-ink-900">
@@ -751,109 +744,8 @@ export function OnboardingWizard({ connected }: { connected: ConnectedAccount | 
           </div>
         ) : null}
 
-        {/* ------------------------------------------ 3. portal password */}
+        {/* ------------------------------------ 3. what it can touch */}
         {step === 2 ? (
-          <div className="mt-7 flex flex-col gap-5">
-            {/* Same pairing as the other two steps. The explanation lost its
-                sky-50 callout box in the move: beside a SceneCard, which carries
-                its own ring, two ringed boxes side by side read as competing
-                panels, and the four-point list further down this step is already
-                doing the work a callout would. */}
-            <div className="grid items-center gap-5 sm:grid-cols-2">
-              <div className="flex flex-col gap-3">
-                <p className="text-[1.05rem] font-semibold leading-[1.45] text-ink-900">
-                  Google does not get it into your portal.
-                </p>
-                <p className="text-[0.9rem] leading-[1.6] text-body">
-                  That is where posted grades and course files live. Classistant checks it
-                  overnight, while you are asleep and cannot approve anything, so it needs to
-                  be able to sign in on its own.
-                </p>
-              </div>
-
-              {/* Moved here from the connect step, which resolves the concern
-                  docs/design/13 raises about itself: the sealed envelope is a
-                  simplification of the Google grant and very nearly literal
-                  about the portal password. This is the step it is accurate on,
-                  and the step it argues for. */}
-              <SceneCard>
-                <SealedPasswordScene school={school} />
-              </SceneCard>
-            </div>
-
-            {/*
-              The placeholder is generic on purpose.
-
-              It used to be `localPart` -- the student's own name, taken from
-              the address they just connected. Rendered in placeholder grey it
-              reads exactly like a filled-in field, so a student who had typed
-              only the password saw two complete fields and a Continue button
-              that would not respond, with nothing on screen naming the empty
-              one. The suggestion is worth making, so it moved to the hint,
-              where it is offered rather than impersonated.
-            */}
-            <Field
-              label="Portal username or student number"
-              htmlFor="portalUser"
-              error={errors.portalUser}
-              hint={
-                localPart
-                  ? `Often the same as your school email name, ${localPart} — but some schools want your student number instead.`
-                  : "Some schools use a username here, others your student number."
-              }
-            >
-              <TextInput
-                id="portalUser"
-                name="portalUser"
-                value={portalUser}
-                onChange={(e) => setPortalUser(e.target.value)}
-                autoComplete="off"
-                invalid={Boolean(errors.portalUser)}
-              />
-            </Field>
-
-            <Field label="Portal password" htmlFor="portalPassword" error={errors.portalPassword}>
-              <div className="relative">
-                <TextInput
-                  id="portalPassword"
-                  name="portalPassword"
-                  type={showPassword ? "text" : "password"}
-                  value={portalPassword}
-                  onChange={(e) => setPortalPassword(e.target.value)}
-                  // new-password, so browsers do not offer a saved credential
-                  // from an unrelated site.
-                  autoComplete="new-password"
-                  className="pr-20"
-                  invalid={Boolean(errors.portalPassword)}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((v) => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md px-2 py-1 text-[0.78rem] font-semibold text-brand-600 hover:bg-sky-100"
-                >
-                  {showPassword ? "Hide" : "Show"}
-                </button>
-              </div>
-            </Field>
-
-            <ul className="flex flex-col gap-2 rounded-xl bg-paper p-4 ring-1 ring-line">
-              {[
-                "Encrypted at rest, with keys held separately.",
-                "Only ever sent to your school's own login page.",
-                "Never shown back to you, and no staff member can read it.",
-                "Destroyed the moment you delete your account.",
-              ].map((line) => (
-                <li key={line} className="flex items-start gap-2.5 text-[0.84rem] text-ink-800">
-                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-sky-400" />
-                  {line}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-
-        {/* ------------------------------------ 4. what it can touch */}
-        {step === 3 ? (
           <div className="mt-7 flex flex-col gap-5">
             <p className="text-[0.95rem] leading-[1.6] text-body">
               Google asked for everything at once, because that is the only way it asks. Here
@@ -1012,8 +904,6 @@ export function OnboardingWizard({ connected }: { connected: ConnectedAccount | 
             // ever here. The student has nothing to say about it: it is what
             // their browser reports.
             timeZone,
-            portalUser,
-            portalPassword,
             acceptTerms: acceptTerms ? "on" : "",
             acceptMarketing: acceptMarketing ? "on" : "",
             consentSms: consentSms ? "on" : "",
@@ -1052,35 +942,23 @@ export function OnboardingWizard({ connected }: { connected: ConnectedAccount | 
           </p>
         ) : null}
 
-        <div className="mt-9 flex items-center justify-between gap-4 border-t border-line-soft pt-6">
-          <button
-            type="button"
-            onClick={() => setStep((s) => Math.max(0, s - 1))}
-            // Nothing to go back to on step 0, and nothing worth going back to
-            // on step 1: the number is already verified and the account already
-            // connected, so Back would only offer to redo settled work.
-            disabled={step <= 1}
-            className="rounded-lg px-3 py-2 text-[0.9rem] font-semibold text-body transition-colors hover:bg-sky-100 hover:text-ink-900 disabled:pointer-events-none disabled:opacity-0"
-          >
-            Back
-          </button>
+        {/*
+          No Back button. There was one, and with the portal step gone it has
+          nowhere worth going: step 0 is the start, and steps 1 and 2 each sit
+          behind a proof (a delivered code, a completed grant) that pressing
+          Back could only offer to redo. A student on the wrong number has "Not
+          your number?" on the first screen, and a different Google account is a
+          reconnect from the dashboard.
 
-          {step === 2 ? (
-            <button
-              type="button"
-              onClick={() => setStep(3)}
-              disabled={portalUser.trim().length < 2 || portalPassword.length < 6}
-              className="rounded-xl bg-brand-600 px-6 py-3 text-[0.93rem] font-semibold text-white transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-line disabled:text-body-soft"
-            >
-              Continue
-            </button>
-          ) : null}
-
-          {step === 3 ? (
-            // Named for what it produces rather than for what it does. The
-            // screen above it is the one where a student finds out the beta is
-            // free, and "Send welcome gift" is the reward rather than the
-            // paperwork. Same reasoning as the PHASES label.
+          The row is only drawn on the last screen, because it is the only one
+          with a button in it: steps 0 and 1 carry their own actions inline.
+        */}
+        {step === 2 ? (
+          <div className="mt-9 flex items-center justify-end gap-4 border-t border-line-soft pt-6">
+            {/* Named for what it produces rather than for what it does. The
+                screen above it is the one where a student finds out the beta is
+                free, and "Send welcome gift" is the reward rather than the
+                paperwork. Same reasoning as the PHASES label. */}
             <div className="flex flex-col items-end gap-2">
               <button
                 type="submit"
@@ -1100,8 +978,8 @@ export function OnboardingWizard({ connected }: { connected: ConnectedAccount | 
                 </p>
               ) : null}
             </div>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
       </form>
 
       {/*
@@ -1206,9 +1084,10 @@ function HiddenState({ step, values }: { step: number; values: Record<string, st
   const rendered: Record<number, string[]> = {
     // Steps 0 and 1 render nothing that travels with the final submit. The
     // number and the code are deliberately absent from the form entirely:
-    // neither is submitted, they reach the server by being verified.
-    2: ["portalUser", "portalPassword"],
-    3: ["name", "acceptTerms", "consentSms", "acceptMarketing"],
+    // neither is submitted, they reach the server by being verified. The
+    // portal fields that used to be listed here are gone with their step; they
+    // live at /portal-login now and never pass through this form.
+    2: ["name", "acceptTerms", "consentSms", "acceptMarketing"],
   };
   const skip = new Set(rendered[step] ?? []);
   return (
@@ -1236,10 +1115,14 @@ function DoneScreen({ name, phone, school }: { name: string; phone: string; scho
       <h1 className="mt-7 text-[2rem] font-extrabold leading-tight text-ink-900">
         You are set up{name ? `, ${name.split(" ")[0]}` : ""}
       </h1>
+      {/* The portal is mentioned here and nowhere earlier in the wizard. This
+          is the first moment a student has finished something and can hear
+          "one more thing, later" without it costing the signup. */}
       <p className="mt-4 text-[1rem] leading-[1.7] text-body">
-        Classistant is reading {school?.name ?? "your school"} now. Within about ten minutes you
-        will get a text at <span className="font-semibold text-ink-900">{phone}</span> with every
-        deadline it found.
+        Classistant is reading your {school?.name ?? "school"} mail and calendar now. Within
+        about ten minutes you will get a text at{" "}
+        <span className="font-semibold text-ink-900">{phone}</span> with every deadline it
+        found. When it needs your school portal, Classy will text you a link for that.
       </p>
 
       <TextClassyCard />

@@ -9,7 +9,6 @@ import { getSession } from "@/lib/authSession";
 import { FieldValue } from "@/lib/firebaseAdmin";
 import { buildAuthUrl, randomState } from "@/lib/googleOAuth";
 import { setPendingOAuth } from "@/lib/onboardingSession";
-import { savePortalCredentials } from "@/lib/portalCredentials";
 import { listSchools } from "@/lib/schools";
 import { resolveTimeZone } from "@/lib/timeZone";
 import { getUser, markOnboardingComplete, upsertUser } from "@/lib/users";
@@ -18,14 +17,19 @@ import { getUser, markOnboardingComplete, upsertUser } from "@/lib/users";
  * Onboarding server actions.
  *
  * These are live now. `connectGoogle` starts the scope grant and
- * `completeOnboarding` writes the profile and seals the portal password. The
- * pieces sit in four places for a reason (docs/design/12-onboarding-persistence.md
- * and docs/design/15-firebase-auth.md):
+ * `completeOnboarding` writes the profile. The pieces sit in four places for a
+ * reason (docs/design/12-onboarding-persistence.md and
+ * docs/design/15-firebase-auth.md):
  *
  *   /api/auth/session       Firebase Auth: who the student is
- *   this file               validation, and the two writes onboarding owns
+ *   this file               validation, and the profile write onboarding owns
  *   /onboarding/callback    the return leg from the scope grant
  *   connector on Cloud Run  the code exchange and the refresh token
+ *
+ * The portal password is not here. It used to be the second write this file
+ * made, and it moved to /portal-login with issue #54, where `savePortalLogin`
+ * in app/dashboard/actions.ts seals it on demand. See
+ * docs/design/23-portal-login-handoff.md.
  *
  * No OAuth secret is reachable from this process. See docs/design/07-backend-contract.md.
  */
@@ -130,10 +134,17 @@ export async function connectGoogle(
 }
 
 /**
- * Final submit. Writes the profile and the portal credential.
+ * Final submit. Writes the profile.
  *
- *   users/{uid}                              profile, consent evidence, username
- *   users/{uid}/credentials/school_password  the sealed password
+ *   users/{uid}    profile, consent evidence, the access switches
+ *
+ * It used to write a second document, the sealed portal password, and it no
+ * longer does: `users/{uid}/credentials/school_password` is written from
+ * /portal-login when Classy asks for it. An account can therefore finish
+ * onboarding with no portal login at all, and every reader of that document has
+ * to be fine with the credential being absent rather than treating it as a
+ * half-written account. The dashboard already was; the agent's
+ * `CredentialNotFound` is the signal that it is time to send the link.
  *
  * Identity comes from the session cookie and the user document, never from the
  * form. The form is client-supplied, and the whole point of the SMS round trip
@@ -209,31 +220,14 @@ export async function completeOnboarding(
    */
   const timeZone = resolveTimeZone(formData.get("timeZone"), school?.timeZone);
 
-  // Portal credentials. Google OAuth authorises mail, calendar, and Drive, but
-  // it does not create a session on the school's LMS, and the agent has to sign
-  // in there overnight while the student is asleep. That is what this is for.
-  const portalUser = String(formData.get("portalUser") ?? "").trim();
-  if (portalUser.length < 2) {
-    errors.portalUser = "Enter the username you use on the school portal.";
-  }
-
-  // DELIBERATE, DO NOT REMOVE: the portal password is never logged, never
-  // echoed into a response, and never included in an error message. It goes
-  // straight into savePortalCredentials() below and nowhere else, and it exists
-  // in this process only long enough to be encrypted.
-  //
-  // It does reach Firestore now, which the previous version of this comment
-  // said it never would. What reaches Firestore is AES-256-GCM ciphertext under
-  // a data key wrapped by `classistant-password-key`, which this app can lock
-  // and cannot open -- so `datastore.user` on the document buys an attacker
-  // nothing. See lib/portalCredentials.ts and docs/design/19.
-  //
-  // It is stored reversibly, not hashed. The agent has to replay it into the
-  // school portal overnight, so hashing is not an option here.
-  const portalPassword = String(formData.get("portalPassword") ?? "");
-  if (portalPassword.length < 6) {
-    errors.portalPassword = "Enter your portal password.";
-  }
+  /*
+   * No portal fields are read here, and none should be added back. This form
+   * is public and its hidden inputs are mirrored from wizard state; a password
+   * field on it would travel with every submit whether or not the step that
+   * asked for it was ever shown. The portal login has its own form on its own
+   * page (/portal-login) with its own action, and the rule that governs the
+   * password there is written above `savePortalLogin`.
+   */
 
   /*
    * The number is NOT read from the form any more.
@@ -297,17 +291,11 @@ export async function completeOnboarding(
       access,
     });
 
-    await savePortalCredentials({
-      userId: profile.userId,
-      username: portalUser,
-      password: portalPassword,
-    });
-
     await markOnboardingComplete(profile.userId);
   } catch (err) {
-    // Never let the error text reach the student: a Firestore or KMS failure
-    // can echo back argument values, and one of the arguments here is a portal
-    // password.
+    // Never let the error text reach the student. Nothing in this write is
+    // secret any more, but a Firestore failure can echo back argument values
+    // and the shape of a document is not something to show on a form.
     console.error("completeOnboarding failed", {
       userId: profile.userId,
       error: err instanceof Error ? err.message : "unknown",

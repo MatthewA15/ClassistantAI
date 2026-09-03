@@ -101,7 +101,7 @@ export default function SignInPage() {
  *
  * Two destinations, because being signed in is not the same as being finished:
  * a student who verified a number and then closed the tab holds a valid session
- * and an account with no school, no grant, and no portal password. The
+ * and an account with no school, no grant, and no consents. The
  * dashboard would render for them and be almost entirely empty, so they go back
  * to the flow that fills it.
  */

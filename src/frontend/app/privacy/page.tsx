@@ -41,14 +41,14 @@ const SECTIONS: LegalSection[] = [
       <>
         <p>We collect four kinds of information, and no more than the assistant needs to work.</p>
         <p>
-          <Strong>Information you give us during onboarding.</Strong>
+          <Strong>Information you give us, at sign-up or later.</Strong>
         </p>
         <LegalList
           items={[
             "Your full name and your school email address.",
             "Your school, so we know which portal to sign in to.",
             "Your Canadian mobile number, which is where texts and calls go.",
-            "Your student portal username and password.",
+            "Your student portal username and password, when the assistant asks for them.",
             "Your preferences: how hard the assistant should push, your quiet hours, and whether you want phone calls.",
           ]}
         />

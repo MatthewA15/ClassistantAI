@@ -35,7 +35,9 @@ import type { School } from "@/data/schools";
  * the school picker before them, so the flow announced itself as five things to
  * get through before anything happened. It is three: pick a school, sign in,
  * confirm your details. The two sign-in screens are one job with a technical
- * seam in the middle, and the same is true of the last two.
+ * seam in the middle. (There are three screens now rather than four, since the
+ * portal password left for /portal-login, and the phases did not move: they
+ * were already counting jobs rather than screens.)
  *
  * Counting this way also means the school picker is worth something. It was
  * unnumbered, so a student arriving at screen two had done a third of the work
@@ -128,11 +130,11 @@ export function Shell({
    * Whether to offer the way back in to somebody who already has an account.
    *
    * A prop rather than something derived from `phase`, because the phases do
-   * not draw the line in the right place: phase 1 covers the number, the Google
-   * grant, and the portal password, and this belongs under the first of those
-   * three and nowhere near the other two. Offering "Sign in" to a student who
-   * has already verified their number two screens ago is offering to send them
-   * back to the beginning of what they are in the middle of.
+   * not draw the line in the right place: phase 1 covers the number and the
+   * Google grant, and this belongs under the first of those two and nowhere
+   * near the second. Offering "Sign in" to a student who has already verified
+   * their number a screen ago is offering to send them back to the beginning of
+   * what they are in the middle of.
    */
   showSignIn?: boolean;
   children: React.ReactNode;
@@ -185,7 +187,7 @@ export function Shell({
       The door for somebody who is already set up.
 
       Under the card rather than inside it, and quiet rather than a button. This
-      page has exactly one job, which is to get a new student through four
+      page has exactly one job, which is to get a new student through three
       screens, and a prominent second call to action at the top of it is an
       invitation to leave the flow. But a returning student who lands here -- and
       they do, because /onboarding was the only door this site had until the

@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
     // Added for /signin, which has to choose between the dashboard and the rest
     // of onboarding and cannot tell them apart from `connected` alone: a
     // student can have completed the Google grant and then abandoned the flow
-    // before the portal password, which leaves `connected` true and the account
+    // before the last step, which leaves `connected` true and the account
     // unfinished. The wizard ignores this field; it decides its opening step
     // from `connected`, which is the right question for it to be asking.
     onboardingComplete: record?.onboardingComplete ?? false,

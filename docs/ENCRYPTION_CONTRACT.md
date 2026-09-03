@@ -161,13 +161,22 @@ insert, matching the `setStamped` helper already in `lib/users.ts`.
 
 ---
 
-## 7. Scopes must stay in lockstep
+## 7. Scopes have one owner
 
-`GOOGLE_SCOPES` in `lib/googleOAuth.ts` must remain byte-identical to `scopes`
-in the connector's `src/backend/connectors-api/app/config.py` — currently
-nine entries including `drive.readonly`. Google validates the granted set
-during the exchange; a mismatch either drops permissions the agent needs or
-throws outright. Change them in the same commit, both sides.
+`GOOGLE_SCOPES` in `lib/googleOAuth.ts` is the only scope list in the system.
+The connector's `app/config.py` no longer carries one: since v0.5 it builds
+`Credentials` from a bare access token (`app/services/firestore_creds.py`) and
+never compares requested against granted scopes, so there is nothing on that
+side to drift. The earlier version of this section, which required the two to
+stay byte-identical, described a connector that has since been rewritten.
+
+`scripts/seed_credential.py` mirrors the list for local seeding and is the one
+copy to keep in step by hand. `data/access.ts` in the frontend carries a
+per-switch cross-reference for the same reason.
+
+Widening the list requires re-consent: a refresh token minted under the old set
+does not gain the new scope, and the first call needing it returns 403 until the
+student reconnects. Narrowing does not.
 
 Keep `access_type=offline` and `prompt=consent` on the consent URL. Without
 the first there is no refresh token at all; without the second a returning

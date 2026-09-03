@@ -227,7 +227,9 @@ Two layout traps this cost, both invisible in the source:
 **`SealedPasswordScene` moved to the portal step**, which resolves the concern
 [13](13-connect-scenes.md) raises about itself. The sealed envelope is a
 simplification of the Google grant and very nearly literal about the portal
-password, so it now sits on the step it is accurate on and argues for.
+password, so it now sits on the step it is accurate on and argues for. (That
+step has since left onboarding for `/portal-login`, and the scene went with it;
+see [23](23-portal-login-handoff.md).)
 
 ## Setup this depends on
 

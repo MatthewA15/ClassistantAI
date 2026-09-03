@@ -81,6 +81,14 @@ this document a lie, so it is the one to argue about in review.
 
 ## Two files, one commit
 
+> **No longer true as written.** The connector's `app/config.py` scope list is
+> gone; since contract v0.5 the service builds `Credentials` from a bare access
+> token and compares nothing, so `GOOGLE_SCOPES` is the sole owner. The
+> hand-kept mirrors are now `scripts/seed_credential.py` and the
+> cross-reference in `data/access.ts`. See [24](24-every-calendar.md), which
+> also records the one scope added since this document: the read-only
+> `calendar.calendarlist.readonly`, so Classy can see more than `primary`.
+
 `GOOGLE_SCOPES` in `src/frontend/lib/googleOAuth.ts` builds the consent URL.
 `scopes` in `src/backend/connectors-api/app/config.py` rebuilds the Credentials
 object. They are hand synced and nothing enforces it, so they change together or

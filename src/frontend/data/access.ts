@@ -76,9 +76,10 @@ export const ACCESS_ITEMS: AccessItem[] = [
   {
     key: "calendar",
     label: "Put due dates in your calendar",
-    detail: "Deadlines it finds become events, so they show up where you already look.",
+    detail:
+      "Deadlines it finds become events, so they show up where you already look. That covers every calendar on your account, not only the main one.",
     field: "calendar",
-    scopes: ["calendar.events", "calendar.events.owned"],
+    scopes: ["calendar.events", "calendar.events.owned", "calendar.calendarlist.readonly"],
   },
   {
     key: "driveRead",

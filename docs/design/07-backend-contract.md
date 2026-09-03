@@ -42,9 +42,14 @@ cleanly. Put shared constants in a plain module.
 
 ### `completeOnboarding(prev, formData)`
 
+> **Superseded in part.** `portalUser` and `portalPassword` are no longer
+> fields of this action. Since #54 the portal login is collected at
+> `/portal-login` by `savePortalLogin` in `app/dashboard/actions.ts`, and the
+> password rule below applies there. See [23](23-portal-login-handoff.md).
+
 Fields: `name` (required since #36, no longer defaulted from the address),
-`timeZone` (hidden, the browser's IANA zone), `portalUser`, `portalPassword`,
-`acceptTerms`, `acceptMarketing`, `consentSms` (checkboxes are `"on"` or empty).
+`timeZone` (hidden, the browser's IANA zone), `acceptTerms`, `acceptMarketing`,
+`consentSms` (checkboxes are `"on"` or empty).
 
 The school, the address, and the number are **not** submitted. Each was proven
 by a round trip -- the SMS for the number, the Google exchange for the address
