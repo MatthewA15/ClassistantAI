@@ -48,18 +48,24 @@ KMS_KEYRING = "classistant-keyring"
 KMS_KEY = "classistant-key"          # refresh-token key, NOT the password key
 CREDENTIAL_TYPE = "google_refresh_token"
 
-# Must stay byte-identical to GOOGLE_SCOPES in the frontend's lib/googleOAuth.ts
-# and to `scopes` in app/config.py.
+# A mirror of GOOGLE_SCOPES in the frontend's lib/googleOAuth.ts, which is the
+# owner. app/config.py no longer carries a scope list (the service builds
+# Credentials from a bare access token and compares nothing), so this is the
+# only copy on this side and it is kept in step by hand. It had drifted: it
+# still asked for the full `calendar` scope and for `drive.file`, both of which
+# docs/design/17 removed from the real grant, so a token seeded from here could
+# do things a real student's token cannot.
 SCOPES = [
     "openid",
     "https://www.googleapis.com/auth/userinfo.email",
     "https://www.googleapis.com/auth/gmail.readonly",
     "https://www.googleapis.com/auth/gmail.compose",
-    "https://www.googleapis.com/auth/calendar",
+    "https://www.googleapis.com/auth/calendar.events",
+    "https://www.googleapis.com/auth/calendar.events.owned",
+    "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
     "https://www.googleapis.com/auth/drive.metadata.readonly",
     "https://www.googleapis.com/auth/drive.readonly",
     "https://www.googleapis.com/auth/documents",
-    "https://www.googleapis.com/auth/drive.file",
 ]
 
 

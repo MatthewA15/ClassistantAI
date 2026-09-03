@@ -18,16 +18,27 @@ import "server-only";
  */
 
 /**
- * MUST stay identical to `scopes` in the connector's app/config.py.
+ * The one list of Google scopes this product asks for.
  *
- * The connector rebuilds a Credentials object with its own hardcoded scope list
- * and Google validates the granted set during the code exchange. Request a
- * different set here and the exchange either drops permissions the agent needs
- * or throws outright. When config.py changes, change this in the same commit.
+ * This file owns it. It used to have to stay byte-identical to a `scopes` list
+ * in the connector's app/config.py, because the connector rebuilt a Credentials
+ * object from its own copy and google-auth compared the two sets on every
+ * refresh. That list is gone: the connector now builds Credentials from a bare
+ * access token (app/services/firestore_creds.py) and names no scopes at all, so
+ * nothing on that side can disagree with this. Two places still mirror it by
+ * hand and are worth a look when this changes:
+ *
+ *  - scripts/seed_credential.py in the connector, a dev tool that mints a
+ *    refresh token the way onboarding does.
+ *  - the `scopes` cross-reference on each row of data/access.ts, which tells
+ *    the next editor which student-facing switch they have just made a liar.
  *
  * Narrowing this list is safe for students who already consented: google-auth
  * only raises on a scope it asked for and did not get, so an older, broader
- * grant still refreshes. Widening it is the direction that needs re-consent.
+ * grant still refreshes. Widening it is the direction that needs re-consent: a
+ * token granted under the old list simply lacks the new scope, and the first
+ * API call that needs it returns 403 until the student reconnects from
+ * /dashboard/access.
  */
 export const GOOGLE_SCOPES = [
   "openid",
@@ -53,6 +64,22 @@ export const GOOGLE_SCOPES = [
   // events().list and events().insert and owns no delete path at all.
   "https://www.googleapis.com/auth/calendar.events",
   "https://www.googleapis.com/auth/calendar.events.owned",
+  // Read only, and the one calendar scope here that is not about events.
+  //
+  // The two above can read and write events on any calendar the student can
+  // reach, but neither can *name* those calendars: `calendarList.list` sits
+  // outside both, so the connector could only ever address `primary`, and a
+  // student whose course calendar is a second one, or one a TA shares with the
+  // class, was invisible to Classy (issue #49). This lists them and does
+  // nothing else. `calendar` and `calendar.readonly` would also list them and
+  // were not taken: the first is the delete-everything scope docs/design/17
+  // removed, and the second adds reading every event, setting and ACL, none of
+  // which is needed to learn that a calendar exists. See docs/design/24.
+  //
+  // Added 2026-09-03. Anyone who consented before then holds a token without
+  // it, and the connector answers `/calendar/calendars` with 403 until they
+  // reconnect.
+  "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
   // Read only, and both of them: drive.py calls files().list, files().get,
   // export_media and get_media, and nothing that writes.
   //
