@@ -9,6 +9,7 @@ import { ACCESS_ITEMS, readAccess } from "@/data/access";
 import { readNotifications } from "@/data/notifications";
 import { getSchool } from "@/data/schools";
 import { getActivity } from "@/lib/activity";
+import { listSchools } from "@/lib/schools";
 import { getSession } from "@/lib/authSession";
 import { getAccount, hasPortalPassword } from "@/lib/users";
 
@@ -50,10 +51,12 @@ export default async function OverviewPage() {
     getActivity(session.uid, PREVIEW),
   ]);
 
-  const school = account.schoolId ? getSchool(account.schoolId) : undefined;
+  const school = account.schoolId
+    ? getSchool(await listSchools(), account.schoolId)
+    : undefined;
   const access = readAccess(account.access);
   const on = ACCESS_ITEMS.filter((item) => access[item.key]);
-  const prefs = readNotifications(account.notifications);
+  const prefs = readNotifications(account.notifications, account.timeZone);
   const firstName = (account.name ?? "").split(" ")[0];
 
   return (

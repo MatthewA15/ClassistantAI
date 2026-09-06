@@ -111,10 +111,22 @@ AAD on the KMS wrap is `utf8_bytes(uid)`, replayed on decrypt
 
 The parent `users/{uid}` document is written by the frontend's
 `src/frontend/lib/users.ts` and carries `email`, `name`, `phone_number`,
-`school_id`, `google_sub`, `service_email`, `google_connected_at`,
+`school_id`, `time_zone`, `google_sub`, `service_email`, `google_connected_at`,
 `onboarding_complete`, `onboarding_completed_at`, `created_at`/`updated_at`,
 plus two maps: `consent` (`terms`/`sms`/`marketing`, each
 `{granted, at, ip, wording}`, kept as CASL and A2P evidence) and `access`.
+
+`name` is what the student typed, not what the registrar calls them: the grant
+requests no `profile` scope. It is required at onboarding rather than defaulted,
+so it is safe to greet somebody with.
+
+`time_zone` is an IANA zone, validated against `Intl` before it is written. It
+is the one to schedule against — note that `POST /users/{user_id}/calendar/events`
+still defaults `timezone` to `America/Toronto` when the caller omits it
+(`app/routers/calendar.py`), which is wrong for anyone west of Ontario. Callers
+should pass the student's `time_zone`. `schools/{school_id}.time_zone` is the
+campus fallback when a user document predates this field. See
+`docs/design/21-user-properties-and-schools.md`.
 
 `access` maps `gmail_read` / `gmail_drafts` / `calendar` / `drive_read` /
 `docs` to booleans — the switches the student actually set. The Google grant is

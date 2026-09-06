@@ -10,6 +10,8 @@ import { FieldValue } from "@/lib/firebaseAdmin";
 import { buildAuthUrl, randomState } from "@/lib/googleOAuth";
 import { setPendingOAuth } from "@/lib/onboardingSession";
 import { savePortalCredentials } from "@/lib/portalCredentials";
+import { listSchools } from "@/lib/schools";
+import { resolveTimeZone } from "@/lib/timeZone";
 import { getUser, markOnboardingComplete, upsertUser } from "@/lib/users";
 
 /**
@@ -34,11 +36,12 @@ export type ActionResult = {
   errors?: Record<string, string>;
 };
 
+/** What the grant proved about the student. The address and nothing else: the
+ *  grant requests no `profile` scope, so Google returns no name, and the one
+ *  this type used to carry was the local part of the address wearing a label
+ *  that said otherwise. The student is asked for their name now. */
 export type Identity = {
   email: string;
-  /** Derived from the address, not from Google. The connector requests no
-   *  `profile` scope, so no real name is ever returned. */
-  name: string;
 };
 
 /*
@@ -90,7 +93,7 @@ export async function connectGoogle(
     return { ok: false, message: "Verify your mobile number first." };
   }
 
-  const school = getSchool(schoolId);
+  const school = getSchool(await listSchools(), schoolId);
   if (!school || school.status !== "live") {
     return { ok: false, message: "Pick a supported school first." };
   }
@@ -169,7 +172,7 @@ export async function completeOnboarding(
     };
   }
 
-  const school = getSchool(profile.schoolId ?? "");
+  const school = getSchool(await listSchools(), profile.schoolId ?? "");
   if (!school || school.status !== "live") errors.schoolId = "Choose a supported school.";
 
   const email = profile.email;
@@ -177,8 +180,34 @@ export async function completeOnboarding(
     errors.email = `That is not an @${school.emailDomain} address.`;
   }
 
-  const nickname = String(formData.get("nickname") ?? "").trim();
-  if (nickname.length > 40) errors.nickname = "Keep it under 40 characters.";
+  /*
+   * The name, and it is required now.
+   *
+   * It used to be an optional nickname that fell back to the local part of the
+   * school address. That was the right call while nothing read it, and issue
+   * #36 is the point at which something does: the agent greets the student by
+   * this field, and the fallback produced "Hey jokafor3", which is worse than
+   * no greeting at all. Google cannot supply it either -- the grant requests no
+   * `profile` scope (docs/design/12) -- so the student is asked, once, on a
+   * screen they are already on.
+   */
+  const name = String(formData.get("name") ?? "").trim();
+  if (name.length < 1) errors.name = "Tell us what to call you.";
+  else if (name.length > 40) errors.name = "Keep it under 40 characters.";
+
+  /*
+   * The browser's IANA zone, submitted as a hidden field.
+   *
+   * The server cannot derive it: the request carries no timezone, and the two
+   * things that correlate with one -- the IP and the phone number -- are wrong
+   * for exactly the students most likely to care. See data/notifications.ts.
+   *
+   * Validated rather than trusted. This is a hidden input on a public endpoint,
+   * so it is a claim like any other, and it is the field every future reminder
+   * gets scheduled against. The school's own zone is the fallback, which is a
+   * far better guess than a fixed default for a student at Memorial.
+   */
+  const timeZone = resolveTimeZone(formData.get("timeZone"), school?.timeZone);
 
   // Portal credentials. Google OAuth authorises mail, calendar, and Drive, but
   // it does not create a session on the school's LMS, and the agent has to sign
@@ -250,16 +279,16 @@ export async function completeOnboarding(
     await upsertUser({
       id: profile.userId,
       email,
-      // Google never told us their name: the connector requests neither the
-      // `profile` scope nor returns a name from /auth/callback. The nickname
-      // they chose is the honest answer, and the address is the fallback rather
-      // than inventing something. See docs/design/12 for what a real registrar
-      // name would cost.
-      name: nickname || email.split("@")[0],
+      // What the student typed, with no fallback behind it. Google never told
+      // us their name -- the grant requests no `profile` scope -- so this field
+      // is only ever as good as the question that produced it, which is why the
+      // question is now a required one. See the note at the validation above.
+      name,
       // Already E.164, straight off the verified session. Do not prefix it
       // again; the old form field was ten bare digits and this is not.
       phoneNumber: phone,
       schoolId: school!.id,
+      timeZone,
       consent: {
         terms: record("terms", true),
         sms: record("sms", true),
@@ -346,7 +375,9 @@ export async function joinWaitlist(
     };
   }
 
-  const school = getSchool(String(formData.get("schoolId") ?? "")) ?? findSchoolByEmail(email);
+  const schools = await listSchools();
+  const school =
+    getSchool(schools, String(formData.get("schoolId") ?? "")) ?? findSchoolByEmail(schools, email);
 
   // Already supported. Sending them away to wait for something they can use
   // right now would be the worst possible outcome of this form.

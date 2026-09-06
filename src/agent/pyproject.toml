@@ -1,9 +1,9 @@
 [project]
-name = "agent"
+name = "classistant-agent"
 version = "0.1.0"
-description = ""
+description = "Classistant's main conversational agent built with Google ADK."
 authors = [
-    {name = "Your Name", email = "your@email.com"},
+    {name = "Obaloluwa Odelana", email = "obaloluwa.dev@gmail.com"},
 ]
 
 dependencies = [
@@ -15,6 +15,7 @@ dependencies = [
     "google-cloud-logging>=3.12.0,<4.0.0",
     "google-cloud-aiplatform[evaluation,agent-engines]>=1.156.0",
     "protobuf>=6.31.1,<7.0.0",
+    "cachetools>=7.1.0,<8.0.0",
 ]
 requires-python = ">=3.11,<3.14"
 

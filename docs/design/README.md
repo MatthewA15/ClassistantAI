@@ -27,6 +27,7 @@ Read these before changing something that looks arbitrary. Most of it is not.
 | [18 Emulator env](18-emulator-env.md) | Why the emulator calls Secret Manager, the override file that works and the one that throws, and which three variables belong in it |
 | [19 Portal password envelope](19-portal-password-envelope.md) | Why the password left Secret Manager, which key seals it, where the username went, and what nothing can read yet |
 | [20 The signed-in area](20-dashboard.md) | The four dashboard pages, the second front door at /signin, the two kinds of promise a control can make, and why the task history is empty |
+| [21 User properties and schools](21-user-properties-and-schools.md) | The three fields the agent reads, why the name is asked for rather than taken from Google, and the schools collection |
 
 ## Ground rules that apply everywhere
 

@@ -150,5 +150,8 @@ is doing the heaviest lifting on the page: it is the entire reason a student
 would pick this over a to-do app, and it is stated as a fact rather than a
 benefit.
 
-Numbers in copy come from `LIVE_SCHOOLS.length`, never typed. When a school is
-verified and added, the page updates itself.
+Numbers in copy are counted from the live schools, never typed. When a school
+is verified and added, the page updates itself. The count comes from the
+`schools` collection in Firestore now rather than a module constant, so adding a
+campus no longer needs a deploy -- see
+[21 User properties and schools](21-user-properties-and-schools.md).

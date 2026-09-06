@@ -19,7 +19,7 @@ import { Choice, Field, TextInput, formatPhone } from "@/components/onboarding/f
 import { PhoneVerifyScene } from "@/components/onboarding/phoneScenes";
 import { Shell } from "@/components/onboarding/shell";
 import { LogoMark } from "@/components/brand/LogoMark";
-import { useSchoolTheme } from "@/components/theme/SchoolTheme";
+import { useSchoolTheme, useSchools } from "@/components/theme/SchoolTheme";
 import { ACCESS_ITEMS, defaultAccess, type AccessKey } from "@/data/access";
 import { CONSENT_COPY } from "@/data/consent";
 import { getSchool, type School } from "@/data/schools";
@@ -116,10 +116,11 @@ export type ConnectedAccount = {
 export function OnboardingWizard({ connected }: { connected: ConnectedAccount | null }) {
   const params = useSearchParams();
   const { school: themedSchool, setSchool } = useSchoolTheme();
+  const schools = useSchools();
 
   const preselected = params.get("school") ?? connected?.schoolId;
   const [school, setLocalSchool] = useState<School | null>(
-    preselected ? (getSchool(preselected) ?? null) : null,
+    preselected ? (getSchool(schools, preselected) ?? null) : null,
   );
   const [unsupported, setUnsupported] = useState<School | null>(null);
 
@@ -157,12 +158,40 @@ export function OnboardingWizard({ connected }: { connected: ConnectedAccount | 
    * page load, so there is no moment where this component learns it on its own.
    * Holding it in state would only create somewhere for a stale value to live.
    */
-  const identity: Identity | null = connected?.email
-    ? { email: connected.email, name: connected.email.split("@")[0] }
-    : null;
+  const identity: Identity | null = connected?.email ? { email: connected.email } : null;
 
-  const [nickname, setNickname] = useState("");
-  const [editingNickname, setEditingNickname] = useState(false);
+  /*
+   * The student's name, asked for rather than guessed.
+   *
+   * It used to default to the local part of the school address and was editable
+   * behind a "Change nickname" link most people never pressed. Nothing read it,
+   * so that was free. Issue #36 made the agent greet students by it, at which
+   * point the default started producing "Hey jokafor3" and the field had to
+   * become a real question. Google cannot answer it for us: the grant requests
+   * no `profile` scope, by decision, see docs/design/12.
+   */
+  const [name, setName] = useState("");
+
+  /*
+   * The browser's IANA zone, carried to the server on the final submit.
+   *
+   * Same reasoning as the settings form: the request carries no timezone, and
+   * the IP and the area code are both wrong for the students most likely to
+   * care. Read in an effect rather than during render because
+   * `Intl.DateTimeFormat` is a browser API and the first paint is the server's.
+   *
+   * Empty is a fine value to submit. `resolveTimeZone` falls back to the
+   * school's own campus zone, which is a better guess than any fixed default.
+   */
+  const [timeZone, setTimeZone] = useState("");
+  useEffect(() => {
+    try {
+      setTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone ?? "");
+    } catch {
+      // No Intl, or a browser that will not name the zone. The school's zone
+      // is what the student gets, which is what the server does with "".
+    }
+  }, []);
 
   /*
    * Step 0. `pending` is Firebase's handle on the code it just texted; holding
@@ -213,11 +242,23 @@ export function OnboardingWizard({ connected }: { connected: ConnectedAccount | 
    * a clause inside the first.
    */
   const consentsGiven = acceptTerms && consentSms;
-  const missingConsent = !acceptTerms
-    ? consentSms
-      ? "Accept the terms and privacy policy to finish."
-      : "Accept the terms, and agree to the texts, to finish."
-    : "Agree to receive the texts to finish.";
+
+  /*
+   * The name joins the two consents in gating the button, for the same reason
+   * they do: the server rejects a submit without it, and a student should find
+   * that out before pressing rather than after. It is listed first in the
+   * message because it is the field they can see and the consents are boxes
+   * they have to scroll past.
+   */
+  const named = name.trim().length > 0;
+  const canFinish = named && consentsGiven;
+  const missingRequirement = !named
+    ? "Tell us what to call you to finish."
+    : !acceptTerms
+      ? consentSms
+        ? "Accept the terms and privacy policy to finish."
+        : "Accept the terms, and agree to the texts, to finish."
+      : "Agree to receive the texts to finish.";
 
   const [busy, setBusy] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
@@ -295,7 +336,7 @@ export function OnboardingWizard({ connected }: { connected: ConnectedAccount | 
        */
       if (data.email) setSchoolEmail(data.email);
       if (data.schoolId && !school) {
-        setLocalSchool(getSchool(data.schoolId) ?? null);
+        setLocalSchool(getSchool(schools, data.schoolId) ?? null);
       }
 
       // Already granted on an earlier visit, so the consent screen has nothing
@@ -383,7 +424,7 @@ export function OnboardingWizard({ connected }: { connected: ConnectedAccount | 
   if (submitState?.ok) {
     return (
       <DoneScreen
-        name={nickname || identity?.name || ""}
+        name={name}
         phone={verifiedPhone ?? phone}
         school={school}
       />
@@ -857,38 +898,36 @@ export function OnboardingWizard({ connected }: { connected: ConnectedAccount | 
               </p>
 
               <dl className="mt-4 flex flex-col gap-4">
+                {/*
+                  An always-open field, not a value with a "change" link beside
+                  it. The other two rows in this card are facts that were proven
+                  and cannot be edited; this one is the only thing on the card
+                  we do not know, and rendering it like its neighbours was what
+                  let almost everybody leave it at the address-derived default.
+
+                  The placeholder is a prompt, not a specimen value. Putting
+                  `localPart` in there was tried on the portal username field
+                  and reads exactly like a filled-in input, which is how a
+                  student ends up staring at a disabled button.
+                */}
                 <div>
-                  <dt className="text-[0.8rem] text-body-soft">Name</dt>
-                  {editingNickname ? (
+                  <Field
+                    label="Your name"
+                    htmlFor="student-name"
+                    error={errors.name}
+                    hint="What Classy calls you in every text. A first name is plenty."
+                  >
                     <TextInput
-                      autoFocus
-                      name="nickname"
-                      value={nickname}
-                      onChange={(e) => setNickname(e.target.value)}
-                      onBlur={() => setEditingNickname(false)}
-                      placeholder="What should it call you?"
-                      className="mt-1"
-                      invalid={Boolean(errors.nickname)}
+                      id="student-name"
+                      name="name"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="What should we call you?"
+                      maxLength={40}
+                      autoComplete="given-name"
+                      invalid={Boolean(errors.name)}
                     />
-                  ) : (
-                    <dd className="mt-0.5 flex flex-wrap items-center gap-3">
-                      <span className="text-[1.02rem] font-semibold text-ink-900">
-                        {nickname || identity?.name || localPart}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setEditingNickname(true)}
-                        className="text-[0.82rem] font-semibold text-brand-600 hover:underline"
-                      >
-                        Change nickname
-                      </button>
-                    </dd>
-                  )}
-                  {!nickname ? (
-                    <p className="mt-1.5 text-[0.76rem] text-body-soft">
-                      Taken from your address. Change it to whatever you want to be called.
-                    </p>
-                  ) : null}
+                  </Field>
                 </div>
 
                 <div>
@@ -963,7 +1002,11 @@ export function OnboardingWizard({ connected }: { connected: ConnectedAccount | 
         <HiddenState
           step={step}
           values={{
-            nickname,
+            name,
+            // Never rendered as a visible control on any step, so it is only
+            // ever here. The student has nothing to say about it: it is what
+            // their browser reports.
+            timeZone,
             portalUser,
             portalPassword,
             acceptTerms: acceptTerms ? "on" : "",
@@ -985,6 +1028,22 @@ export function OnboardingWizard({ connected }: { connected: ConnectedAccount | 
         {submitState && !submitState.ok ? (
           <p role="alert" className="mt-6 rounded-xl bg-paper p-4 text-[0.86rem] text-ink-800 ring-1 ring-line">
             {submitState.message}
+            {/*
+              `schoolId` and `email` have no field on this screen to attach to,
+              and without this they were set by the server and rendered nowhere:
+              the student got a bare "Some details still need fixing" while
+              every visible input was filled in correctly. Both are reachable --
+              schoolId whenever the school catalogue could not be read, email if
+              the address stops matching the school's domain -- and neither is
+              something the student can fix from here, so the message has to at
+              least say what happened.
+            */}
+            {errors.schoolId || errors.email ? (
+              <span className="mt-2 block text-body">
+                {errors.schoolId ?? errors.email} Reload the page and try again, and if it
+                keeps happening it is our end, not yours.
+              </span>
+            ) : null}
           </p>
         ) : null}
 
@@ -1020,7 +1079,7 @@ export function OnboardingWizard({ connected }: { connected: ConnectedAccount | 
             <div className="flex flex-col items-end gap-2">
               <button
                 type="submit"
-                disabled={submitting || !consentsGiven}
+                disabled={submitting || !canFinish}
                 className="rounded-xl bg-brand-600 px-8 py-4 text-[1rem] font-bold text-white shadow-[0_12px_28px_-12px_var(--color-brand-600)] transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-line disabled:text-body-soft disabled:shadow-none"
               >
                 {submitting ? "Sending..." : "Send welcome gift"}
@@ -1030,9 +1089,9 @@ export function OnboardingWizard({ connected }: { connected: ConnectedAccount | 
                   after. A disabled control with no stated reason is the trap
                   the portal username field fell into: a student reads it as
                   broken, because nothing on screen tells them otherwise. */}
-              {!consentsGiven && !submitting ? (
+              {!canFinish && !submitting ? (
                 <p className="text-right text-[0.8rem] leading-[1.5] text-body-soft">
-                  {missingConsent}
+                  {missingRequirement}
                 </p>
               ) : null}
             </div>
@@ -1144,7 +1203,7 @@ function HiddenState({ step, values }: { step: number; values: Record<string, st
     // number and the code are deliberately absent from the form entirely:
     // neither is submitted, they reach the server by being verified.
     2: ["portalUser", "portalPassword"],
-    3: ["nickname", "acceptTerms", "consentSms", "acceptMarketing"],
+    3: ["name", "acceptTerms", "consentSms", "acceptMarketing"],
   };
   const skip = new Set(rendered[step] ?? []);
   return (

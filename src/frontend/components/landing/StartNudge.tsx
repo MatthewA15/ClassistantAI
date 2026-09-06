@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSceneClock } from "@/components/landing/sceneParts";
-import { useSchoolTheme } from "@/components/theme/SchoolTheme";
-import { LIVE_SCHOOLS, schoolInitials, type School } from "@/data/schools";
+import { useSchoolTheme, useSchools } from "@/components/theme/SchoolTheme";
+import { liveSchools, schoolInitials, type School } from "@/data/schools";
 import { cn } from "@/lib/cn";
 
 /**
@@ -208,7 +208,9 @@ function NudgeScene() {
   const pressingChip = t >= B.clickChip && t < B.clickChip + 240;
   const pressingCta = t >= B.clickCta && t < B.clickCta + 320;
 
-  const schools = LIVE_SCHOOLS.slice(0, 2);
+  // Two chips, because the scene is a demonstration of the real row rather
+  // than a copy of it.
+  const schools = liveSchools(useSchools()).slice(0, 2);
   const chosen = schools[0];
 
   // The site's own theme colour once a school is picked, exactly as the real
@@ -228,11 +230,25 @@ function NudgeScene() {
   const notHereW = 12 + textWidth("+ Mine is not here", CHIP_TEXT) + 10;
   const notHereX = x;
 
+  /*
+   * `laid[0]` is NOT guaranteed, and assuming it was is a crash.
+   *
+   * The chips come from the school list now, and that list is empty whenever
+   * Firestore is unseeded or unreachable. `chosen` is optional-chained
+   * everywhere below, which made the empty case look handled; this branch was
+   * the one place reading a chip by index. With no chips it threw
+   * "Cannot read properties of undefined" from inside a client render about a
+   * second after the card opened, and there is no error boundary under app/,
+   * so it took the whole landing page with it.
+   *
+   * Reduced motion hid it in testing: it pins the clock to `restAt`, which
+   * takes the third branch and never touches `laid`.
+   */
   const cursor =
     t < B.reachChip
       ? { x: 240, y: 172 }
       : t < B.reachCta
-        ? { x: laid[0].x + 34, y: CHIP_Y + 15 }
+        ? { x: (laid[0]?.x ?? 16) + 34, y: CHIP_Y + 15 }
         : { x: 252, y: 146 };
 
   return (

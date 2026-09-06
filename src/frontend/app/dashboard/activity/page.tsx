@@ -38,7 +38,7 @@ export default async function ActivityPage() {
     getActivity(session.uid),
   ]);
 
-  const prefs = readNotifications(account?.notifications);
+  const prefs = readNotifications(account?.notifications, account?.timeZone);
 
   return (
     <>

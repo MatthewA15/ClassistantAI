@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { DashboardFrame } from "@/components/dashboard/chrome";
 import { getSchool } from "@/data/schools";
 import { getSession } from "@/lib/authSession";
+import { listSchools } from "@/lib/schools";
 import { getUser } from "@/lib/users";
 
 export const metadata: Metadata = {
@@ -62,7 +63,7 @@ export default async function DashboardLayout({
 
   return (
     <DashboardFrame
-      school={record.schoolId ? (getSchool(record.schoolId) ?? null) : null}
+      school={record.schoolId ? (getSchool(await listSchools(), record.schoolId) ?? null) : null}
       phone={session.phone}
     >
       {children}

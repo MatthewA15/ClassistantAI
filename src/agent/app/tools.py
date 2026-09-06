@@ -2,15 +2,23 @@
 
 import logging
 import os
-
+from datetime import datetime
+from zoneinfo import ZoneInfo
 import httpx
 from google.adk.tools import ToolContext
+from google.adk.memory.memory_entry import MemoryEntry
+from google.genai.types import Content, Part
+from pydantic import BaseModel
+from typing import Literal
 
 from .util import get_id_token
+from .callbacks import reset_turn_counter
 
 logger = logging.getLogger(__name__)
 
 _TWILIO_SEND_URL = os.environ.get("TWILIO_SEND_URL")
+_BRAVE_API_KEY = os.environ.get("BRAVE_API_KEY")
+_BRAVE_LLM_CONTEXT_URL = "https://api.search.brave.com/res/v1/llm/context"
 _REQUEST_TIMEOUT_S = 30
 
 
@@ -39,6 +47,61 @@ def _error_response(
     return {"ok": False, "error": error}
 
 
+async def search_memories(query: str, tool_context: ToolContext):
+    """Query this tool when you need to fetch information about user preferences."""
+    try:
+        return await tool_context.search_memory(query)
+    except ValueError as e:
+        return _error_response(
+            code="memory_service_not_available",
+            message=str(e),
+            retryable=False
+        )
+
+
+class Fact(BaseModel):
+    fact: str
+    # Helps the agent categorize its thoughts
+    fact_type: Literal["user_preference", "reminder", "agent_learning"]
+
+
+async def save_to_memory(important_facts: list[Fact],
+                         tool_context: ToolContext) -> dict:
+    """
+    Use this tool to save important facts, deadlines, reminders and your learnings to long-term memory.
+    """
+
+    try:
+        await tool_context.add_memory(
+            memories=[
+                MemoryEntry(
+                    content=Content(
+                        role="model",
+                        parts=[Part.from_text(text=fact.fact)]
+                    ),
+                    custom_metadata={"fact_type": fact.fact_type},
+                    timestamp=datetime.now().isoformat()
+                )
+                for fact in important_facts
+            ],
+            custom_metadata={
+                "enable_consolidation": True
+            })
+
+        # The agent just saved to memory, so reset the periodic nudge
+        # counter so the next reminder interval starts fresh.
+        reset_turn_counter(tool_context.state)
+
+        return {"ok": True,
+                "message": f"Successfully added {len(important_facts)} facts to long-term memory."}
+    except ValueError as e:
+        return _error_response(
+            code="memory_service_not_available",
+            message=str(e),
+            retryable=False
+        )
+
+
 def send_text(messages: list[str], tool_context: ToolContext) -> dict:
     """Send one or more SMS text messages to the student.
 
@@ -50,6 +113,14 @@ def send_text(messages: list[str], tool_context: ToolContext) -> dict:
             least one message. Each message should be concise and easy to
             read on a phone.
     """
+
+    if os.environ.get("DEBUG", "false") != "false":
+        return _error_response(
+            "debug_mode",
+            "We're in debug mode. Don't use this function. Just respond normally",
+            retryable=False
+        )
+
     if not _TWILIO_SEND_URL:
         logger.error("send_text: TWILIO_SEND_URL is not set.")
         return _error_response(
@@ -60,10 +131,7 @@ def send_text(messages: list[str], tool_context: ToolContext) -> dict:
             retryable=False,
         )
 
-    # Use debug user id in dev
-    user_id = tool_context.user_id \
-        if os.environ.get("DEBUG", "false") == "false" \
-        else os.environ.get("TEST_USER_ID")
+    user_id = tool_context.user_id
     payload = {"user_id": user_id, "messages": messages}
 
     # Acquire a Google-signed ID token for service-to-service auth on Cloud
@@ -143,3 +211,135 @@ def send_text(messages: list[str], tool_context: ToolContext) -> dict:
             status_code=resp.status_code,
             body=body,
         )
+
+
+def to_timezone(
+    datetime_str: str,
+    target_timezone: str,
+    source_timezone: str = "UTC",
+) -> dict:
+    """Convert a datetime string from one timezone to another.
+
+    Use this tool when you need to translate a wall-clock time the agent
+    computed (e.g. an assignment due date or a reminder) into the student's
+    local timezone so the text you send reads naturally to them.
+
+    Args:
+        datetime_str: A datetime in ``"YYYY-mm-dd HH:MM"`` (24-hour) format,
+            e.g. ``"2026-08-29 14:30"``. It is interpreted as being in
+            ``source_timezone``.
+        target_timezone: An IANA timezone name to convert *to*, e.g.
+            ``"America/New_York"`` or ``"Africa/Lagos"``.
+        source_timezone: An IANA timezone name that ``datetime_str`` is
+            currently expressed in. Defaults to ``"UTC"``.
+
+    Returns:
+        On success, ``{"ok": True, "datetime": "...", "timezone": "..."}``
+        where ``datetime`` is the converted time in ``"YYYY-mm-dd HH:MM"``
+        format and ``timezone`` is the resolved target timezone name. On
+        failure, ``{"ok": False, "error": {...}}``.
+    """
+    try:
+        naive = datetime.strptime(datetime_str, "%Y-%m-%d %H:%M")
+    except ValueError as exc:
+        return _error_response(
+            "bad_datetime_format",
+            f"datetime_str must be in 'YYYY-mm-dd HH:MM' format, "
+            f"got {datetime_str!r}: {exc}",
+            retryable=True,
+        )
+
+    try:
+        source_tz = ZoneInfo(source_timezone)
+        localized = naive.replace(tzinfo=source_tz)
+    except (KeyError, ValueError) as exc:
+        return _error_response(
+            "bad_timezone",
+            f"source_timezone {source_timezone!r} is not a valid IANA "
+            f"timezone: {exc}",
+            retryable=True,
+        )
+
+    try:
+        target_tz = ZoneInfo(target_timezone)
+    except (KeyError, ValueError) as exc:
+        return _error_response(
+            "bad_timezone",
+            f"target_timezone {target_timezone!r} is not a valid IANA "
+            f"timezone: {exc}",
+            retryable=True,
+        )
+
+    converted = localized.astimezone(target_tz)
+
+    return {
+        "ok": True,
+        "datetime": converted.strftime("%Y-%m-%d %H:%M"),
+        "timezone": str(converted.tzinfo),
+    }
+
+
+def web_search(query: str) -> dict:
+    """Search the web for up-to-date information.
+
+    Use this tool when you need current, factual information that may not be
+    in your training data — e.g. recent news, live data, unfamiliar topics, or
+    anything you want to ground in real sources. Returns pre-extracted web
+    content optimized for grounding your answers.
+
+    Args:
+        query: The user's search query. Maximum 400 characters and 50 words.
+    """
+    if not _BRAVE_API_KEY:
+        logger.error("web_search: BRAVE_API_KEY is not set.")
+        return _error_response(
+            "not_configured",
+            "Web search is not configured (missing API key). "
+            "This is an internal error — do not retry; respond using what "
+            "you already know and note that web search is unavailable.",
+            retryable=False,
+        )
+
+    headers = {
+        "Accept": "application/json",
+        "Accept-Encoding": "gzip",
+        "X-Subscription-Token": _BRAVE_API_KEY,
+    }
+    params = {"q": query, "country": "CA", "safesearch": "moderate"}
+
+    try:
+        resp = httpx.get(
+            _BRAVE_LLM_CONTEXT_URL,
+            params=params,
+            headers=headers,
+            timeout=_REQUEST_TIMEOUT_S,
+        )
+    except httpx.RequestError as exc:
+        logger.error("web_search: request failed: %s", exc)
+        return _error_response(
+            "network_error",
+            "Could not reach the Brave Search API. It may be temporarily "
+            "unavailable — you may try again shortly.",
+            retryable=True,
+            detail=str(exc),
+        )
+
+    if not resp.is_success:
+        body = resp.text
+        logger.error(
+            "web_search: upstream returned %s: %s", resp.status_code, body
+        )
+
+        try:
+            return resp.json()
+        except Exception:
+            return _error_response(
+                "upstream_error",
+                "The Brave Search API rejected the request.",
+                retryable=False,
+                status_code=resp.status_code,
+                body=body,
+            )
+
+    data = resp.json()
+    return {"ok": True, "data": data}

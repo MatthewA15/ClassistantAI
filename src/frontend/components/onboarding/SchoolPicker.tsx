@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { SCHOOLS, type School } from "@/data/schools";
+import { searchSchools, type School } from "@/data/schools";
+import { useSchools } from "@/components/theme/SchoolTheme";
 import { TextInput } from "@/components/onboarding/fields";
 import { cn } from "@/lib/cn";
 
@@ -23,24 +24,13 @@ export function SchoolPicker({
   onUnsupported: (school: School) => void;
 }) {
   const [query, setQuery] = useState("");
+  const schools = useSchools();
 
-  const results = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const matched = q
-      ? SCHOOLS.filter((s) =>
-          [s.name, s.short ?? "", s.emailDomain, s.province].some((f) =>
-            f.toLowerCase().includes(q),
-          ),
-        )
-      : SCHOOLS;
-    // Supported first, then confirmed-but-unopened, then unchecked, and
-    // alphabetical inside each group. A plain `live ? -1 : 1` was fine while
-    // there were two statuses; with three it sorted `pending` above `soon`.
-    const rank = { live: 0, soon: 1, pending: 2 };
-    return [...matched].sort(
-      (a, b) => rank[a.status] - rank[b.status] || a.name.localeCompare(b.name),
-    );
-  }, [query]);
+  // No local sort any more. `listSchools` orders the collection by status and
+  // then by name before it ever reaches the browser (lib/schools.ts), so
+  // re-sorting here would be a second copy of that rule, free to disagree with
+  // the first the next time either is edited.
+  const results = useMemo(() => searchSchools(schools, query), [schools, query]);
 
   return (
     <div className="flex flex-col gap-3">
@@ -131,6 +121,10 @@ export function SchoolPicker({
           );
         })}
 
+        {/* Only one empty state to render. `listSchools` falls back to the
+            seeded catalogue rather than returning nothing, so a student can
+            never reach this screen with no schools to search -- which means
+            "no results" always means what it says, and never a failed read. */}
         {results.length === 0 ? (
           <li className="rounded-xl border border-dashed border-line bg-paper p-5 text-center text-[0.88rem] text-body">
             No match for &ldquo;{query}&rdquo;. Classistant only works where student email runs

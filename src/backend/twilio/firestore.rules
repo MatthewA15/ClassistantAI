@@ -1,18 +1,74 @@
 rules_version='2'
 
+/*
+ * Deny everything, then open `schools` for reading.
+ *
+ * ## Why a blanket deny is safe here
+ *
+ * Nothing in this product reads Firestore from a browser. The frontend goes
+ * through firebase-admin (src/frontend/lib/firebaseAdmin.ts), the Twilio
+ * functions through firebase_admin (src/backend/twilio/functions/db.py), and
+ * the connector through its own service account. The admin SDK bypasses these
+ * rules entirely, so none of that traffic is affected by anything below.
+ *
+ * The client SDK is loaded for exactly one thing -- phone auth, in
+ * src/frontend/lib/firebaseClient.ts, which imports `firebase/app` and
+ * `firebase/auth` and no Firestore at all. So `if false` costs nothing today,
+ * and the day somebody does add a client read they will get a permission error
+ * rather than silently shipping open access to the `users` collection.
+ *
+ * ## What this replaced, and a correction worth keeping
+ *
+ * This FILE used to hold the default sandbox rule: `match /{document=**}`
+ * granting read and write to anyone until 2026-09-21. Read literally that is
+ * open access to every student's profile, phone number, and consent evidence,
+ * three weeks from an expiry that fails closed.
+ *
+ * It was never deployed. The live ruleset on `classisstant` as of 2026-08-25
+ * was already `allow read, write: if false` on everything, so production was
+ * locked down the whole time and the file was simply stale. PR #42 originally
+ * reported this the other way round, which was wrong.
+ *
+ * That divergence was the actual hazard: the repo said something far more
+ * permissive than production, so the next person to run
+ * `firebase deploy --only firestore:rules` from a checkout would have opened
+ * the entire database without meaning to. Keeping this file equal to what is
+ * deployed is the point of it existing.
+ *
+ * The only behavioural change from the deployed state is the `schools` block
+ * below, which @obaodelana asked for on PR #42. Nothing in the product needs it
+ * today -- every reader uses the admin SDK -- so it exists for a future
+ * client-side read of what is already public marketing data.
+ */
 service cloud.firestore {
   match /databases/{database}/documents {
+    /*
+     * The school catalogue (issue #36). Reference data about real institutions,
+     * already public on the marketing page: readable by anyone, writable by
+     * nobody through a client.
+     *
+     * Seeding runs `npm run seed:schools`, which goes through the admin SDK and
+     * is not governed by this rule.
+     */
+    match /schools/{schoolId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    /*
+     * Everything else, `users` and its credential subcollections above all.
+     *
+     * This has to stay `if false` rather than growing a
+     * `request.auth.uid == uid` allowance. Students authenticate with Firebase
+     * phone auth, so such a rule would look reasonable and would hand every
+     * student direct write access to their own `access` map, `school_id`, and
+     * consent records -- all of which are evidence or enforcement that the
+     * server writes deliberately. The dashboard already edits them through
+     * server actions that check the session cookie. See the rule at the top of
+     * src/frontend/app/dashboard/actions.ts.
+     */
     match /{document=**} {
-      // This rule allows anyone with your database reference to view, edit,
-      // and delete all data in your database. It is useful for getting
-      // started, but it is configured to expire after 30 days because it
-      // leaves your app open to attackers. At that time, all client
-      // requests to your database will be denied.
-      //
-      // Make sure to write security rules for your app before that time, or
-      // else all client requests to your database will be denied until you
-      // update your rules.
-      allow read, write: if request.time < timestamp.date(2026, 9, 21);
+      allow read, write: if false;
     }
   }
 }

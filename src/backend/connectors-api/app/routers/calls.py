@@ -192,9 +192,10 @@ class CallIn(BaseModel):
         ...,
         min_length=8,
         description=(
-            "What the call is for, in plain language, carrying every concrete "
-            "fact the caller needs: names, dates, course codes, reference "
-            "numbers, and what a good outcome is. CALL-E cannot ask us "
+            "What the call is for, written as an instruction to the person "
+            "making the call, and carrying every concrete fact they need: "
+            "names, dates, course codes, reference numbers, and what a "
+            "good outcome is. The caller cannot come back to ask "
             "anything once the call starts, so a goal that says 'ask about my "
             "registration' produces a worse call than one that says 'ask "
             "whether the late-add petition for CHEM 204, submitted Aug 24 "
@@ -206,8 +207,21 @@ class CallIn(BaseModel):
 
 
 class CallStartedResponse(BaseModel):
-    run_id: str
-    status: str = "started"
+    run_id: str = Field(
+        ...,
+        description=(
+            "The handle for this call. Pass it to GET /calls/{run_id} to find "
+            "out what happened. It is an opaque string -- keep it exactly as "
+            "given. Losing it means a call that cannot be followed up."
+        ),
+    )
+    status: str = Field(
+        "started",
+        description=(
+            "Always 'started'. It means the run was submitted, NOT that the "
+            "call has happened yet -- the phone rings afterwards."
+        ),
+    )
     to_phone_masked: str = Field(
         ..., description="The student's own number, masked."
     )
@@ -215,11 +229,14 @@ class CallStartedResponse(BaseModel):
         True,
         description=(
             "False when the call was placed but this service could not record "
-            "it. The call is real and `run_id` is valid at CALL-E either way; "
-            "what is missing is our own call_runs document, so "
-            "GET /calls/{run_id} will 404 for this run and it will not appear "
-            "in GET /calls. Treat it as 'the call is happening, hold onto this "
-            "id yourself', not as a failure to call."
+            "it. The call is real, the phone will still ring, and `run_id` is "
+            "still valid at CALL-E; what is missing is our own call_runs "
+            "document, so GET /calls/{run_id} will 404 for this run and it "
+            "will not appear in GET /calls. Its outcome can therefore never "
+            "be polled -- send the student the information directly instead "
+            "of waiting for a summary. Do NOT place the call again: it is "
+            "already happening. Treat false as 'the call is happening but we "
+            "lost our copy of the paperwork', never as a failure to call."
         ),
     )
 
@@ -233,20 +250,58 @@ class CallRunResponse(BaseModel):
     run_id: str
     status: str = Field(..., description="CALL-E's uppercase state, e.g. COMPLETED.")
     in_progress: bool = Field(
-        ..., description="Derived: CALL-E is still asking to be polled."
+        ...,
+        description=(
+            "True while the call is still going and CALL-E is still asking to "
+            "be polled. Poll this endpoint again rather than starting another "
+            "call -- starting one places a second real phone call."
+        ),
     )
     poll_after_seconds: int | None = Field(
-        None, description="How long CALL-E asks us to wait before polling again."
+        None,
+        description=(
+            "Roughly how long to wait before polling again, in seconds "
+            "(typically 10). Null once the call is over."
+        ),
     )
-    message: str | None = None
-    summary: str | None = None
-    task_completed: bool | None = None
+    message: str | None = Field(
+        None, description="CALL-E's own human-readable status line, if any."
+    )
+    summary: str | None = Field(
+        None,
+        description=(
+            "What the call achieved, in prose. Null until the call ends. This "
+            "is the right basis for the follow-up text to the student."
+        ),
+    )
+    task_completed: bool | None = Field(
+        None,
+        description=(
+            "Whether the goal was met, once the call is over; null while it "
+            "is still running. True means the student engaged and the goal "
+            "was met. False means nobody answered or the goal was not met -- "
+            "send the information by text instead, and do not call again."
+        ),
+    )
     confidence: float | None = Field(
-        None, description="CALL-E's completion confidence, 0..1."
+        None, description="CALL-E's confidence in `task_completed`, 0..1."
     )
-    evidence: list[str] = Field(default_factory=list)
-    transcript: str | None = None
-    duration_seconds: int | None = None
+    evidence: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Quotes or facts supporting the outcome. Empty until the call ends."
+        ),
+    )
+    transcript: str | None = Field(
+        None,
+        description=(
+            "Plain-text transcript of the call, safe to quote from. Null until "
+            "the call ends."
+        ),
+    )
+    duration_seconds: int | None = Field(
+        None, description="How long the call lasted. Null until it ends."
+    )
     activity: list[dict] = Field(
         default_factory=list, description="Projected to {ts, level, kind, message}."
     )
@@ -302,15 +357,27 @@ def _call_run_response(run_id: str, payload: dict) -> CallRunResponse:
 
 @router.post("", status_code=201, response_model=CallStartedResponse)
 def start_call(user_id: str, call: CallIn):
-    """Call the student on their own SMS-verified number and pursue `goal`.
+    """Place a real phone call to the student and pursue `goal`.
+
+    This rings an actual phone. It cannot be taken back, and it costs money
+    every time.
 
     There is no phone number in the request: v0 only ever dials the number on
-    the student's own user document. See this module's docstring for why.
+    the student's own user document, which they verified by SMS. There is no
+    way to reach anyone else from here, however `goal` is worded.
 
     Planning is slow -- CALL-E can take around 150 seconds before it accepts
-    the run -- so callers need a generous client timeout. A 201 means the run
-    was submitted, not that the call is over: the phone rings asynchronously,
-    and `GET /users/{user_id}/calls/{run_id}` is how the outcome arrives.
+    the run -- so callers need a generous client timeout.
+
+    **A 201 does not mean the call is over.** It means the run was submitted;
+    the phone rings afterwards. Poll
+    `GET /users/{user_id}/calls/{run_id}` for what actually happened.
+
+    **Never call this twice for the same goal.** A run that is still in
+    progress is not a failed run, and repeating this request places a SECOND
+    real phone call to the student rather than retrying the first. If a
+    response was lost or the request timed out, poll the run or
+    `GET /users/{user_id}/calls` to find it -- do not re-post.
     """
     user = _user_doc(user_id)
     if not _calls_allowed(user):
@@ -400,8 +467,26 @@ def get_call_run(
 ):
     """Status, outcome and transcript for one call.
 
-    Poll this while `in_progress` is true, waiting `poll_after_seconds`
-    between calls. The outcome fields are null until the call ends.
+    The first poll after starting a call almost always comes back with
+    `status: "PREPARING"`, `in_progress: true` and a `poll_after_seconds`
+    (typically 10), while `summary`, `transcript` and `task_completed` are
+    still null. That is the normal beginning of a call, not a failure.
+
+    Poll again while `in_progress` is true, waiting about
+    `poll_after_seconds` between attempts. An answered call usually finishes
+    within 60-90 seconds of the run being submitted. **Never re-post to
+    `POST /users/{user_id}/calls` for a run that is still in progress** --
+    that places a second real phone call.
+
+    Once `in_progress` is false the call is over, and `task_completed` says
+    how it went: true means the student engaged and the goal was met (use
+    `summary`), false means nobody answered or the goal was not met, in which
+    case send the information by text rather than calling again.
+
+    A `404` here means this service has no record of the run -- either it
+    belongs to another student, or the call was placed but never recorded
+    (`persisted: false` on the original response). In neither case should the
+    call be repeated.
     """
     # Ownership first, and before CALL-E is touched: a run_id belonging to
     # another student must be indistinguishable from one that never existed.
