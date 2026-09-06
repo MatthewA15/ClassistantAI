@@ -1,4 +1,4 @@
-# Classistant AI Connector API — Contract v0.6 (handoff for ADK tools)
+# Classistant AI Connector API — Contract v0.9 (handoff for ADK tools)
 
 Base URL: `https://<cloud-run-url>` (local: `http://localhost:8080`). All responses JSON.
 `{user_id}` in every path below is the **Firebase UID** — the same identifier the frontend's session already carries and the `users` collection is keyed by. There is no other identifier this service accepts; a Google `sub` is never a valid `{user_id}`.
@@ -21,6 +21,23 @@ This service has no auth endpoints. Login, the OAuth authorization-code exchange
 |---|---|---|---|
 | GET | `/users/{user_id}/calendar/events?time_min&time_max&max_results` | RFC3339 times | `{events:[{id, summary, description, start, end, location, html_link}], count}` (P1) |
 | POST | `/users/{user_id}/calendar/events` | `{summary, start, end, description?, location?, timezone?}` | `{event_id, html_link, status:"created"}` (P1) |
+| PATCH | `/users/{user_id}/calendar/events/{event_id}` | `{expected_summary, user_confirmation, summary?, start?, end?, description?, location?, timezone?}` | `{event_id, html_link, status:"updated", changed_fields:[...]}` — partial update; `409` on a stale `expected_summary` (v0.9) |
+
+### Calendar writes — the guardrail dance (v0.9)
+
+`PATCH /calendar/events/{event_id}` edits an event the student already has, so it carries the same two-part guardrail as `POST /emails/drafts/{draft_id}/send`:
+
+- **`expected_summary`** (required) — the event's summary *as the agent currently believes it to be*. The endpoint fetches the event first and compares. A difference means the agent is acting on a stale read, so nothing is written and the call is a **`409`** with the same mismatch shape Gmail uses: `{detail: {detail, mismatches:[{field, expected, got}]}}`, where `expected` is what Google holds and `got` is what the request sent. `field` is `"summary"`. The fix is to re-read the event and re-confirm with the student — never to retry.
+- **`user_confirmation`** (required, non-empty) — what the student said when they approved this specific write. Blank or whitespace-only is a **`400`**, raised *before* any Google call.
+
+Two further guards, both `400` and both before the write:
+
+- **one event per call** — an `event_id` containing a comma or whitespace is rejected. There is no bulk edit path by design.
+- **at least one editable field** — a request that changes nothing is an error rather than a silent no-op the agent would report as success. `timezone` is not an editable field on its own: it sets the `timeZone` on `start`/`end` and changes nothing when sent alone.
+
+`PATCH` is a **true partial update**: only the fields present in the request body are sent to Google, so a field the agent never mentioned is never blanked out. `start`/`end` are RFC3339 and are wrapped as `{dateTime, timeZone}` (`timezone`, default `America/Toronto`). `changed_fields` echoes the field names actually sent, for the agent to relay to the student.
+
+The mismatch models (`FieldMismatch`, the `MismatchResponse` base) live in `app/routers/_guardrails.py` and are shared with Gmail. Gmail's `409` body is byte-for-byte what it was in v0.7.
 
 ## Drive / Docs (P2)
 | Method | Path | In | Out |
@@ -66,3 +83,4 @@ Every `/users/{user_id}/...` endpoint reads through `app/services/firestore_cred
 - v0.4 (**breaking**): `/auth/login` and `/auth/callback` removed — login moved to the frontend (issue #12). `{user_id}` in path params is now a Firebase UID, not a Google `sub`. Credential storage moved from Secret Manager to Firestore + KMS envelope encryption; new `500` error semantics for malformed stored credentials (see Errors).
 - v0.5 (**breaking**): corrects a false start within this same version — `/auth/callback` was briefly restored (client secret handling was mistakenly believed to require it) and then removed again for good once [`docs/ENCRYPTION_CONTRACT.md`](../../../docs/ENCRYPTION_CONTRACT.md) settled the frontend as owning the full write side, encrypt included. This service now has **zero** auth endpoints, **zero** KMS encrypt capability, and no code path that can name or touch a `school_password` credential. The `google_sub` fallback lookup on the read path is also removed — `{user_id}` is the Firebase UID with no alternate-identifier tolerance, anywhere. Credential documents are now read from `users/{user_id}/credentials/google_refresh_token` (a direct document get) rather than a queried top-level `user_credentials` collection.
 - v0.6: `POST /docs` accepts an optional `markdown` flag (default `false`), and its response gains `formatting_applied` (default `true`). Both are **additive** — no existing field changed shape or name, and `markdown: false` sends byte-for-byte the request v0.5 sent. `formatting_applied` is a declared field on `DocCreatedResponse`, so it survives the endpoint's `response_model` filtering.
+- v0.9: Calendar gains `PATCH /calendar/events/{event_id}` — a partial-update edit endpoint behind the `expected_summary` + `user_confirmation` guardrail, answering `409` with Gmail's mismatch shape when the agent's read is stale. Additive: `GET`/`POST` on `/calendar/events` are unchanged, and Gmail's `409` body is unchanged (its models simply moved to a shared `app/routers/_guardrails.py`).

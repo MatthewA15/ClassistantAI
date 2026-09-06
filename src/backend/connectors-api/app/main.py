@@ -12,7 +12,7 @@ from app.routers.drive import router as drive_router
 from app.routers.docs_service import router as docs_router
 from app.services.firestore_creds import CredentialFormatError, CredentialNotFound
 
-app = FastAPI(title="Classistant AI Connectors", version="0.5.0")
+app = FastAPI(title="Classistant AI Connectors", version="0.9.0")
 
 app.include_router(gmail_router)
 app.include_router(calendar_router)

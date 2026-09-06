@@ -9,6 +9,7 @@ from pydantic import BaseModel, EmailStr, Field
 from email.mime.text import MIMEText
 import base64
 
+from app.routers._guardrails import FieldMismatch, MismatchResponse
 from app.services.google_creds import service_for_user
 
 router = APIRouter(prefix="/users/{user_id}", tags=["gmail"])
@@ -175,18 +176,10 @@ class DraftSentResponse(BaseModel):
     status: str = "sent"
 
 
-class FieldMismatch(BaseModel):
-    field: str = Field(...,
-                       description="The field that failed to match (e.g. 'to', 'subject', 'body').")
-    expected: str = Field(..., description="The value found in the draft.")
-    got: str = Field(..., description="The value provided in the request.")
-
-
-class DraftMismatchResponse(BaseModel):
+class DraftMismatchResponse(MismatchResponse):
+    """409 body for send_draft -- same fields as before, connector-specific `detail`."""
     detail: str = Field(default="Draft content mismatch.",
                         description="Summary of the mismatch.")
-    mismatches: list[FieldMismatch] = Field(
-        default_factory=list, description="Per-field mismatch details.")
 
 
 @router.post("/emails/drafts/{draft_id}/send", status_code=200, response_model=DraftSentResponse,

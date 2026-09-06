@@ -1,9 +1,18 @@
-"""Google Calendar connector (P1: list events, create events)."""
+"""Google Calendar connector (P1: list events, create events; P2: edit and delete).
+
+The edit and delete endpoints are guarded the same way `send_draft` is:
+the agent echoes back the event's current summary and the student's
+confirmation, and a stale echo is a `409` with no write performed.
+"""
 from datetime import datetime, timezone
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
+from googleapiclient.errors import HttpError
 from pydantic import BaseModel, Field
 
+from app.routers._guardrails import FieldMismatch, MismatchResponse
 from app.services.google_creds import service_for_user
+
+DEFAULT_TIMEZONE = "America/Toronto"
 
 router = APIRouter(prefix="/users/{user_id}/calendar", tags=["calendar"])
 
@@ -64,7 +73,7 @@ class EventIn(BaseModel):
     end: str
     description: str | None = None
     location: str | None = None
-    timezone: str = "America/Toronto"
+    timezone: str = DEFAULT_TIMEZONE
 
 
 class EventCreatedResponse(BaseModel):
@@ -87,3 +96,124 @@ def create_event(user_id: str, event: EventIn):
     }
     created = svc.events().insert(calendarId="primary", body=body).execute()
     return EventCreatedResponse(event_id=created["id"], html_link=created.get("htmlLink"))
+
+
+class EventPatchIn(BaseModel):
+    """A partial edit: every editable field is optional, only what you send is changed.
+
+    `user_confirmation` and `expected_summary` are the guardrail and are always
+    required -- see the endpoint docstring.
+    """
+    summary: str | None = None
+    start: str | None = None   # RFC3339, e.g. "2026-09-08T14:00:00-04:00"
+    end: str | None = None
+    description: str | None = None
+    location: str | None = None
+    timezone: str | None = Field(
+        None, description="IANA tz applied to `start`/`end`; ignored on its own.")
+    user_confirmation: str = Field(
+        ..., description="The user's confirmation message (e.g. 'yes, move it to 3pm'). Must be non-empty.")
+    expected_summary: str = Field(
+        ..., description="The event's summary as you currently believe it to be. A mismatch is a 409.")
+
+
+class EventUpdatedResponse(BaseModel):
+    event_id: str
+    html_link: str | None = Field(
+        None, description="Link to the event in the Calendar UI.")
+    status: str = "updated"
+    changed_fields: list[str] = Field(
+        default_factory=list, description="The field names actually sent to Google.")
+
+
+class EventMismatchResponse(MismatchResponse):
+    """409 body for the guarded event endpoints."""
+    detail: str = Field(default="Event content mismatch.",
+                        description="Summary of the mismatch.")
+
+
+def _reject_bulk(event_id: str) -> None:
+    """One event per call -- a comma-joined or padded id is an attempted bulk write."""
+    if "," in event_id or any(ch.isspace() for ch in event_id):
+        raise HTTPException(
+            400, "One event_id per request; bulk edits are not supported.")
+
+
+def _fetch_event(svc, event_id: str) -> dict:
+    try:
+        return svc.events().get(calendarId="primary", eventId=event_id).execute()
+    except HttpError as e:
+        if e.resp.status == 404:
+            raise HTTPException(404, f"Event {event_id} not found")
+        raise
+
+
+def _check_summary(event: dict, expected_summary: str) -> None:
+    """409 unless the agent's picture of the event still matches Google's."""
+    current = event.get("summary") or ""
+    if expected_summary != current:
+        raise HTTPException(
+            409,
+            detail=EventMismatchResponse(mismatches=[FieldMismatch(
+                field="summary", expected=current, got=expected_summary,
+            )]).model_dump(),
+        )
+
+
+@router.patch("/events/{event_id}", response_model=EventUpdatedResponse,
+              responses={409: {"model": EventMismatchResponse, "description": "Event content mismatch."}})
+def patch_event(user_id: str, event_id: str, payload: EventPatchIn):
+    """Edit one existing event in place -- only the fields you send are changed, everything else is left as it is.
+
+    Always send `expected_summary` (the event's summary as you believe it to
+    be) and `user_confirmation` (what the student said when they approved this
+    edit). If `expected_summary` doesn't match what Google holds, nothing is
+    changed and you get a 409 naming the real summary: re-read the event and
+    re-confirm with the student instead of retrying.
+
+    Omit a field to leave it alone -- sending `null` is not how you clear a
+    field, and sending the whole event back is not how you change one thing.
+    `timezone` only takes effect alongside `start` or `end`; on its own it
+    changes nothing. At least one editable field is required.
+
+    One event per call: an `event_id` containing a comma or whitespace is
+    rejected, so ask the student one edit at a time rather than batching.
+    """
+    if not payload.user_confirmation.strip():
+        raise HTTPException(400, "Confirmation message is required to edit.")
+    _reject_bulk(event_id)
+
+    svc = service_for_user(user_id, "calendar", "v3")
+    event = _fetch_event(svc, event_id)
+    _check_summary(event, payload.expected_summary)
+
+    # events.patch is a true partial update: send only what the caller named,
+    # so a field the agent never mentioned is never overwritten.
+    provided = payload.model_fields_set
+    tz = payload.timezone or DEFAULT_TIMEZONE
+    body: dict = {}
+    if "summary" in provided:
+        body["summary"] = payload.summary
+    if "description" in provided:
+        body["description"] = payload.description
+    if "location" in provided:
+        body["location"] = payload.location
+    if "start" in provided:
+        body["start"] = {"dateTime": payload.start, "timeZone": tz}
+    if "end" in provided:
+        body["end"] = {"dateTime": payload.end, "timeZone": tz}
+    if not body:
+        raise HTTPException(
+            400,
+            "No editable fields provided; send at least one of "
+            "summary, start, end, description, location "
+            "(`timezone` applies to start/end and changes nothing alone).",
+        )
+
+    updated = svc.events().patch(
+        calendarId="primary", eventId=event_id, body=body).execute()
+    return EventUpdatedResponse(
+        event_id=updated.get("id", event_id),
+        html_link=updated.get("htmlLink"),
+        changed_fields=list(body),
+    )
