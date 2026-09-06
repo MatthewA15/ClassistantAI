@@ -167,7 +167,7 @@ def _reject_bulk(event_id: str) -> None:
     """One event per call -- a comma-joined or padded id is an attempted bulk write."""
     if "," in event_id or any(ch.isspace() for ch in event_id):
         raise HTTPException(
-            400, "One event_id per request; bulk edits are not supported.")
+            400, "One event_id per request; bulk edits and deletes are not supported.")
 
 
 def _fetch_event(svc, event_id: str) -> dict:
@@ -261,8 +261,8 @@ def patch_event(user_id: str, event_id: str, payload: EventPatchIn):
         calendarId="primary", eventId=event_id, body=body).execute()
     # Report what was actually touched: an instance edit and a series edit
     # look identical from the request, and the student needs to be told
-    # which one happened. Fall back to the pre-patch event, since a patch
-    # that *adds* recurrence only shows up in the updated copy.
+    # which one happened. Read the patched copy first -- a patch that *adds*
+    # recurrence only shows there -- then fall back to the event as fetched.
     recurring_event_id = updated.get(
         "recurringEventId") or event.get("recurringEventId")
     return EventUpdatedResponse(
@@ -274,3 +274,89 @@ def patch_event(user_id: str, event_id: str, payload: EventPatchIn):
                               or event.get("recurrence")),
         recurring_event_id=recurring_event_id,
     )
+
+
+class EventDeleteIn(BaseModel):
+    """The guardrail, and nothing else -- a delete has no editable fields.
+
+    Sent in the JSON body of the DELETE request.
+    """
+    user_confirmation: str = Field(
+        ..., description="The user's confirmation message (e.g. 'yes, cancel it'). Must be non-empty.")
+    expected_summary: str = Field(
+        ..., description="The event's summary as you currently believe it to be. A mismatch is a 409.")
+
+
+class DeletedEvent(BaseModel):
+    """What was removed, captured before the delete -- the record the student gets."""
+    id: str
+    summary: str | None = None
+    start: EventStartEnd | None = None
+    end: EventStartEnd | None = None
+    location: str | None = None
+    is_recurring_instance: bool = Field(
+        False, description="True if what was deleted was ONE occurrence of a recurring series.")
+    is_series_master: bool = Field(
+        False, description="True if what was deleted was the series itself -- EVERY occurrence is gone.")
+    recurring_event_id: str | None = Field(
+        None, description="The series id, when the event deleted was one of its instances.")
+
+
+class EventDeletedResponse(BaseModel):
+    status: str = "deleted"
+    deleted_event: DeletedEvent = Field(
+        ..., description="The event as it was immediately before deletion.")
+
+
+@router.delete("/events/{event_id}", response_model=EventDeletedResponse,
+               responses={409: {"model": EventMismatchResponse, "description": "Event content mismatch."}})
+def delete_event(user_id: str, event_id: str, payload: EventDeleteIn):
+    """Delete one existing event from the user's primary calendar. This cannot be undone.
+
+    Send `expected_summary` (the event's summary as you believe it to be) and
+    `user_confirmation` (what the student said when they approved this
+    deletion) in the JSON body. If `expected_summary` doesn't match what Google
+    holds, nothing is deleted and you get a 409 naming the real summary --
+    you are looking at a stale read, so re-read the event and re-confirm with
+    the student rather than retrying.
+
+    RECURRING EVENTS -- read before deleting one. `list_events` expands series,
+    so the ids it returns are usually INSTANCE ids of a recurring event
+    ("seriesid_20260908T140000Z"). Deleting an instance id cancels ONE
+    occurrence; deleting the bare series id (the part before the underscore)
+    removes EVERY occurrence for the term, in one irreversible call. Ask the
+    student which they mean -- "just next Tuesday's class, or the whole
+    series?" -- and act only on their answer.
+
+    The response returns `deleted_event`: what the event was immediately
+    before it was removed, including `is_recurring_instance`,
+    `is_series_master` and `recurring_event_id`. Relay it to the student as
+    the record of what is gone; nothing else records it.
+
+    One event per call: an `event_id` containing a comma or whitespace is
+    rejected. There is no bulk delete, deliberately.
+    """
+    if not payload.user_confirmation.strip():
+        raise HTTPException(400, "Confirmation message is required to delete.")
+    _reject_bulk(event_id)
+
+    svc = service_for_user(user_id, "calendar", "v3")
+    event = _fetch_event(svc, event_id)
+    _check_summary(event, payload.expected_summary)
+
+    # Capture it first: after the delete there is nowhere left to read this
+    # from, and the student is owed a record of what was cancelled.
+    recurring_event_id = event.get("recurringEventId")
+    deleted = DeletedEvent(
+        id=event.get("id", event_id),
+        summary=event.get("summary"),
+        start=event.get("start"),
+        end=event.get("end"),
+        location=event.get("location"),
+        is_recurring_instance=bool(recurring_event_id),
+        is_series_master=bool(event.get("recurrence")),
+        recurring_event_id=recurring_event_id,
+    )
+
+    svc.events().delete(calendarId="primary", eventId=event_id).execute()
+    return EventDeletedResponse(deleted_event=deleted)

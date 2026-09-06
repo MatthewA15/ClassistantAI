@@ -42,6 +42,10 @@ class _FakeEvents:
         self.calls.append(("patch", calendarId, eventId, body))
         return _Executable({"id": eventId, "htmlLink": "https://cal/evt"})
 
+    def delete(self, calendarId, eventId):  # noqa: N803
+        self.calls.append(("delete", calendarId, eventId))
+        return _Executable("")
+
 
 class _FakeService:
     def __init__(self, calls, fetched):
@@ -233,3 +237,78 @@ def test_create_without_recurrence_sends_no_recurrence_key(calls, client):
 
     # A one-off event must not carry an empty recurrence field.
     assert "recurrence" not in only(calls, "insert")[2]
+
+
+# --------------------------------------------------------------------------
+# DELETE -- irreversible, so the same guardrail plus a record of what went
+# --------------------------------------------------------------------------
+
+CONFIRMED_DELETE = {"user_confirmation": "yes, cancel it",
+                    "expected_summary": SUMMARY}
+
+
+def delete_event(client, event_id=EVENT_ID, **json):
+    """httpx's .delete() takes no body, so DELETE-with-body goes through .request()."""
+    return client.request("DELETE", f"{EVENTS}/{event_id}", json=json)
+
+
+def test_delete_removes_the_event_and_reports_what_it_removed(calls, client, fetched):
+    fetched["recurringEventId"] = "series-1"
+
+    response = delete_event(client, **CONFIRMED_DELETE)
+
+    assert response.status_code == 200
+    assert only(calls, "delete")[1:] == ("primary", EVENT_ID)
+
+    body = response.json()
+    assert body["status"] == "deleted"
+    # Captured before the delete: after it, there is nowhere left to read this
+    # from, and it is the only record the student gets of what was cancelled.
+    assert body["deleted_event"] == {
+        "id": EVENT_ID,
+        "summary": SUMMARY,
+        "start": {"date": None, "dateTime": "2026-09-08T14:00:00-04:00",
+                  "timeZone": "America/Toronto"},
+        "end": {"date": None, "dateTime": "2026-09-08T15:00:00-04:00",
+                "timeZone": "America/Toronto"},
+        "location": "MC 4020",
+        "is_recurring_instance": True,
+        "is_series_master": False,
+        "recurring_event_id": "series-1",
+    }
+
+
+def test_deleting_a_series_master_says_the_whole_series_went(calls, client, fetched):
+    fetched["recurrence"] = [RRULE]
+
+    body = delete_event(client, **CONFIRMED_DELETE).json()
+
+    assert body["deleted_event"]["is_series_master"] is True
+    assert body["deleted_event"]["is_recurring_instance"] is False
+
+
+def test_delete_with_a_stale_expected_summary_is_a_409_and_deletes_nothing(calls, client):
+    response = delete_event(
+        client, user_confirmation="yes", expected_summary="CS 246 Tutorial")
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["mismatches"] == [
+        {"field": "summary", "expected": SUMMARY, "got": "CS 246 Tutorial"}
+    ]
+    # The event the agent was wrong about is still on the student's calendar.
+    assert [c for c in calls if c[0] == "delete"] == []
+
+
+def test_delete_without_a_confirmation_never_touches_google(calls, client):
+    response = delete_event(
+        client, user_confirmation="", expected_summary=SUMMARY)
+
+    assert response.status_code == 400
+    assert calls == []
+
+
+def test_delete_refuses_a_comma_joined_event_id(calls, client):
+    response = delete_event(client, event_id="a,b", **CONFIRMED_DELETE)
+
+    assert response.status_code == 400
+    assert calls == []
