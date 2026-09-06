@@ -40,8 +40,10 @@
 export type AccessKey =
   | "gmailRead"
   | "gmailDrafts"
+  | "gmailTriage"
   | "calendar"
   | "driveRead"
+  | "driveUpload"
   | "docs";
 
 export type AccessItem = {
@@ -93,6 +95,20 @@ export const ACCESS_ITEMS: AccessItem[] = [
     detail: "A skeleton document for an assignment, for you to take over.",
     field: "docs",
     scopes: ["documents"],
+  },
+  {
+    key: "gmailTriage",
+    label: "Tidy your inbox",
+    detail: "It can mark handled emails read, archive them, and label what matters — never delete, never send.",
+    field: "gmail_triage",
+    scopes: ["gmail.modify"],
+  },
+  {
+    key: "driveUpload",
+    label: "Save files to your Drive",
+    detail: "Study plans and summaries it makes for you land in one Classistant folder — it can't touch anything else.",
+    field: "drive_upload",
+    scopes: ["drive.file"],
   },
 ];
 

@@ -18,13 +18,6 @@ import "server-only";
  */
 
 /**
- * MUST stay identical to `scopes` in the connector's app/config.py.
- *
- * The connector rebuilds a Credentials object with its own hardcoded scope list
- * and Google validates the granted set during the code exchange. Request a
- * different set here and the exchange either drops permissions the agent needs
- * or throws outright. When config.py changes, change this in the same commit.
- *
  * Narrowing this list is safe for students who already consented: google-auth
  * only raises on a scope it asked for and did not get, so an older, broader
  * grant still refreshes. Widening it is the direction that needs re-consent.
@@ -36,6 +29,11 @@ export const GOOGLE_SCOPES = [
   // Drafts only. There is deliberately no gmail.send anywhere in this product:
   // the agent proposes mail, a human sends it.
   "https://www.googleapis.com/auth/gmail.compose",
+  // Read/write mail state — labels, read/unread, archive — for inbox triage
+  // (issue #37). Supersedes gmail.readonly (kept anyway so narrowing back
+  // stays a deletion, not a migration). Cannot delete mail permanently and
+  // cannot send: there is still no gmail.send anywhere in this product.
+  "https://www.googleapis.com/auth/gmail.modify",
   // Events only. Neither of these can delete a calendar, change its sharing, or
   // touch anything that is not an event, which the full `calendar` scope this
   // replaced could all do.
@@ -53,15 +51,18 @@ export const GOOGLE_SCOPES = [
   // events().list and events().insert and owns no delete path at all.
   "https://www.googleapis.com/auth/calendar.events",
   "https://www.googleapis.com/auth/calendar.events.owned",
-  // Read only, and both of them: drive.py calls files().list, files().get,
-  // export_media and get_media, and nothing that writes.
+  // Read side: drive.py calls files().list, files().get, export_media and
+  // get_media.
   //
-  // `drive.file` is deliberately absent and must not come back without an
-  // argument. It was the only scope in this set that could delete a file, and
-  // docs/design/17 records that it was buying nothing: documents.create makes
-  // the Doc by itself, and drive.readonly already covers reading one back.
+  // `drive.file` below is the argument docs/design/17 asked for before it
+  // could come back: issue #37's upload feature. drive.file reaches ONLY
+  // files and folders this app itself created — it cannot see, modify, or
+  // delete anything else in the student's Drive. The connector uploads into
+  // a single app-created "Classistant" folder and owns no delete path, the
+  // same line the calendar scopes hold.
   "https://www.googleapis.com/auth/drive.metadata.readonly",
   "https://www.googleapis.com/auth/drive.readonly",
+  "https://www.googleapis.com/auth/drive.file",
   // `documents`, NOT `documents.readonly`. The Docs API has no delete method,
   // so the full scope destroys nothing, and the read-only variant cannot call
   // documents().create -- which is the whole feature: "Start outlines in Docs"
