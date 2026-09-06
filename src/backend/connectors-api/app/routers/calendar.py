@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, Query
 from googleapiclient.errors import HttpError
 from pydantic import BaseModel, Field
 
-from app.routers._guardrails import FieldMismatch, MismatchResponse
+from app.routers._guardrails import FieldMismatch, MismatchResponse, reject_bulk_id
 from app.services.google_creds import service_for_user
 
 DEFAULT_TIMEZONE = "America/Toronto"
@@ -164,10 +164,8 @@ class EventMismatchResponse(MismatchResponse):
 
 
 def _reject_bulk(event_id: str) -> None:
-    """One event per call -- a comma-joined or padded id is an attempted bulk write."""
-    if "," in event_id or any(ch.isspace() for ch in event_id):
-        raise HTTPException(
-            400, "One event_id per request; bulk edits and deletes are not supported.")
+    return reject_bulk_id(
+        event_id, "One event_id per request; bulk edits and deletes are not supported.")
 
 
 def _fetch_event(svc, event_id: str) -> dict:

@@ -23,6 +23,7 @@ import app.routers.gmail as gmail
 USER = "firebase-uid-1"
 DRAFT_ID = "draft-abc123"
 DRAFTS = f"/users/{USER}/emails/drafts"
+EMAIL_ID = "msg-abc123"
 
 ORIGINAL_TO = "prof@uwaterloo.ca"
 ORIGINAL_SUBJECT = "Extension request for A3"
@@ -66,17 +67,67 @@ class _FakeDrafts:
         return _Executable({"id": id})
 
 
+class _FakeMessages:
+    def __init__(self, calls, message, get_error=None):
+        self.calls = calls
+        self.message = message
+        self.get_error = get_error
+
+    def get(self, userId, id, format):  # noqa: A002,N803 -- Google's parameter names
+        self.calls.append(("message.get", id, format))
+        if self.get_error is not None:
+            return _Raiser(self.get_error)
+        return _Executable(self.message)
+
+    def modify(self, userId, id, body):  # noqa: N803
+        self.calls.append(("modify", id, body))
+        # Apply the change the way Gmail would, so labels_after is a real
+        # answer rather than an echo of whatever the endpoint felt like.
+        labels = list((self.message or {}).get("labelIds", []))
+        for label_id in body.get("addLabelIds", []):
+            if label_id not in labels:
+                labels.append(label_id)
+        for label_id in body.get("removeLabelIds", []):
+            if label_id in labels:
+                labels.remove(label_id)
+        return _Executable({"id": id, "labelIds": labels})
+
+
+class _FakeLabels:
+    def __init__(self, calls, labels):
+        self.calls = calls
+        self.labels = labels
+
+    def list(self, userId):  # noqa: N803
+        self.calls.append(("labels.list",))
+        return _Executable({"labels": self.labels})
+
+    def create(self, userId, body):  # noqa: N803
+        self.calls.append(("labels.create", body))
+        return _Executable({"id": "Label_new", "name": body["name"], "type": "user"})
+
+
 class _FakeUsers:
-    def __init__(self, calls, draft, get_error):
-        self._drafts = _FakeDrafts(calls, draft, get_error)
+    def __init__(self, calls, draft, message, labels, draft_error, message_error):
+        self._drafts = _FakeDrafts(calls, draft, draft_error)
+        self._messages = _FakeMessages(calls, message, message_error)
+        self._labels = _FakeLabels(calls, labels or [])
 
     def drafts(self):
         return self._drafts
 
+    def messages(self):
+        return self._messages
+
+    def labels(self):
+        return self._labels
+
 
 class _FakeService:
-    def __init__(self, calls, draft, get_error=None):
-        self._users = _FakeUsers(calls, draft, get_error)
+    def __init__(self, calls, draft=None, message=None, labels=None,
+                 draft_error=None, message_error=None):
+        self._users = _FakeUsers(
+            calls, draft, message, labels, draft_error, message_error)
 
     def users(self):
         return self._users
@@ -103,13 +154,30 @@ def draft():
 
 
 @pytest.fixture
-def calls(monkeypatch, draft):
+def message():
+    """The email Gmail is currently holding, in `format="metadata"` shape."""
+    return {"id": EMAIL_ID, "labelIds": ["INBOX", "UNREAD"]}
+
+
+@pytest.fixture
+def labels():
+    """The student's label list, as users.labels.list returns it."""
+    return [
+        {"id": "Label_7", "name": "Deadlines", "type": "user"},
+        {"id": "INBOX", "name": "INBOX", "type": "system"},
+        {"id": "TRASH", "name": "TRASH", "type": "system"},
+    ]
+
+
+@pytest.fixture
+def calls(monkeypatch, draft, message, labels):
     """Records every Google call the router makes."""
     recorded = []
     monkeypatch.setattr(
         gmail,
         "service_for_user",
-        lambda user_id, api, version: _FakeService(recorded, draft),
+        lambda user_id, api, version: _FakeService(
+            recorded, draft=draft, message=message, labels=labels),
     )
     return recorded
 
@@ -251,7 +319,7 @@ def missing_draft(monkeypatch):
     monkeypatch.setattr(
         gmail,
         "service_for_user",
-        lambda user_id, api, version: _FakeService(recorded, None, error),
+        lambda user_id, api, version: _FakeService(recorded, draft_error=error),
     )
     return recorded
 
@@ -264,3 +332,169 @@ def test_patch_of_an_unknown_draft_is_a_404(missing_draft, client):
     assert "nope" in response.json()["detail"]
     # Nothing was written in response to a draft that is not there.
     assert [c for c in missing_draft if c[0] == "update"] == []
+
+
+# --------------------------------------------------------------------------
+# triage -- explicit verbs, nothing that can destroy mail
+# --------------------------------------------------------------------------
+
+TRIAGE = f"/users/{USER}/emails/{EMAIL_ID}/triage"
+
+
+def triage(client, **json):
+    return client.post(TRIAGE, json=json)
+
+
+def label_calls(calls):
+    return [c for c in calls if c[0].startswith("labels.")]
+
+
+def test_mark_read_removes_only_the_unread_label(calls, client):
+    response = triage(client, action="mark_read")
+
+    assert response.status_code == 200
+    # Exactly this, and nothing else: no addLabelIds, no INBOX, no drive-by
+    # changes to state the student did not ask about.
+    assert only(calls, "modify")[2] == {"removeLabelIds": ["UNREAD"]}
+    assert label_calls(calls) == []
+    assert response.json()["action"] == "mark_read"
+    assert response.json()["label"] is None
+
+
+def test_mark_unread_adds_the_unread_label(calls, client):
+    triage(client, action="mark_unread")
+    assert only(calls, "modify")[2] == {"addLabelIds": ["UNREAD"]}
+
+
+def test_archive_removes_the_inbox_label_and_nothing_else(calls, client):
+    response = triage(client, action="archive")
+
+    assert response.status_code == 200
+    # Archive is a label removal, not a delete -- TRASH must not appear here.
+    assert only(calls, "modify")[2] == {"removeLabelIds": ["INBOX"]}
+
+
+def test_triage_reports_the_labels_either_side_of_the_change(calls, client):
+    body = triage(client, action="mark_read").json()
+
+    assert body["labels_before"] == ["INBOX", "UNREAD"]
+    assert body["labels_after"] == ["INBOX"]
+    assert body["status"] == "triaged"
+    assert body["email_id"] == EMAIL_ID
+
+
+def test_add_label_matches_an_existing_label_case_insensitively(calls, client):
+    # The student says "deadlines"; the label reads "Deadlines".
+    response = triage(client, action="add_label", label="deadlines")
+
+    assert response.status_code == 200
+    assert only(calls, "modify")[2] == {"addLabelIds": ["Label_7"]}
+    # Creating a second label differing only in case would be a duplicate the
+    # student never asked for.
+    assert [c for c in calls if c[0] == "labels.create"] == []
+    assert response.json()["label"] == "deadlines"
+
+
+def test_add_label_creates_the_label_before_applying_it(calls, client):
+    response = triage(client, action="add_label", label="Readings")
+
+    assert response.status_code == 200
+    kinds = [c[0] for c in calls]
+    assert kinds.index("labels.create") < kinds.index("modify")
+    assert only(calls, "labels.create")[1] == {"name": "Readings"}
+    assert only(calls, "modify")[2] == {"addLabelIds": ["Label_new"]}
+
+
+def test_remove_label_applies_the_existing_label_id(calls, client):
+    triage(client, action="remove_label", label="Deadlines")
+    assert only(calls, "modify")[2] == {"removeLabelIds": ["Label_7"]}
+
+
+def test_remove_label_of_an_unknown_label_is_a_404(calls, client):
+    response = triage(client, action="remove_label", label="Nonexistent")
+
+    assert response.status_code == 404
+    # Creating a label in order to remove it would be a strange way to do
+    # nothing, so nothing was created and nothing was modified.
+    assert [c for c in calls if c[0] == "labels.create"] == []
+    assert [c for c in calls if c[0] == "modify"] == []
+
+
+def test_a_system_label_cannot_be_reached_through_the_label_field(calls, client):
+    response = triage(client, action="add_label", label="trash")
+
+    assert response.status_code == 400
+    # Refused on the name alone: TRASH is never even looked up, so there is no
+    # path from this endpoint to the student's bin.
+    assert label_calls(calls) == []
+    assert [c for c in calls if c[0] == "modify"] == []
+
+
+def test_every_system_label_name_is_refused(calls, client):
+    for name in ("INBOX", "unread", "Spam", "SENT", "STARRED", "important",
+                 "CATEGORY_PROMOTIONS"):
+        response = triage(client, action="add_label", label=name)
+        assert response.status_code == 400, name
+    assert [c for c in calls if c[0] == "modify"] == []
+
+
+def test_a_label_sent_with_a_verb_action_is_refused(calls, client):
+    response = triage(client, action="mark_read", label="Deadlines")
+
+    # Silently ignoring it would leave the agent believing it labelled the mail.
+    assert response.status_code == 400
+    assert calls == []
+
+
+def test_a_label_action_without_a_label_is_refused(calls, client):
+    response = triage(client, action="add_label")
+
+    assert response.status_code == 400
+    assert calls == []
+
+
+def test_a_blank_label_is_not_a_label(calls, client):
+    response = triage(client, action="add_label", label="   ")
+
+    assert response.status_code == 400
+    assert calls == []
+
+
+def test_an_unknown_action_is_rejected_by_validation(calls, client):
+    response = triage(client, action="delete")
+
+    # There is no delete verb, and Literal makes that a schema fact the agent's
+    # generated tool can see rather than a runtime surprise.
+    assert response.status_code == 422
+    assert calls == []
+
+
+def test_triage_refuses_a_comma_joined_email_id(calls, client):
+    response = client.post(
+        f"/users/{USER}/emails/a,b/triage", json={"action": "mark_read"})
+
+    assert response.status_code == 400
+    assert calls == []
+
+
+@pytest.fixture
+def missing_email(monkeypatch, draft, labels):
+    """service_for_user hands back a client whose messages.get 404s."""
+    recorded = []
+    error = HttpError(_Resp(), b'{"error": {"message": "Not Found"}}')
+    monkeypatch.setattr(
+        gmail,
+        "service_for_user",
+        lambda user_id, api, version: _FakeService(
+            recorded, draft=draft, labels=labels, message_error=error),
+    )
+    return recorded
+
+
+def test_triage_of_an_unknown_email_is_a_404(missing_email, client):
+    response = client.post(
+        f"/users/{USER}/emails/nope/triage", json={"action": "archive"})
+
+    assert response.status_code == 404
+    assert "nope" in response.json()["detail"]
+    assert [c for c in missing_email if c[0] == "modify"] == []

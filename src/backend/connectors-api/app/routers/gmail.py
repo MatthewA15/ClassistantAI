@@ -1,15 +1,16 @@
 """
-Gmail connector (P1: read; P2: create drafts, edit drafts, send drafts).
+Gmail connector (P1: read; P2: create/edit/send drafts, triage the inbox).
 """
 
 from datetime import datetime, timezone
+from typing import Literal
 from fastapi import APIRouter, HTTPException, Query
 from googleapiclient.errors import HttpError
 from pydantic import BaseModel, EmailStr, Field
 from email.mime.text import MIMEText
 import base64
 
-from app.routers._guardrails import FieldMismatch, MismatchResponse
+from app.routers._guardrails import FieldMismatch, MismatchResponse, reject_bulk_id
 from app.services.google_creds import service_for_user
 
 router = APIRouter(prefix="/users/{user_id}", tags=["gmail"])
@@ -313,4 +314,143 @@ def send_draft(user_id: str, draft_id: str, payload: DraftSendIn):
         message_id=sent["id"],
         thread_id=sent["threadId"],
         sent_at=sent_at,
+    )
+
+
+# Gmail's own labels. `label` on the triage endpoint is a NAME, and none of
+# these names may be reached through it: the explicit verbs are the only way to
+# touch inbox and read state, which leaves TRASH and SPAM with no path at all.
+_SYSTEM_LABELS = {
+    "INBOX", "UNREAD", "SPAM", "TRASH", "SENT", "DRAFT", "STARRED", "IMPORTANT",
+    "CATEGORY_PERSONAL", "CATEGORY_SOCIAL", "CATEGORY_PROMOTIONS",
+    "CATEGORY_UPDATES", "CATEGORY_FORUMS",
+}
+
+TriageAction = Literal["mark_read", "mark_unread",
+                       "archive", "add_label", "remove_label"]
+
+_LABEL_ACTIONS = ("add_label", "remove_label")
+
+# The three explicit verbs, as the modify body each one sends.
+_VERB_BODIES: dict[str, dict] = {
+    "mark_read": {"removeLabelIds": ["UNREAD"]},
+    "mark_unread": {"addLabelIds": ["UNREAD"]},
+    "archive": {"removeLabelIds": ["INBOX"]},
+}
+
+
+class TriageIn(BaseModel):
+    action: TriageAction = Field(
+        ..., description="What to do: mark_read, mark_unread, archive, add_label or remove_label.")
+    label: str | None = Field(
+        None,
+        description=("Label NAME (e.g. 'Deadlines'). Required for add_label and "
+                     "remove_label, and rejected for the other actions."))
+
+
+class TriageResponse(BaseModel):
+    email_id: str
+    action: str
+    label: str | None = Field(
+        None, description="The label name acted on; null for the non-label actions.")
+    labels_before: list[str] = Field(
+        default_factory=list, description="The email's label ids before the change.")
+    labels_after: list[str] = Field(
+        default_factory=list, description="The email's label ids after the change.")
+    status: str = "triaged"
+
+
+def _resolve_label(svc, name: str, *, create_missing: bool) -> str:
+    """Label name -> label id, creating a user label only when asked to.
+
+    Matching is case-insensitive because the student says "deadlines" and the
+    label reads "Deadlines"; a second label differing only in case would be a
+    duplicate the student never asked for.
+    """
+    existing = svc.users().labels().list(userId="me").execute().get("labels", [])
+    for lab in existing:
+        if (lab.get("name") or "").lower() != name.lower():
+            continue
+        if lab.get("type") == "system" or (lab.get("name") or "").upper() in _SYSTEM_LABELS:
+            raise HTTPException(
+                400, f"{lab.get('name')} is a Gmail system label; use the explicit actions instead.")
+        return lab["id"]
+
+    if not create_missing:
+        # Nothing to remove, and creating a label in order to remove it would
+        # be a strange way to do nothing.
+        raise HTTPException(404, f"Label '{name}' not found")
+
+    created = svc.users().labels().create(
+        userId="me", body={"name": name}).execute()
+    return created["id"]
+
+
+@router.post("/emails/{email_id}/triage", response_model=TriageResponse)
+def triage_email(user_id: str, email_id: str, payload: TriageIn):
+    """Change one email's state: mark it read or unread, archive it, or add/remove a label.
+
+    `label` is a label NAME, not an id. It is required for add_label and
+    remove_label and rejected for the other three actions, so a request can
+    never quietly mean something other than it says. add_label creates the
+    label when the student doesn't have it yet; remove_label on a label that
+    doesn't exist is a 404, because there is nothing to remove.
+
+    `archive` takes the email out of the inbox. It does NOT delete it: the mail
+    stays in All Mail and search still finds it. There is deliberately no
+    delete and no trash action here, and Gmail's own labels (INBOX, UNREAD,
+    SPAM, TRASH, SENT, STARRED, IMPORTANT, CATEGORY_*) cannot be reached
+    through `label` -- the three verbs above are the only way to touch inbox
+    and read state, which leaves the student's mail impossible to destroy from
+    this endpoint.
+
+    No confirmation is required, unlike sending a draft or deleting an event:
+    every action here is reversible in one click in Gmail, and
+    `labels_before`/`labels_after` report exactly what changed.
+
+    One email per call.
+    """
+    needs_label = payload.action in _LABEL_ACTIONS
+    label = (payload.label or "").strip()
+    if needs_label and not label:
+        raise HTTPException(400, f"`label` is required for {payload.action}.")
+    if not needs_label and payload.label is not None:
+        raise HTTPException(
+            400, f"`label` is not accepted for {payload.action}; that action names its own target.")
+    if needs_label and label.upper() in _SYSTEM_LABELS:
+        raise HTTPException(
+            400, f"{label} is a Gmail system label; use the explicit actions instead.")
+    reject_bulk_id(
+        email_id, "One email_id per request; bulk triage is not supported.")
+
+    svc = service_for_user(user_id, "gmail", "v1")
+
+    # Read first: labels_before is the record of what the email looked like,
+    # and it cannot be recovered after the modify.
+    try:
+        msg = svc.users().messages().get(
+            userId="me", id=email_id, format="metadata").execute()
+    except HttpError as e:
+        if e.resp.status == 404:
+            raise HTTPException(404, f"Email {email_id} not found")
+        raise
+    labels_before = msg.get("labelIds", [])
+
+    if needs_label:
+        label_id = _resolve_label(
+            svc, label, create_missing=payload.action == "add_label")
+        key = "addLabelIds" if payload.action == "add_label" else "removeLabelIds"
+        body = {key: [label_id]}
+    else:
+        body = _VERB_BODIES[payload.action]
+
+    modified = svc.users().messages().modify(
+        userId="me", id=email_id, body=body).execute()
+
+    return TriageResponse(
+        email_id=modified.get("id", email_id),
+        action=payload.action,
+        label=label or None,
+        labels_before=labels_before,
+        labels_after=modified.get("labelIds", []),
     )

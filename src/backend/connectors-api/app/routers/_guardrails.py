@@ -11,7 +11,12 @@ Gmail and Calendar share these models so the ADK tools parse one mismatch
 shape, not one per connector. `MismatchResponse` is subclassed per connector
 purely to give `detail` a connector-specific default -- the field names and
 types are the frozen part.
+
+`reject_bulk_id` lives here for the same reason: it is one rule about what a
+write endpoint may act on, and two copies of it would be one copy away from
+disagreeing.
 """
+from fastapi import HTTPException
 from pydantic import BaseModel, Field
 
 
@@ -28,3 +33,14 @@ class MismatchResponse(BaseModel):
                         description="Summary of the mismatch.")
     mismatches: list[FieldMismatch] = Field(
         default_factory=list, description="Per-field mismatch details.")
+
+
+def reject_bulk_id(identifier: str, detail: str) -> None:
+    """One target per call -- a comma-joined or padded id is an attempted bulk write.
+
+    The student confirmed one thing. An id carrying a list is a sign the agent
+    is about to act on more than they agreed to, so it is refused rather than
+    fanned out.
+    """
+    if "," in identifier or any(ch.isspace() for ch in identifier):
+        raise HTTPException(400, detail)
