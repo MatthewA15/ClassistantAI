@@ -1,11 +1,12 @@
-"""Google Drive connector (P2: list/search files, download content)."""
+"""Google Drive connector (P2: list/search files, download content, upload into the app folder)."""
 import base64
+import binascii
 import io
 import re
 
 from fastapi import APIRouter, HTTPException, Query
 from googleapiclient.errors import HttpError
-from googleapiclient.http import MediaIoBaseDownload
+from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 from pydantic import BaseModel, Field
 
 from app.services.google_creds import service_for_user
@@ -102,4 +103,118 @@ def download_file(user_id: str, file_id: str):
         content_size=len(content),
         filename=_safe_filename(name),
         data=base64.b64encode(content).decode(),
+    )
+
+
+APP_FOLDER_NAME = "Classistant"
+_FOLDER_MIME = "application/vnd.google-apps.folder"
+
+# Uploads are agent-generated study material, not media libraries. The cap is
+# here so a runaway base64 payload fails fast and cheaply, before Drive.
+_MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
+# Above this, hand the upload to Drive's resumable protocol rather than one
+# request that has to succeed whole.
+_RESUMABLE_ABOVE_BYTES = 1024 * 1024
+
+
+class FileUploadIn(BaseModel):
+    filename: str = Field(..., description="Name for the file in Drive.")
+    mime_type: str = Field(...,
+                           description="MIME type of the content, e.g. 'text/plain' or 'application/pdf'.")
+    data: str = Field(..., description="File content encoded as base64.")
+
+
+class FileUploadedResponse(BaseModel):
+    file_id: str
+    name: str
+    web_view_link: str | None = Field(
+        None, description="Browser-viewable URL for the uploaded file.")
+    folder: str = Field(
+        APP_FOLDER_NAME, description="The app-owned folder the file landed in.")
+    size: int = Field(..., description="Size of the stored file in bytes.")
+    status: str = "uploaded"
+
+
+def _ensure_app_folder(svc) -> str:
+    """The id of this app's own "Classistant" folder, creating it on first use.
+
+    Everything this connector writes goes in here, because it is the only
+    place it can reliably find again: under `drive.file` the app sees only
+    what it created itself, so a folder made by the student -- even one with
+    this exact name -- is invisible to the query below and would come back
+    empty forever.
+    """
+    found = svc.files().list(
+        q=(f"name = '{APP_FOLDER_NAME}' and mimeType = '{_FOLDER_MIME}' "
+           "and trashed = false and 'root' in parents"),
+        spaces="drive",
+        fields="files(id,name)",
+        pageSize=1,
+    ).execute()
+    existing = found.get("files", [])
+    if existing:
+        return existing[0]["id"]
+
+    created = svc.files().create(
+        body={"name": APP_FOLDER_NAME, "mimeType": _FOLDER_MIME},
+        fields="id",
+    ).execute()
+    return created["id"]
+
+
+@router.post("/files", status_code=201, response_model=FileUploadedResponse)
+def upload_file(user_id: str, upload: FileUploadIn):
+    """Upload a file into the student's Drive, in this app's own "Classistant" folder.
+
+    Send the content as base64 in `data`, with the `mime_type` it should be
+    stored as -- the mirror of what the download endpoint returns, so a file
+    read from Drive can be written back without re-encoding.
+
+    Everything lands in one folder named "Classistant", created on first use.
+    That is not tidiness: this app can only see files and folders it created
+    itself, so anywhere else is somewhere it could never find the file again.
+    It cannot read, change or remove anything else in the student's Drive, and
+    there is no delete endpoint here at all.
+
+    Files are capped at 10 MB. A `403` means the student's Google account
+    hasn't granted this app write access yet and has to reconnect.
+    """
+    try:
+        content = base64.b64decode(upload.data, validate=True)
+    except (ValueError, binascii.Error):
+        raise HTTPException(400, "`data` is not valid base64.")
+    if not content:
+        raise HTTPException(400, "`data` is empty; there is nothing to upload.")
+    if len(content) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            413,
+            f"File is {len(content)} bytes; the limit is {_MAX_UPLOAD_BYTES} bytes.",
+        )
+
+    svc = service_for_user(user_id, "drive", "v3")
+    try:
+        folder_id = _ensure_app_folder(svc)
+        media = MediaIoBaseUpload(
+            io.BytesIO(content),
+            mimetype=upload.mime_type,
+            resumable=len(content) > _RESUMABLE_ABOVE_BYTES,
+        )
+        created = svc.files().create(
+            body={"name": _safe_filename(upload.filename),
+                  "parents": [folder_id]},
+            media_body=media,
+            fields="id,name,mimeType,modifiedTime,webViewLink,size",
+        ).execute()
+    except HttpError as e:
+        if e.resp.status == 403:
+            raise HTTPException(
+                403, "No access to this file — user may need to re-consent with updated scopes")
+        raise
+
+    return FileUploadedResponse(
+        file_id=created["id"],
+        name=created.get("name") or _safe_filename(upload.filename),
+        web_view_link=created.get("webViewLink"),
+        size=int(created.get("size") or len(content)),
     )
