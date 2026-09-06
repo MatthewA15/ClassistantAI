@@ -1,5 +1,5 @@
 """
-Gmail connector (P1: read; P2: create drafts, send drafts).
+Gmail connector (P1: read; P2: create drafts, edit drafts, send drafts).
 """
 
 from datetime import datetime, timezone
@@ -156,6 +156,86 @@ def create_draft(user_id: str, draft: DraftIn):
     created = svc.users().drafts().create(
         userId="me", body={"message": {"raw": raw}}).execute()
     return DraftCreatedResponse(draft_id=created["id"])
+
+
+class DraftPatchIn(BaseModel):
+    """A partial edit of a draft: every editable field is optional.
+
+    Partial from the caller's side only -- Gmail itself has no partial draft
+    update, so the endpoint merges these over the draft it fetches.
+    """
+    to: EmailStr | None = None
+    subject: str | None = None
+    body: str | None = None
+    user_confirmation: str = Field(
+        ..., description="The user's confirmation message (e.g. 'yes, change the subject'). Must be non-empty.")
+
+
+class DraftUpdatedResponse(BaseModel):
+    draft_id: str
+    status: str = "draft_updated"
+    changed_fields: list[str] = Field(
+        default_factory=list, description="The field names the caller provided; everything else was preserved.")
+
+
+@router.patch("/emails/drafts/{draft_id}", response_model=DraftUpdatedResponse)
+def patch_draft(user_id: str, draft_id: str, payload: DraftPatchIn):
+    """Edit an existing draft in place -- fields you omit keep their current values, and nothing is sent.
+
+    Send only what changes: omitting `subject` keeps the draft's subject
+    rather than clearing it. At least one of `to`, `subject`, `body` is
+    required, so an edit that changes nothing is an error rather than a
+    silent success.
+
+    This edits the draft only. It does not send anything -- the student still
+    reads the draft, and sending is a separate confirmed call.
+
+    No `expected_*` echo-back here, unlike editing or deleting a calendar
+    event: a draft edit destroys nothing and is fully reversible, so a
+    non-empty `user_confirmation` plus these merge semantics is enough.
+    """
+    if not payload.user_confirmation.strip():
+        raise HTTPException(
+            400, "Confirmation message is required to edit a draft.")
+
+    provided = [f for f in ("to", "subject", "body")
+                if f in payload.model_fields_set]
+    if not provided:
+        raise HTTPException(
+            400, "No editable fields provided; send at least one of to, subject, body.")
+
+    svc = service_for_user(user_id, "gmail", "v1")
+
+    # 1. Fetch the existing draft -- Gmail's drafts.update REPLACES the whole
+    #    message, so anything not rebuilt below would be silently blanked.
+    try:
+        draft = svc.users().drafts().get(userId="me", id=draft_id, format="full").execute()
+    except HttpError as e:
+        if e.resp.status == 404:
+            raise HTTPException(404, f"Draft {draft_id} not found")
+        raise
+
+    # 2. Read what the draft currently holds, the same way send_draft does.
+    msg = draft.get("message", {})
+    payload_dict = msg.get("payload", {})
+    headers = payload_dict.get("headers", [])
+
+    # 3. Merge: what the caller sent wins, everything else is carried over.
+    to = str(payload.to) if "to" in provided else (
+        _header(headers, "To") or "")
+    subject = payload.subject if "subject" in provided else (
+        _header(headers, "Subject") or "")
+    body = payload.body if "body" in provided else (_body(payload_dict) or "")
+
+    # 4. Rebuild the full message and replace the draft with it.
+    mime = MIMEText(body)
+    mime["to"], mime["subject"] = to, subject
+    raw = base64.urlsafe_b64encode(mime.as_bytes()).decode()
+    updated = svc.users().drafts().update(
+        userId="me", id=draft_id, body={"message": {"raw": raw}}).execute()
+
+    return DraftUpdatedResponse(
+        draft_id=updated.get("id", draft_id), changed_fields=provided)
 
 
 class DraftSendIn(BaseModel):
