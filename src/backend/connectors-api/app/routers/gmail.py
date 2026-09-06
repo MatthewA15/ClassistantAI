@@ -165,9 +165,12 @@ class DraftPatchIn(BaseModel):
     Partial from the caller's side only -- Gmail itself has no partial draft
     update, so the endpoint merges these over the draft it fetches.
     """
-    to: EmailStr | None = None
-    subject: str | None = None
-    body: str | None = None
+    to: EmailStr | None = Field(
+        None, description="New recipient, replacing the draft's To header.")
+    subject: str | None = Field(
+        None, description="New subject, replacing the draft's Subject header.")
+    body: str | None = Field(
+        None, description="New body text, replacing the draft's body.")
     user_confirmation: str = Field(
         ..., description="The user's confirmation message (e.g. 'yes, change the subject'). Must be non-empty.")
 

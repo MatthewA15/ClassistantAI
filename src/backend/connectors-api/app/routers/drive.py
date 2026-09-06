@@ -71,7 +71,11 @@ class DownloadResponse(BaseModel):
 
 @router.get("/files/{file_id}/download", response_model=DownloadResponse)
 def download_file(user_id: str, file_id: str):
-    """Download a file's raw bytes, auto-exporting Google-native Docs/Sheets/Slides to plain text, CSV, or PDF."""
+    """Download a file's content as base64 in `data`, auto-exporting Google-native Docs/Sheets/Slides to plain text, CSV, or PDF.
+
+    The response is JSON, not binary: `data` is base64 and `mime_type` /
+    `filename` describe the exported form for Google-native files.
+    """
     svc = service_for_user(user_id, "drive", "v3")
     try:
         meta = svc.files().get(fileId=file_id, fields="name,mimeType,size").execute()

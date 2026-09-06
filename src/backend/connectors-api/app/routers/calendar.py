@@ -124,11 +124,14 @@ class EventPatchIn(BaseModel):
     `user_confirmation` and `expected_summary` are the guardrail and are always
     required -- see the endpoint docstring.
     """
-    summary: str | None = None
-    start: str | None = None   # RFC3339, e.g. "2026-09-08T14:00:00-04:00"
-    end: str | None = None
-    description: str | None = None
-    location: str | None = None
+    summary: str | None = Field(None, description="New title for the event.")
+    start: str | None = Field(
+        None, description="New start, RFC3339, e.g. '2026-09-08T14:00:00-04:00'.")
+    end: str | None = Field(
+        None, description="New end, RFC3339, e.g. '2026-09-08T15:00:00-04:00'.")
+    description: str | None = Field(
+        None, description="New description (the event's notes).")
+    location: str | None = Field(None, description="New location.")
     timezone: str | None = Field(
         None, description="IANA tz applied to `start`/`end`; ignored on its own.")
     recurrence: list[str] | None = Field(
