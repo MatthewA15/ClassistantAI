@@ -163,3 +163,73 @@ def test_patch_refuses_a_comma_joined_event_id(calls, client):
 
     assert response.status_code == 400
     assert calls == []
+
+
+# --------------------------------------------------------------------------
+# recurring events -- one occurrence or the whole series
+# --------------------------------------------------------------------------
+
+RRULE = "RRULE:FREQ=WEEKLY;BYDAY=TU,TH;UNTIL=20261215T000000Z"
+
+
+def test_patching_an_instance_id_says_so_in_the_response(calls, client, fetched):
+    # What list_events hands back for a recurring series: an instance, whose
+    # series lives at recurringEventId.
+    fetched["id"] = "series-1_20260908T140000Z"
+    fetched["recurringEventId"] = "series-1"
+
+    response = client.patch(
+        f"{EVENTS}/series-1_20260908T140000Z",
+        json={"location": "MC 4021", **CONFIRMED},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    # The agent moved one lecture, not the term's worth of them, and has to be
+    # able to tell the student which.
+    assert body["is_recurring_instance"] is True
+    assert body["recurring_event_id"] == "series-1"
+    assert body["is_series_master"] is False
+
+
+def test_patching_a_series_master_says_so_in_the_response(calls, client, fetched):
+    fetched["recurrence"] = [RRULE]
+
+    response = client.patch(
+        f"{EVENTS}/{EVENT_ID}", json={"location": "MC 4021", **CONFIRMED})
+
+    body = response.json()
+    assert body["is_series_master"] is True
+    assert body["is_recurring_instance"] is False
+    assert body["recurring_event_id"] is None
+
+
+def test_patch_sends_the_rrule_list_through(calls, client, fetched):
+    fetched["recurrence"] = ["RRULE:FREQ=WEEKLY;BYDAY=TU"]
+
+    client.patch(f"{EVENTS}/{EVENT_ID}",
+                 json={"recurrence": [RRULE], **CONFIRMED})
+
+    assert patch_body(calls) == {"recurrence": [RRULE]}
+
+
+def test_create_sends_the_rrule_list_through(calls, client):
+    response = client.post(
+        EVENTS,
+        json={"summary": SUMMARY, "start": "2026-09-08T14:00:00-04:00",
+              "end": "2026-09-08T15:00:00-04:00", "recurrence": [RRULE]},
+    )
+
+    assert response.status_code == 201
+    assert only(calls, "insert")[2]["recurrence"] == [RRULE]
+
+
+def test_create_without_recurrence_sends_no_recurrence_key(calls, client):
+    client.post(
+        EVENTS,
+        json={"summary": SUMMARY, "start": "2026-09-08T14:00:00-04:00",
+              "end": "2026-09-08T15:00:00-04:00"},
+    )
+
+    # A one-off event must not carry an empty recurrence field.
+    assert "recurrence" not in only(calls, "insert")[2]

@@ -20,8 +20,8 @@ This service has no auth endpoints. Login, the OAuth authorization-code exchange
 | Method | Path | In | Out |
 |---|---|---|---|
 | GET | `/users/{user_id}/calendar/events?time_min&time_max&max_results` | RFC3339 times | `{events:[{id, summary, description, start, end, location, html_link}], count}` (P1) |
-| POST | `/users/{user_id}/calendar/events` | `{summary, start, end, description?, location?, timezone?}` | `{event_id, html_link, status:"created"}` (P1) |
-| PATCH | `/users/{user_id}/calendar/events/{event_id}` | `{expected_summary, user_confirmation, summary?, start?, end?, description?, location?, timezone?}` | `{event_id, html_link, status:"updated", changed_fields:[...]}` — partial update; `409` on a stale `expected_summary` (v0.9) |
+| POST | `/users/{user_id}/calendar/events` | `{summary, start, end, description?, location?, timezone?, recurrence?}` | `{event_id, html_link, status:"created"}` (P1; `recurrence` added v0.9) |
+| PATCH | `/users/{user_id}/calendar/events/{event_id}` | `{expected_summary, user_confirmation, summary?, start?, end?, description?, location?, timezone?, recurrence?}` | `{event_id, html_link, status:"updated", changed_fields:[...], is_recurring_instance, is_series_master, recurring_event_id}` — partial update; `409` on a stale `expected_summary` (v0.9) |
 
 ### Calendar writes — the guardrail dance (v0.9)
 
@@ -38,6 +38,25 @@ Two further guards, both `400` and both before the write:
 `PATCH` is a **true partial update**: only the fields present in the request body are sent to Google, so a field the agent never mentioned is never blanked out. `start`/`end` are RFC3339 and are wrapped as `{dateTime, timeZone}` (`timezone`, default `America/Toronto`). `changed_fields` echoes the field names actually sent, for the agent to relay to the student.
 
 The mismatch models (`FieldMismatch`, the `MismatchResponse` base) live in `app/routers/_guardrails.py` and are shared with Gmail. Gmail's `409` body is byte-for-byte what it was in v0.7.
+
+### Calendar — recurring events (v0.9)
+
+`recurrence` is a list of Google-format RRULE strings, e.g. `["RRULE:FREQ=WEEKLY;BYDAY=TU,TH;UNTIL=20261215T000000Z"]`. It is **additive on `POST /calendar/events`** — omit it and the request is byte-for-byte the pre-v0.9 one, with no `recurrence` key sent at all. On create, `start`/`end` describe the first occurrence and the RRULEs make it a series. On `PATCH` it is only meaningful against a series master.
+
+**Instance vs. series — the thing an ADK tool must get right.** `GET /calendar/events` passes `singleEvents=True`, so it expands series and the `id`s it returns are usually *instance* ids (`seriesid_20260908T140000Z`), not the series. That id is what makes an edit or delete apply to one occurrence or to all of them:
+
+| The id you send | What PATCH/DELETE affects |
+|---|---|
+| the instance id from `list` (`series-1_20260908T140000Z`) | that ONE occurrence |
+| the bare series id (`series-1`) | EVERY occurrence — the whole term |
+
+The request cannot express which the student meant, so the agent has to ask ("just this Tuesday, or every week?") before calling. Both endpoints therefore report what was actually touched:
+
+- `is_recurring_instance` — the id acted on was one occurrence of a series.
+- `is_series_master` — the id acted on was the series itself.
+- `recurring_event_id` — the series id, when an instance was acted on (`null` otherwise). This is the id to use for the whole-series version of the same action.
+
+All three are declared fields on the response models, so they survive `response_model` filtering.
 
 ## Drive / Docs (P2)
 | Method | Path | In | Out |
@@ -83,4 +102,4 @@ Every `/users/{user_id}/...` endpoint reads through `app/services/firestore_cred
 - v0.4 (**breaking**): `/auth/login` and `/auth/callback` removed — login moved to the frontend (issue #12). `{user_id}` in path params is now a Firebase UID, not a Google `sub`. Credential storage moved from Secret Manager to Firestore + KMS envelope encryption; new `500` error semantics for malformed stored credentials (see Errors).
 - v0.5 (**breaking**): corrects a false start within this same version — `/auth/callback` was briefly restored (client secret handling was mistakenly believed to require it) and then removed again for good once [`docs/ENCRYPTION_CONTRACT.md`](../../../docs/ENCRYPTION_CONTRACT.md) settled the frontend as owning the full write side, encrypt included. This service now has **zero** auth endpoints, **zero** KMS encrypt capability, and no code path that can name or touch a `school_password` credential. The `google_sub` fallback lookup on the read path is also removed — `{user_id}` is the Firebase UID with no alternate-identifier tolerance, anywhere. Credential documents are now read from `users/{user_id}/credentials/google_refresh_token` (a direct document get) rather than a queried top-level `user_credentials` collection.
 - v0.6: `POST /docs` accepts an optional `markdown` flag (default `false`), and its response gains `formatting_applied` (default `true`). Both are **additive** — no existing field changed shape or name, and `markdown: false` sends byte-for-byte the request v0.5 sent. `formatting_applied` is a declared field on `DocCreatedResponse`, so it survives the endpoint's `response_model` filtering.
-- v0.9: Calendar gains `PATCH /calendar/events/{event_id}` — a partial-update edit endpoint behind the `expected_summary` + `user_confirmation` guardrail, answering `409` with Gmail's mismatch shape when the agent's read is stale. Additive: `GET`/`POST` on `/calendar/events` are unchanged, and Gmail's `409` body is unchanged (its models simply moved to a shared `app/routers/_guardrails.py`).
+- v0.9: Calendar gains `recurrence` (RRULE list) on create and edit — **additive** on `POST /calendar/events`, which sends no `recurrence` key when it is omitted — and reports `is_recurring_instance` / `is_series_master` / `recurring_event_id` so a caller can tell whether it touched one occurrence or the whole series. Calendar also gains `PATCH /calendar/events/{event_id}` — a partial-update edit endpoint behind the `expected_summary` + `user_confirmation` guardrail, answering `409` with Gmail's mismatch shape when the agent's read is stale. Additive: `GET`/`POST` on `/calendar/events` are unchanged, and Gmail's `409` body is unchanged (its models simply moved to a shared `app/routers/_guardrails.py`).
